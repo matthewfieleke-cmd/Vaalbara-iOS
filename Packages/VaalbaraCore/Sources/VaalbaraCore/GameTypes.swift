@@ -310,6 +310,24 @@ public struct PlayerBoardState: Codable, Sendable {
     public var damageDealt: Double
     public var territoryScore: Double
     public var blessed: Bool
+
+    public init(
+        faction: FactionId,
+        aqua: Double,
+        hand: [CardId],
+        queue: [CardId],
+        damageDealt: Double,
+        territoryScore: Double,
+        blessed: Bool
+    ) {
+        self.faction = faction
+        self.aqua = aqua
+        self.hand = hand
+        self.queue = queue
+        self.damageDealt = damageDealt
+        self.territoryScore = territoryScore
+        self.blessed = blessed
+    }
 }
 
 // MARK: - Inputs
@@ -324,6 +342,13 @@ public struct PlayerInput: Codable, Sendable {
     public let player: PlayerId
     public let tick: Tick
     public let action: PlayerAction
+
+    public init(seq: Int, player: PlayerId, tick: Tick, action: PlayerAction) {
+        self.seq = seq
+        self.player = player
+        self.tick = tick
+        self.action = action
+    }
 }
 
 // MARK: - Events
