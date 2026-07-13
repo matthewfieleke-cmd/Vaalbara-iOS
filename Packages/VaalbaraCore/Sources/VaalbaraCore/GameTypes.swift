@@ -630,6 +630,11 @@ public struct DuelState: Codable, Sendable {
 public struct DuelSetup: Sendable {
     public let faction: FactionId
     public let order: [SpeciesId]
+
+    public init(faction: FactionId, order: [SpeciesId]) {
+        self.faction = faction
+        self.order = order
+    }
 }
 
 // MARK: - CardId helpers
