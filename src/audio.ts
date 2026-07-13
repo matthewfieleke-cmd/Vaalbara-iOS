@@ -1,0 +1,2093 @@
+/* ============================================================================
+ * VAALBARA: THE LAST OASIS — audio.ts
+ * A fully procedural Web Audio synthesizer. Zero audio files.
+ *
+ *  - Soundtrack: generative layers on a 100 BPM musical clock.
+ *    Phase 1 (Basalt Fields) — five-minute ADDITIVE ladder ("Time" model):
+ *      One chord loop (Dm→Bb→Gm→A) for all five minutes. The theme is the
+ *      protagonist: stated softly every cycle from minute 1, growing until
+ *      the full-brass statement in minute 5 — payoff through recognition.
+ *      Min 1: seed — soft theme, legato string bed, pulse, taiko heartbeat
+ *      Min 2: + hats + cello answer phrase in the back half of each cycle
+ *      Min 3: + 16ths, octave strings, low brass, horn takes the theme
+ *      Min 4: + TSO crest I — rock kick/snare, distorted power-chord guitar
+ *             chugs, cycle crashes, theme in octaves
+ *      Min 5: + TSO crest II — gallop guitars + octave wall + ringing chord,
+ *             driving 8th battery, choir, high descant, 2-bar crashes
+ *    Minute boundaries are 8-second SLIDES on a continuous ladder position:
+ *    every new voice fades in, volume/intensity interpolate, and a soft
+ *    cymbal swell hints at the boundary. The braam-and-crash arrival is
+ *    reserved for ONE moment — the start of minute 5 (breath bar → hit).
+ *    Layers only add — never thin the pulse.
+ *    FORM (Believer/Higher): every 8-bar phrase = lean VERSE half + stacked
+ *    CHORUS half. THE THEME CONTRACT: every statement of the motif (A or B
+ *    strain, whisper or full voice) starts ON the downbeat of a Dm bar —
+ *    the first chord of a new cycle. Verse statements sit on bar 1, chorus
+ *    statements on bar 5. From MINUTE 4, the suckout owns beats 3–4 of the
+ *    A-chord bar (the cycle's LAST measure) and the slam lands on the next
+ *    downbeat TOGETHER with theme A — suction → slam+theme, one moment.
+ *    Minute-gated triggers read a BAR-FROZEN minute — a bar never changes
+ *    its mind mid-flight, so boundaries can't double the theme statement.
+ *    The theme rotates three voices, chorus-half only, with whispered verse
+ *    fragments; the B-strain response guests one phrase in eight.
+ *    THE DRUMMER: a full rock kit bleeds in from ~3:30 and owns minute 5 —
+ *    relentless 16th tom groove, driving kick, verse backbeats, two-bar
+ *    turnaround fills into crashes. Only the suckout and the arrival
+ *    breath cut him off.
+ *    THE WALL HOLDS in minutes 4–5: verse pullback fades out across minute
+ *    4's slide — from there the ONE dip per phrase is THE GATHERING (the
+ *    pre-chorus bar): two unison ensemble stabs over the wall on beats
+ *    1–2, then the suction on beats 3–4 with a snare-roll crescendo —
+ *    and the slam lands WITH Motif A on the Dm downbeat of the new cycle.
+ *    TSO/S&M DEVICES (minutes 4–5): horn section and STRING SECTION trade
+ *    theme halves (leader swaps each phrase) with a 3-phrase register
+ *    ratchet (dialogue → +octave strings → +stacked horns); strings/brass
+ *    CRESCENDO into every second downbeat (the No Leaf Clover breath);
+ *    and minute 5 opens every second chorus bar into a HALF-TIME wide
+ *    backbeat under the ringing guitar.
+ *    THE BOIL: live army density can push rhythm density (offbeat 16ths,
+ *    hats, extra taiko) a subtle notch above the minute — clock still leads.
+ *    THE LONE HORN (intro cinematic's voice): naked, unadorned theme
+ *    statements — one chorus slot in three plus drifting verse fragments.
+ *    PHRASE ANCHOR: the verse/chorus grid, chord loop AND species presence
+ *    beds are rebased to the bar Phase 1 begins in (phraseOrigin), so the
+ *    suckout-and-slam lands on a true section boundary and the presence
+ *    figures stay chord-locked regardless of time spent in menus.
+ *    POWER BALLAD MIN 5: l4 weights toms/kick/backbeats/fills, crashes wash
+ *    every bar line, and the turnaround fills end in a low-tom flam.
+ *    Early double-raze skips the last crest into the transition riser → Oasis.
+ *    Cinematic intro: pre-corps intensity-gated bed (not the battle ladder).
+ *    A bus compressor glues the stacked layers so density reads as power.
+ *  - Warriors: battery on the shared grid + presence beds as depth builders.
+ * ========================================================================== */
+
+import type { GameEvent, SpeciesId } from './types';
+import { TICK_MS } from './types';
+
+/** One 16th note at 100 BPM — soundtrack scheduler step. */
+export const MUSIC_16TH_SEC = 0.15;
+/** One 8th note at 100 BPM — equals one sim tick (TICK_MS). */
+export const MUSIC_TICK_SEC = TICK_MS / 1000;
+
+/* ------------------------------------------------------------------------ */
+/* Core                                                                       */
+/* ------------------------------------------------------------------------ */
+
+class AudioCore {
+  ctx: AudioContext | null = null;
+  master: GainNode | null = null;
+  musicBus: GainNode | null = null;
+  musicComp: DynamicsCompressorNode | null = null;
+  sfxBus: GainNode | null = null;
+  enabled = true;
+
+  ensure(): AudioContext | null {
+    if (!this.enabled) return null;
+    if (!this.ctx) {
+      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return null;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.7;
+      this.master.connect(this.ctx.destination);
+      this.musicBus = this.ctx.createGain();
+      this.musicBus.gain.value = 0.55;
+      // Glue compressor on the score bus: stacked layers cohere instead of
+      // blurring, and taiko hits make the whole mix "breathe" (the pump that
+      // sells a dense hybrid-orchestral wall). SFX stays uncompressed.
+      this.musicComp = this.ctx.createDynamicsCompressor();
+      this.musicComp.threshold.value = -20;
+      this.musicComp.knee.value = 18;
+      this.musicComp.ratio.value = 3.5;
+      this.musicComp.attack.value = 0.01;
+      this.musicComp.release.value = 0.28;
+      this.musicBus.connect(this.musicComp);
+      this.musicComp.connect(this.master);
+      this.sfxBus = this.ctx.createGain();
+      this.sfxBus.gain.value = 0.9;
+      this.sfxBus.connect(this.master);
+    }
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    return this.ctx;
+  }
+
+  setMuted(muted: boolean): void {
+    this.enabled = !muted;
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(muted ? 0 : 0.7, this.ctx.currentTime, 0.05);
+    }
+  }
+}
+
+const core = new AudioCore();
+
+/** Must be called from a user gesture (tap) to unlock audio on mobile. */
+export function unlockAudio(): void {
+  core.ensure();
+}
+
+export function setMuted(muted: boolean): void {
+  core.setMuted(muted);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Reusable synth voices                                                      */
+/* ------------------------------------------------------------------------ */
+
+interface VoiceOpts {
+  type?: OscillatorType;
+  freq: number;
+  /** End frequency for pitch glide. */
+  freqEnd?: number;
+  dur: number;
+  gain?: number;
+  attack?: number;
+  filterFreq?: number;
+  filterQ?: number;
+  bus?: GainNode | null;
+  when?: number;
+  /** Stereo position -1..1 — the score uses this for orchestral width. */
+  pan?: number;
+}
+
+function voice(o: VoiceOpts): void {
+  const ctx = core.ensure();
+  if (!ctx) return;
+  const bus = o.bus ?? core.sfxBus;
+  if (!bus) return;
+  const t0 = o.when ?? ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = o.type ?? 'sine';
+  osc.frequency.setValueAtTime(o.freq, t0);
+  if (o.freqEnd !== undefined) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.freqEnd), t0 + o.dur);
+  }
+  const g = ctx.createGain();
+  const attack = o.attack ?? 0.008;
+  const peak = o.gain ?? 0.2;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+
+  let head: AudioNode = osc;
+  if (o.filterFreq) {
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = o.filterFreq;
+    f.Q.value = o.filterQ ?? 1;
+    head.connect(f);
+    head = f;
+  }
+  head.connect(g);
+  if (o.pan && typeof ctx.createStereoPanner === 'function') {
+    const p = ctx.createStereoPanner();
+    p.pan.value = Math.max(-1, Math.min(1, o.pan));
+    g.connect(p);
+    p.connect(bus);
+  } else {
+    g.connect(bus);
+  }
+  osc.start(t0);
+  osc.stop(t0 + o.dur + 0.05);
+}
+
+let noiseBuffer: AudioBuffer | null = null;
+function getNoise(ctx: AudioContext): AudioBuffer {
+  if (!noiseBuffer) {
+    noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuffer;
+}
+
+interface NoiseOpts {
+  dur: number;
+  gain?: number;
+  filterFreq?: number;
+  filterType?: BiquadFilterType;
+  filterEnd?: number;
+  bus?: GainNode | null;
+  when?: number;
+}
+
+function noise(o: NoiseOpts): void {
+  const ctx = core.ensure();
+  if (!ctx) return;
+  const bus = o.bus ?? core.sfxBus;
+  if (!bus) return;
+  const t0 = o.when ?? ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = getNoise(ctx);
+  src.loop = true;
+  const f = ctx.createBiquadFilter();
+  f.type = o.filterType ?? 'lowpass';
+  f.frequency.setValueAtTime(o.filterFreq ?? 1200, t0);
+  if (o.filterEnd !== undefined) {
+    f.frequency.exponentialRampToValueAtTime(Math.max(30, o.filterEnd), t0 + o.dur);
+  }
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(o.gain ?? 0.15, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+  src.connect(f);
+  f.connect(g);
+  g.connect(bus);
+  src.start(t0);
+  src.stop(t0 + o.dur + 0.05);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Species SFX profiles                                                       */
+/* ------------------------------------------------------------------------ */
+/* Species voices — warriors are the BATTLE DRUMLINE                         */
+/*                                                                            */
+/* The soundtrack carries melody, harmony and pulse. Warriors add percussion  */
+/* and rhythm that sits on that pulse: bass thuds for titans, cracks for      */
+/* strikers, ticks for swarms, and a sustained buzz bed for bees. Animal      */
+/* vocal colour is reserved for deploy entrances and rare punctuation — not   */
+/* every swing — so a full fight stays beautiful instead of muddy.            */
+/* ------------------------------------------------------------------------ */
+
+type SfxFn = (when?: number) => void;
+
+function nowOr(when?: number): number {
+  return when ?? (core.ctx?.currentTime ?? 0);
+}
+
+/** Soft pitch/gain jitter so repeated hits don't machine-gun. */
+function varN(base: number, spread = 0.04): number {
+  return base * (1 + (Math.random() * 2 - 1) * spread);
+}
+
+const SPECIES_SFX: Record<SpeciesId, { spawn: SfxFn; attack: SfxFn }> = {
+  trex: {
+    // Entrance: short sub roar under a ceremonial drum — then the kit takes over.
+    spawn: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'sine', freq: 72, freqEnd: 38, dur: 0.55, gain: 0.42, when: t });
+      noise({ dur: 0.22, gain: 0.2, filterFreq: 700, filterEnd: 120, when: t });
+      voice({ type: 'sawtooth', freq: 90, freqEnd: 48, dur: 0.45, gain: 0.12, filterFreq: 220, attack: 0.04, when: t + 0.04 });
+    },
+    // Kick / taiko: BOOM
+    attack: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'sine', freq: varN(78), freqEnd: 36, dur: 0.32, gain: varN(0.44, 0.06), when: t });
+      noise({ dur: 0.12, gain: 0.22, filterFreq: 900, filterEnd: 160, when: t });
+    },
+  },
+  lion: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'sawtooth', freq: 150, freqEnd: 100, dur: 0.4, gain: 0.18, filterFreq: 700, attack: 0.03, when: t });
+      voice({ type: 'sine', freq: 110, freqEnd: 70, dur: 0.28, gain: 0.28, when: t + 0.05 });
+      noise({ dur: 0.15, gain: 0.1, filterFreq: 800, filterEnd: 250, when: t });
+    },
+    // Mid tom: tom–TOM
+    attack: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'sine', freq: varN(160), freqEnd: 85, dur: 0.12, gain: 0.22, when: t });
+      voice({ type: 'sine', freq: varN(140), freqEnd: 70, dur: 0.18, gain: 0.3, when: t + 0.07 });
+      noise({ dur: 0.06, gain: 0.1, filterFreq: 1400, filterEnd: 400, when: t + 0.07 });
+    },
+  },
+  eagle: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      // Brief cry on entrance only.
+      voice({ type: 'triangle', freq: 1400, freqEnd: 2200, dur: 0.12, gain: 0.14, when: t });
+      voice({ type: 'triangle', freq: 2000, freqEnd: 900, dur: 0.22, gain: 0.12, when: t + 0.1 });
+      noise({ dur: 0.08, gain: 0.08, filterFreq: 4500, filterType: 'highpass', when: t + 0.08 });
+    },
+    // High peck: swoop — ting
+    attack: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.07, gain: 0.1, filterFreq: 5000, filterType: 'highpass', when: t });
+      voice({ type: 'triangle', freq: varN(2100), freqEnd: 900, dur: 0.09, gain: 0.16, when: t + 0.04 });
+    },
+  },
+  honeybadger: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      for (let i = 0; i < 3; i++) {
+        voice({ type: 'square', freq: 380 + i * 40, freqEnd: 200, dur: 0.06, gain: 0.1, when: t + i * 0.05 });
+      }
+      noise({ dur: 0.1, gain: 0.08, filterFreq: 2500, filterType: 'bandpass', when: t });
+    },
+    // Snare double: crack-crack
+    attack: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.05, gain: varN(0.2, 0.08), filterFreq: 3500, filterType: 'bandpass', when: t });
+      voice({ type: 'square', freq: varN(420), freqEnd: 180, dur: 0.06, gain: 0.12, when: t });
+      noise({ dur: 0.045, gain: varN(0.16, 0.08), filterFreq: 3200, filterType: 'bandpass', when: t + 0.055 });
+      voice({ type: 'square', freq: varN(480), freqEnd: 200, dur: 0.05, gain: 0.1, when: t + 0.055 });
+    },
+  },
+  scorpion: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      for (let i = 0; i < 3; i++) {
+        noise({ dur: 0.03, gain: 0.14, filterFreq: 2800, filterType: 'bandpass', when: t + i * 0.07 });
+      }
+    },
+    // Metallic click → whip
+    attack: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.025, gain: 0.14, filterFreq: 3200, filterType: 'bandpass', when: t });
+      noise({ dur: 0.02, gain: 0.1, filterFreq: 4000, filterType: 'bandpass', when: t + 0.04 });
+      voice({ type: 'sine', freq: varN(1600), freqEnd: 140, dur: 0.1, gain: 0.22, when: t + 0.07 });
+      noise({ dur: 0.04, gain: 0.14, filterFreq: 5500, filterType: 'highpass', when: t + 0.07 });
+    },
+  },
+  fireants: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      for (let i = 0; i < 5; i++) {
+        noise({ dur: 0.025, gain: 0.07, filterFreq: 3000, filterType: 'bandpass', when: t + i * 0.04 });
+      }
+    },
+    // Castanet ticks: tik-tik-tik-tik
+    attack: (when) => {
+      const t = nowOr(when);
+      for (let i = 0; i < 4; i++) {
+        noise({
+          dur: 0.022,
+          gain: varN(0.09, 0.1),
+          filterFreq: 2800 + i * 200,
+          filterType: 'bandpass',
+          when: t + i * 0.035,
+        });
+      }
+    },
+  },
+  bear: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'sine', freq: 68, freqEnd: 40, dur: 0.5, gain: 0.36, when: t });
+      noise({ dur: 0.2, gain: 0.14, filterFreq: 600, filterEnd: 140, when: t });
+      voice({ type: 'sawtooth', freq: 95, freqEnd: 55, dur: 0.35, gain: 0.1, filterFreq: 280, attack: 0.05, when: t + 0.06 });
+    },
+    // Floor tom: THUD (optional double body-weight)
+    attack: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.1, gain: 0.16, filterFreq: 1100, filterEnd: 400, filterType: 'bandpass', when: t });
+      voice({ type: 'sine', freq: varN(95), freqEnd: 42, dur: 0.28, gain: varN(0.38, 0.05), when: t + 0.05 });
+    },
+  },
+  bighorn: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'triangle', freq: 200, freqEnd: 280, dur: 0.28, gain: 0.14, filterFreq: 700, when: t });
+      voice({ type: 'sine', freq: 90, dur: 0.25, gain: 0.16, when: t });
+      noise({ dur: 0.08, gain: 0.1, filterFreq: 1800, filterEnd: 500, when: t + 0.12 });
+    },
+    // Woodblock → stone: tok — GONG (short)
+    attack: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'square', freq: varN(220), freqEnd: 140, dur: 0.05, gain: 0.12, filterFreq: 900, when: t });
+      voice({ type: 'sine', freq: varN(130), freqEnd: 55, dur: 0.2, gain: 0.28, when: t + 0.06 });
+      noise({ dur: 0.07, gain: 0.14, filterFreq: 1600, filterEnd: 350, when: t + 0.06 });
+    },
+  },
+  bees: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      // Hive swell on entrance — the sustained bed is handled by MusicDirector.
+      voice({ type: 'sawtooth', freq: 210, freqEnd: 240, dur: 0.7, gain: 0.08, attack: 0.2, when: t });
+      voice({ type: 'sawtooth', freq: 216, freqEnd: 246, dur: 0.7, gain: 0.07, attack: 0.22, when: t });
+    },
+    // Shaker crest + tiny stings: shhhhh — plik-plik
+    attack: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.14, gain: 0.1, filterFreq: 4000, filterEnd: 7000, filterType: 'bandpass', when: t });
+      voice({ type: 'sine', freq: varN(1500), freqEnd: 1100, dur: 0.04, gain: 0.08, when: t + 0.1 });
+      voice({ type: 'sine', freq: varN(1700), freqEnd: 1200, dur: 0.035, gain: 0.07, when: t + 0.14 });
+    },
+  },
+  wolves: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      // Short howl colour on entrance only.
+      voice({ type: 'sine', freq: 320, freqEnd: 520, dur: 0.45, gain: 0.12, attack: 0.1, when: t });
+      voice({ type: 'sine', freq: 110, freqEnd: 80, dur: 0.2, gain: 0.14, when: t + 0.15 });
+    },
+    // Hand-drum: dum-da-da
+    attack: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'sine', freq: varN(175), freqEnd: 95, dur: 0.1, gain: 0.2, when: t });
+      voice({ type: 'sine', freq: varN(200), freqEnd: 120, dur: 0.07, gain: 0.14, when: t + 0.06 });
+      voice({ type: 'sine', freq: varN(190), freqEnd: 110, dur: 0.07, gain: 0.12, when: t + 0.11 });
+      noise({ dur: 0.04, gain: 0.08, filterFreq: 2000, filterType: 'bandpass', when: t });
+    },
+  },
+  porcupine: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      for (let i = 0; i < 4; i++) {
+        noise({ dur: 0.025, gain: 0.09, filterFreq: 4200, filterType: 'bandpass', when: t + i * 0.04 });
+      }
+    },
+    // Güiro scrape → wood tok
+    attack: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.08, gain: 0.12, filterFreq: 3500, filterEnd: 5500, filterType: 'bandpass', when: t });
+      voice({ type: 'triangle', freq: varN(650), freqEnd: 400, dur: 0.06, gain: 0.1, when: t + 0.07 });
+    },
+  },
+  beetles: {
+    spawn: (when) => {
+      const t = nowOr(when);
+      noise({ dur: 0.35, gain: 0.1, filterFreq: 1800, filterEnd: 3200, filterType: 'bandpass', when: t });
+      voice({ type: 'square', freq: 90, freqEnd: 120, dur: 0.25, gain: 0.05, when: t });
+    },
+    // Artillery: tok — POP — sss
+    attack: (when) => {
+      const t = nowOr(when);
+      voice({ type: 'square', freq: varN(160), freqEnd: 90, dur: 0.04, gain: 0.08, filterFreq: 600, when: t });
+      voice({ type: 'square', freq: varN(200), freqEnd: 55, dur: 0.08, gain: 0.22, when: t + 0.05 });
+      noise({ dur: 0.28, gain: 0.14, filterFreq: 2800, filterEnd: 600, when: t + 0.05 });
+    },
+  },
+};
+
+/* ------------------------------------------------------------------------ */
+/* Ceremonial tones — the game's "result" language. Austere and low:         */
+/* great drums and dark string drones, never bright arpeggiated chimes.      */
+/* ------------------------------------------------------------------------ */
+
+/** One strike of a great ceremonial drum: deep skin hit, sub-octave weight
+ *  and a short room bloom. The backbone of every verdict sound. */
+function greatDrum(dur = 1.0, gain = 0.5, when = 0, pitch = 72): void {
+  const t = when || (core.ctx?.currentTime ?? 0);
+  voice({ type: 'sine', freq: pitch, freqEnd: pitch * 0.44, dur, gain, when: t });
+  voice({ type: 'triangle', freq: pitch * 0.5, freqEnd: pitch * 0.3, dur: dur * 1.25, gain: gain * 0.5, when: t });
+  noise({ dur: Math.min(0.3, dur * 0.35), gain: gain * 0.35, filterFreq: 700, filterEnd: 120, when: t });
+}
+
+/** A dark low drone — bowed cellos in a stone hall. Slow swell, heavy
+ *  lowpass, gentle detune; no shimmer, no sparkle. */
+function drone(freqs: number[], dur: number, gain: number, when = 0): void {
+  const t = when || (core.ctx?.currentTime ?? 0);
+  for (const f of freqs) {
+    voice({ type: 'sawtooth', freq: f, dur, gain, filterFreq: Math.max(220, f * 2.4), attack: dur * 0.28, when: t, pan: -0.16 });
+    voice({ type: 'sawtooth', freq: f * 1.005, dur, gain: gain * 0.7, filterFreq: Math.max(180, f * 2), attack: dur * 0.34, when: t, pan: 0.16 });
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Global / spell SFX                                                         */
+/* ------------------------------------------------------------------------ */
+
+const GLOBAL_SFX = {
+  lavaTelegraph: () => {
+    voice({ type: 'sine', freq: 60, freqEnd: 45, dur: 1.1, gain: 0.3, attack: 0.2 });
+    voice({ type: 'triangle', freq: 1200, freqEnd: 400, dur: 1.0, gain: 0.06, attack: 0.4 });
+  },
+  lavaStrike: () => {
+    voice({ type: 'sine', freq: 120, freqEnd: 28, dur: 1.2, gain: 0.5 });
+    noise({ dur: 1.4, gain: 0.4, filterFreq: 3000, filterEnd: 100 });
+    voice({ type: 'sawtooth', freq: 80, freqEnd: 30, dur: 0.9, gain: 0.3, filterFreq: 200 });
+  },
+  sulfur: () => {
+    noise({ dur: 1.2, gain: 0.16, filterFreq: 600, filterEnd: 1600, filterType: 'bandpass' });
+  },
+  thicket: () => {
+    noise({ dur: 0.8, gain: 0.14, filterFreq: 2500, filterEnd: 5000, filterType: 'highpass' });
+    voice({ type: 'triangle', freq: 500, freqEnd: 800, dur: 0.5, gain: 0.08 });
+  },
+  death: () => {
+    voice({ type: 'triangle', freq: 300, freqEnd: 60, dur: 0.4, gain: 0.16 });
+  },
+  heal: () => {
+    // A low, breath-like restorative swell — no rising chime.
+    voice({ type: 'sine', freq: 220, freqEnd: 262, dur: 0.5, gain: 0.09, attack: 0.16 });
+    voice({ type: 'sine', freq: 330, dur: 0.5, gain: 0.05, attack: 0.2 });
+  },
+  lotusBurst: () => {
+    // Watery bloom: soft mid-register bubble and spray, kept dark.
+    voice({ type: 'sine', freq: 330, freqEnd: 494, dur: 0.35, gain: 0.09, attack: 0.05 });
+    noise({ dur: 0.4, gain: 0.1, filterFreq: 2400, filterType: 'bandpass' });
+  },
+  splash: () => {
+    // Acid burst: sizzling impact.
+    noise({ dur: 0.5, gain: 0.22, filterFreq: 2600, filterEnd: 500 });
+    voice({ type: 'sine', freq: 300, freqEnd: 90, dur: 0.3, gain: 0.18 });
+  },
+  obeliskHit: () => {
+    // Pure stone thud — dull rock knock, no ring.
+    voice({ type: 'sine', freq: 140, freqEnd: 55, dur: 0.28, gain: 0.24 });
+    noise({ dur: 0.2, gain: 0.14, filterFreq: 900, filterEnd: 300 });
+  },
+  obeliskDown: () => {
+    // Tower collapse: deep rumble + cascading rubble.
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 90, freqEnd: 24, dur: 1.6, gain: 0.5 });
+    noise({ dur: 1.8, gain: 0.4, filterFreq: 1800, filterEnd: 80 });
+    [500, 380, 300, 210].forEach((f, i) => {
+      voice({ type: 'triangle', freq: f, freqEnd: f * 0.5, dur: 0.35, gain: 0.12, when: t + 0.15 + i * 0.16 });
+    });
+  },
+  pondClaimed: () => {
+    // The water changes hands: one deep drum and a low open fifth held
+    // underneath — a solemn territorial declaration, no sparkle.
+    const t = core.ctx?.currentTime ?? 0;
+    greatDrum(1.0, 0.5, t);
+    drone([73.4, 110], 2.2, 0.06, t + 0.05); // D2 + A2
+  },
+  blessing: () => {
+    // A blessing in this world has weight: a soft low swell with one
+    // restrained overtone rising out of it — not a tinkling arpeggio.
+    const t = core.ctx?.currentTime ?? 0;
+    drone([110, 146.8, 220], 2.4, 0.045, t);
+    voice({ type: 'sine', freq: 440, dur: 1.4, gain: 0.045, attack: 0.5, when: t + 0.3 });
+  },
+  ui: () => {
+    voice({ type: 'sine', freq: 700, freqEnd: 900, dur: 0.07, gain: 0.1 });
+  },
+  deployDrag: () => {
+    voice({ type: 'sine', freq: 300, freqEnd: 420, dur: 0.06, gain: 0.06 });
+  },
+  error: () => {
+    voice({ type: 'square', freq: 180, freqEnd: 120, dur: 0.15, gain: 0.1 });
+  },
+  victory: () => {
+    // Triumph: the ceremonial drum triple, a rising shimmer, and the main
+    // theme's opening reach on horns crowned with the Picardy third — the
+    // SCORE concluding, not a jingle. Earned and grave, not sugary.
+    const t = core.ctx?.currentTime ?? 0;
+    greatDrum(1.0, 0.48, t);
+    greatDrum(1.0, 0.54, t + 0.55);
+    // Rising cymbal shimmer into the crowning strike (stepped noise swell).
+    for (let i = 0; i < 4; i++) {
+      noise({ dur: 0.3, gain: 0.016 + i * 0.012, filterFreq: 2400 + i * 900, filterType: 'highpass', when: t + 0.2 + i * 0.24 });
+    }
+    greatDrum(1.7, 0.64, t + 1.1, 62);
+    drone([73.4, 110], 1.8, 0.055, t);                    // D2 + A2
+    drone([73.4, 110, 146.8, 185], 3.4, 0.06, t + 1.05);  // + D3 + F#3
+    // The theme's opening reach — D F E D, up to A — on stacked horns.
+    const fanfare: Array<[number, number, number]> = [
+      [293.66, 1.1, 0.3], [349.23, 1.4, 0.3], [329.63, 1.7, 0.22],
+      [293.66, 1.92, 0.3], [440, 2.22, 1.6],
+    ];
+    for (const [f, dt, dur] of fanfare) {
+      voice({ type: 'sawtooth', freq: f, dur: dur + 0.15, gain: 0.08, filterFreq: 1500, attack: 0.03, when: t + dt, pan: -0.12 });
+      voice({ type: 'sawtooth', freq: f * 1.006, dur: dur + 0.15, gain: 0.055, filterFreq: 1200, attack: 0.05, when: t + dt, pan: 0.14 });
+      voice({ type: 'triangle', freq: f * 2, dur, gain: 0.04, attack: 0.02, when: t + dt, pan: 0.22 });
+    }
+    // Choir bloom on the D-major resolution under the held A.
+    drone([146.8, 185, 220, 293.7], 3.2, 0.045, t + 2.25);
+  },
+  defeat: () => {
+    // The banner falls — unmistakable from the first second: a sub drop and
+    // muffled drum, a lament-bass descent (D–C–Bb–A) that finally sinks
+    // home to a low D, the theme's opening gesture played broken and
+    // slowing (it never makes the reach), and a choir that settles into a
+    // dark but PURE D minor — grief without dissonance at the close.
+    const t = core.ctx?.currentTime ?? 0;
+    greatDrum(1.2, 0.5, t, 56);
+    voice({ type: 'sine', freq: 73.4, freqEnd: 34, dur: 1.1, gain: 0.32, when: t });
+    // Lament bass: D2 → C2 → Bb1 → A1 … → D2. The dominant resolves home.
+    const lament: Array<[number, number, number]> = [
+      [73.4, 0, 0.95], [65.4, 0.75, 0.95], [58.3, 1.5, 0.95], [55, 2.25, 1.15], [73.4, 3.3, 2.6],
+    ];
+    for (const [f, dt, dur] of lament) {
+      voice({ type: 'sawtooth', freq: f, dur, gain: 0.15, filterFreq: 210, attack: 0.05, when: t + dt });
+      voice({ type: 'sine', freq: f * 0.5, dur, gain: 0.1, when: t + dt });
+    }
+    // The broken theme: D F E ... D — slowing, muffled, falling short.
+    const frag: Array<[number, number, number]> = [
+      [293.66, 0.2, 0.5], [349.23, 0.85, 0.5], [329.63, 1.6, 0.55], [293.66, 2.45, 1.7],
+    ];
+    for (const [f, dt, dur] of frag) {
+      voice({ type: 'triangle', freq: f, dur, gain: 0.085, filterFreq: 850, attack: 0.04, when: t + dt, pan: -0.1 });
+      voice({ type: 'sawtooth', freq: f * 0.5, dur, gain: 0.05, filterFreq: 480, attack: 0.05, when: t + dt, pan: 0.1 });
+    }
+    // Choir sigh: F over A — Dm color, mournful but consonant.
+    drone([174.6, 220], 2.4, 0.042, t + 0.7);
+    // The close: a settled low D-minor bloom fading with the bass's return
+    // home. Dark, final, clean.
+    drone([73.4, 146.8, 174.6, 220], 3.4, 0.045, t + 3.1);
+    greatDrum(2.6, 0.55, t + 2.5, 44);
+  },
+};
+
+export function playUi(kind: 'tap' | 'drag' | 'error' = 'tap'): void {
+  if (kind === 'tap') GLOBAL_SFX.ui();
+  else if (kind === 'drag') GLOBAL_SFX.deployDrag();
+  else GLOBAL_SFX.error();
+}
+
+export function playResult(win: boolean): void {
+  (win ? GLOBAL_SFX.victory : GLOBAL_SFX.defeat)();
+}
+
+/* Direct species hooks for the Duels mode stage (immediate — not battle-grid). */
+
+export function playSpeciesAttack(sp: SpeciesId): void {
+  if (core.enabled) SPECIES_SFX[sp].attack();
+}
+
+export function playSpeciesSpawn(sp: SpeciesId): void {
+  if (core.enabled) SPECIES_SFX[sp].spawn();
+}
+
+export function playKo(): void {
+  if (core.enabled) GLOBAL_SFX.death();
+}
+
+/* ------------------------------------------------------------------------ */
+/* Event router — the game loop feeds sim events straight in                  */
+/* ------------------------------------------------------------------------ */
+
+/** Schedule a warrior hit on the shared musical grid.
+ *  Sim ticks are phase-locked to 8ths, so nearest-16th is ~0 error and we
+ *  never escape off-grid (the old ≤80 ms soft-quantize could). */
+function quantizeAttackWhen(): number {
+  const ctx = core.ctx ?? (core.enabled ? core.ensure() : null);
+  if (!ctx) return 0;
+  return music.quantizeWhenNearest(ctx.currentTime);
+}
+
+export function handleGameEvents(events: GameEvent[]): void {
+  if (!core.enabled) return;
+  // Prefer combat punctuation when the field is busy so spells/heals don't
+  // starve the drumline — and raise the budget for late staged armies.
+  const rank = (e: GameEvent): number => {
+    switch (e.type) {
+      case 'attack':
+      case 'spawn':
+      case 'shoot':
+        return 0;
+      case 'spellCast':
+      case 'lavaTelegraph':
+      case 'lavaStrike':
+      case 'obeliskDown':
+        return 1;
+      default:
+        return 2;
+    }
+  };
+  const ordered = events.length > 1 ? [...events].sort((a, b) => rank(a) - rank(b)) : events;
+  let budget = 12;
+  const attackHeard = new Set<SpeciesId>();
+  for (const e of ordered) {
+    if (budget <= 0) break;
+    switch (e.type) {
+      case 'spawn':
+        // Entrances fire immediately — a new instrument joining the mix.
+        SPECIES_SFX[e.species].spawn();
+        budget--;
+        break;
+      case 'attack': {
+        // One voice per species per tick once budget is tight — keeps the
+        // kit readable instead of a mush of identical hits.
+        if (attackHeard.has(e.species) && budget < 5) break;
+        attackHeard.add(e.species);
+        SPECIES_SFX[e.species].attack(quantizeAttackWhen());
+        budget--;
+        break;
+      }
+      case 'death':
+        GLOBAL_SFX.death();
+        budget--;
+        break;
+      case 'spellCast':
+        if (e.spell === 'sulfur') GLOBAL_SFX.sulfur();
+        else if (e.spell === 'thicket') GLOBAL_SFX.thicket();
+        budget--;
+        break;
+      case 'lavaTelegraph':
+        GLOBAL_SFX.lavaTelegraph();
+        budget--;
+        break;
+      case 'lavaStrike':
+        GLOBAL_SFX.lavaStrike();
+        budget--;
+        break;
+      case 'lotusBurst':
+        GLOBAL_SFX.lotusBurst();
+        budget--;
+        break;
+      case 'shoot':
+        SPECIES_SFX.beetles.attack(quantizeAttackWhen());
+        budget--;
+        break;
+      case 'splash':
+        GLOBAL_SFX.splash();
+        budget--;
+        break;
+      case 'heal':
+        GLOBAL_SFX.heal();
+        budget--;
+        break;
+      case 'blessing':
+        GLOBAL_SFX.blessing();
+        budget--;
+        break;
+      case 'obeliskHit':
+        GLOBAL_SFX.obeliskHit();
+        budget--;
+        break;
+      case 'obeliskDown':
+        GLOBAL_SFX.obeliskDown();
+        budget--;
+        break;
+      case 'pondClaimed':
+        GLOBAL_SFX.pondClaimed();
+        budget--;
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Generative soundtrack — a Zimmer-inspired hybrid-orchestral synth score    */
+/*                                                                            */
+/* Signature elements, all synthesized:                                       */
+/*   BRAAM      massive detuned-saw brass hit through an opening filter       */
+/*   OSTINATO   relentless 16th-note string figure in D minor                 */
+/*   TAIKO      pitch-dropped drum hits with noise skin                       */
+/*   PULSE      sub-bass heartbeat                                            */
+/*   CHOIR PAD  formant-filtered detuned pad                                  */
+/*   RISER      tension sweep for the phase transition                        */
+/* A generated-impulse convolver gives the whole score a hall tail.           */
+/* ------------------------------------------------------------------------ */
+
+export type MusicMode = 'menu' | 'intro' | 'basalt' | 'transition' | 'oasis' | 'ended';
+
+class MusicDirector {
+  private running = false;
+  private mode: MusicMode = 'menu';
+  private bus: GainNode | null = null;
+  private reverb: ConvolverNode | null = null;
+  private reverbGain: GainNode | null = null;
+  private nextNoteTime = 0;
+  private step = 0;
+  private schedTimer: ReturnType<typeof setInterval> | null = null;
+  private intensity = 0.35;
+  /** Smooth target for intensity — act floors + army density blend here. */
+  private intensityTarget = 0.35;
+  /** Basalt elapsed seconds (0 at Phase 1 start). */
+  private basaltElapsed = 0;
+  /** True while any bee swarm is alive — sustains the hive buzz bed. */
+  private beePresence = false;
+  /** Species currently alive — drives soft in-key presence beds. */
+  private presenceSpecies = new Set<SpeciesId>();
+  /** Music-bus volume multiplier (ensemble weight across acts). */
+  private volumeMul = 1.06;
+  private volumeTarget = 1.06;
+  /** Grid origin aligned when music starts (SFX + tick phase-lock share this). */
+  private gridOrigin = 0;
+  /** Skip the 4:50 climax crest when Phase 1 ended early by double-raze. */
+  private allowClimax = true;
+  /**
+   * Bar-quantized minute the arrangement acknowledges (presence beds, the
+   * minute-5 arrival latch). Layer GAINS slide continuously via ladderPos —
+   * minute boundaries are 8-second crescendos, not cuts.
+   */
+  private musicTier = 0;
+  /** True from the breath-bar downbeat until the minute-5 arrival fires. */
+  private arrivalArmed = false;
+  /** Step index of the minute-5 arrival downbeat. */
+  private breathUntilStep = -1;
+  /** Minute whose pre-boundary soft swell was already scheduled. */
+  private swellMinute = -1;
+  /** Bar of the minute-5 arrival — suppresses the suckout in that bar. */
+  private arrivalBar = -1;
+  /** Live army density 0..1 — a big on-screen brawl pushes rhythm density
+   *  one subtle notch above what the minute ladder prescribes. */
+  private armyHeat = 0;
+  /** Global bar index when Phase 1 began — anchors the verse/chorus phrase
+   *  grid (and the chord loop) to battle start, so the suckout-and-slam
+   *  always lands on a true section boundary. */
+  private phraseOrigin = -1;
+
+  /** AudioContext currentTime when a context exists (even if muted). */
+  audioNow(): number | null {
+    if (core.ctx) return core.ctx.currentTime;
+    if (!core.enabled) return null;
+    return core.ensure()?.currentTime ?? null;
+  }
+
+  /** Soundtrack grid origin in AudioContext seconds (0 if not started). */
+  gridOriginTime(): number {
+    return this.gridOrigin;
+  }
+
+  /**
+   * Phase origin for TickDriver: audio time of battle tick 0.
+   * Tick k should fire at origin + k * MUSIC_TICK_SEC, landing on 8ths.
+   * Floors "now" onto the last 8th so the first step waits ~one tick — same
+   * cadence as the old setInterval(300) lead-in.
+   */
+  battleTickPhase(): { now: number; origin: number } | null {
+    const now = this.audioNow();
+    if (now == null) return null;
+    const g = this.gridOrigin || now;
+    const origin = g + Math.floor((now - g) / MUSIC_TICK_SEC) * MUSIC_TICK_SEC;
+    return { now, origin };
+  }
+
+  /** Snap a time down onto the nearest past-or-equal 8th of the music grid. */
+  alignToTickGrid(t: number): number {
+    const g = this.gridOrigin || t;
+    return g + Math.floor((t - g) / MUSIC_TICK_SEC + 1e-9) * MUSIC_TICK_SEC;
+  }
+
+  /* D natural minor. Frequencies for the ostinato register (D3-based). */
+  private static OSTINATO: number[][] = [
+    // Four 1-bar cells (16 sixteenths each), Dm -> Bb -> Gm -> A.
+    [146.8, 146.8, 220, 146.8, 174.6, 146.8, 220, 174.6, 146.8, 146.8, 220, 146.8, 174.6, 220, 174.6, 146.8],
+    [116.5, 116.5, 174.6, 116.5, 146.8, 116.5, 174.6, 146.8, 116.5, 116.5, 174.6, 116.5, 146.8, 174.6, 146.8, 116.5],
+    [98, 98, 146.8, 98, 116.5, 98, 146.8, 116.5, 98, 98, 146.8, 98, 116.5, 146.8, 116.5, 98],
+    [110, 110, 164.8, 110, 138.6, 110, 164.8, 138.6, 110, 110, 164.8, 110, 138.6, 164.8, 138.6, 110],
+  ];
+
+  private static BASS = [36.7, 29.1, 24.5, 27.5]; // D1 Bb0 G0 A0
+  /** Cello bed roots, one octave above the sub bass (D2 Bb1 G1 A1). */
+  private static CELLO = [73.4, 58.3, 49, 55];
+  /** Oasis: D dorian, hopeful. Pad chords + soaring line. */
+  private static OASIS_PADS: number[][] = [
+    [146.8, 220, 293.7, 440], // Dm add9
+    [174.6, 261.6, 349.2, 523.3], // F
+    [196, 293.7, 392, 587.3], // G
+    [164.8, 246.9, 329.6, 493.9], // Em
+  ];
+  private static OASIS_LEAD = [587.3, 523.3, 440, 523.3, 587.3, 659.3, 587.3, 880];
+
+  /**
+   * Sustained harmony, LOCKED to the ostinato cycle (bar % 4 = Dm Bb Gm A).
+   * Rich voicings of the same progression — never fights the ostinato.
+   */
+  private static BED_CHORDS: number[][] = [
+    [146.8, 164.8, 220, 293.7],       // Dm add2
+    [116.5, 174.6, 233.1, 293.7],     // Bb (D on top — common tone)
+    [98, 146.8, 233.1, 293.7],        // Gm (Bb + D — common tones)
+    [110, 138.6, 164.8, 220],         // A (C# leading tone pulls home to Dm)
+  ];
+  /** Asus4 for the cadence bar — D suspends, then resolves to C# (4→3). */
+  private static A_SUS4: number[] = [110, 146.8, 164.8, 220];
+
+  /** Cello answer to the theme — bars 3–4 of each cycle (Gm → A): G–F–E
+   *  descent landing on the fifth of A. [16th-step, freq, dur-steps]. */
+  private static CELLO_ANSWER: Array<[number, number, number]> = [
+    [0, 196, 6],      // G3
+    [6, 174.6, 2],    // F3
+    [8, 164.8, 6],    // E3 — leading into the A bar
+    [16, 146.8, 4],   // D3
+    [20, 138.6, 8],   // C#3 — the pull home
+  ];
+
+  /** The Vaalbara motif — a rising D-minor horn theme threaded through the
+   *  intro, the menu and both battle phases. [16th-step, freq, dur-steps]. */
+  private static THEME: Array<[number, number, number]> = [
+    [0, 293.66, 4],   // D4
+    [4, 349.23, 4],   // F4
+    [8, 329.63, 2],   // E4
+    [10, 293.66, 2],  // D4
+    [12, 440, 8],     // A4 — the reach
+    [20, 466.16, 4],  // Bb4
+    [24, 440, 2],     // A4
+    [26, 392, 2],     // G4
+    [28, 349.23, 4],  // F4 — settle
+  ];
+
+  /** Second strain — a descending RESPONSE to the theme. Alternates with the
+   *  A-strain so the motif never plays the same way twice in a row. */
+  private static THEME_B: Array<[number, number, number]> = [
+    [0, 440, 4],      // A4 — start on the reach
+    [4, 392, 2],      // G4
+    [6, 349.23, 2],   // F4
+    [8, 392, 4],      // G4
+    [12, 293.66, 8],  // D4 — settle low
+    [20, 349.23, 4],  // F4
+    [24, 329.63, 2],  // E4
+    [26, 293.66, 2],  // D4
+    [28, 261.63, 4],  // C4 — soft 9th over Bb, opens back to Dm
+  ];
+
+  /** Opening gesture only (through the A4 reach) — the verse whisper. */
+  private static THEME_FRAG: Array<[number, number, number]> = [
+    [0, 293.66, 4], [4, 349.23, 4], [8, 329.63, 2], [10, 293.66, 2], [12, 440, 8],
+  ];
+
+  start(): void {
+    const ctx = core.ensure();
+    if (!ctx || !core.musicBus || this.running) return;
+    this.running = true;
+    this.bus = ctx.createGain();
+    this.bus.gain.value = 1;
+    this.bus.connect(core.musicBus);
+    // Hall reverb from a generated impulse.
+    if (!this.reverb) {
+      this.reverb = ctx.createConvolver();
+      this.reverb.buffer = makeImpulse(ctx, 3.6, 2.4);
+      this.reverbGain = ctx.createGain();
+      this.reverbGain.gain.value = 0.45;
+      this.reverb.connect(this.reverbGain);
+      this.reverbGain.connect(core.musicBus);
+    }
+    this.bus.connect(this.reverb);
+    this.nextNoteTime = ctx.currentTime + 0.08;
+    this.gridOrigin = this.nextNoteTime;
+    this.step = 0;
+    // 100 BPM: 16th = MUSIC_16TH_SEC; 8th = MUSIC_TICK_SEC (= one sim tick).
+    this.schedTimer = setInterval(() => this.schedule(), 70);
+  }
+
+  stop(): void {
+    this.running = false;
+    if (this.schedTimer) clearInterval(this.schedTimer);
+    this.schedTimer = null;
+    this.rideSfxBus(0.9);
+    this.rideReverb(0.45);
+    const ctx = core.ctx;
+    if (ctx && this.bus) {
+      this.bus.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
+      const bus = this.bus;
+      setTimeout(() => bus.disconnect(), 1800);
+      this.bus = null;
+    }
+  }
+
+  setMode(mode: MusicMode): void {
+    if (mode === this.mode) return;
+    const prev = this.mode;
+    this.mode = mode;
+    // Punctuate big scene changes — same transition vocabulary as before.
+    if (mode === 'transition') {
+      // Early double-raze before 4:50: skip climax crest, hand the energy
+      // straight to the existing riser so the march still feels continuous.
+      if (prev === 'basalt' && this.basaltElapsed < 290) {
+        this.allowClimax = false;
+      }
+      this.riser(2.4);
+      this.intensityTarget = Math.max(this.intensity * 0.85, 0.45);
+      this.volumeTarget = 1; // settle before Oasis — no lingering climax loudness
+      this.musicTier = 0;
+      this.arrivalArmed = false;
+      this.breathUntilStep = -1;
+      this.swellMinute = -1;
+      this.rideSfxBus(0.9);
+      this.rideReverb(0.45);
+    } else if (mode === 'oasis' && prev === 'transition') {
+      this.braam(220, 1.4, 0.5);
+      this.intensityTarget = 0.4;
+      this.volumeTarget = 1;
+      this.rideSfxBus(0.9);
+      this.rideReverb(0.45);
+    } else if (mode === 'basalt') {
+      this.braam(146.8, 1.6, 0.48);
+      this.allowClimax = true;
+      this.basaltElapsed = 0;
+      this.armyHeat = 0;
+      this.phraseOrigin = -1;
+      this.intensityTarget = 0.5;
+      this.volumeTarget = 1.06;
+      this.volumeMul = 1.06;
+      this.musicTier = 0;
+      this.arrivalArmed = false;
+      this.breathUntilStep = -1;
+      this.swellMinute = -1;
+      this.rideSfxBus(0.9);
+      this.rideReverb(0.42);
+    }
+  }
+
+  /**
+   * Drive Basalt from the Phase 1 clock; army only tints.
+   * Five hard-cut minutes: each keeps prior layers and adds one more.
+   * Audio only — no sim change. Transition/Oasis still settle the buses.
+   */
+  setBattlePulse(opts: {
+    phase: MusicMode;
+    basaltElapsedSec: number;
+    unitCount: number;
+    beesAlive: boolean;
+    speciesAlive?: SpeciesId[];
+  }): void {
+    this.beePresence = opts.beesAlive;
+    this.presenceSpecies = new Set(opts.speciesAlive ?? []);
+    if (opts.phase === 'basalt') {
+      this.basaltElapsed = opts.basaltElapsedSec;
+      // Continuous ladder position: every minute is an 8-second SLIDE up
+      // (intensity, volume, bus rides all interpolate — no terraced steps).
+      const pos = MusicDirector.ladderPos(opts.basaltElapsedSec);
+      const army = Math.min(1, opts.unitCount / 18);
+      this.armyHeat += (army - this.armyHeat) * 0.15;
+      this.intensityTarget = Math.min(1, MusicDirector.lerpTab([0.5, 0.55, 0.72, 0.84, 0.94], pos) + army * 0.14);
+      this.volumeTarget = this.actVolume(pos);
+      this.rideSfxBus(MusicDirector.lerpTab([0.9, 0.94, 1.0, 1.06, 1.14], pos));
+      this.rideReverb(MusicDirector.lerpTab([0.42, 0.45, 0.48, 0.54, 0.6], pos));
+    } else if (opts.phase === 'oasis') {
+      const army = Math.min(1, opts.unitCount / 18);
+      this.intensityTarget = Math.min(1, 0.38 + army * 0.45);
+      this.volumeTarget = 1;
+      this.musicTier = 0;
+      this.arrivalArmed = false;
+      this.breathUntilStep = -1;
+      this.swellMinute = -1;
+      this.rideSfxBus(0.9);
+      this.rideReverb(0.45);
+    } else if (opts.phase === 'transition') {
+      this.volumeTarget = 1;
+      this.musicTier = 0;
+      this.arrivalArmed = false;
+      this.breathUntilStep = -1;
+      this.swellMinute = -1;
+      this.rideSfxBus(0.9);
+      this.rideReverb(0.45);
+    }
+  }
+
+  /** @deprecated Prefer setBattlePulse — kept for cinematic/menu callers. */
+  setIntensity(v: number): void {
+    this.intensityTarget = Math.max(0, Math.min(1, v));
+  }
+
+  /** Snap `when` forward onto the next 16th-note grid line, capped at maxDelay.
+   *  Prefer quantizeWhenNearest for warrior hits now that ticks are phase-locked. */
+  quantizeWhen(when: number, maxDelay = 0.08): number {
+    const STEP = MUSIC_16TH_SEC;
+    const origin = this.gridOrigin || when;
+    const steps = Math.ceil((when - origin) / STEP - 1e-9);
+    const snapped = origin + Math.max(0, steps) * STEP;
+    const delay = snapped - when;
+    if (delay < 0) return when;
+    if (delay > maxDelay) return when; // too far — don't lag the hit
+    return snapped;
+  }
+
+  /** Nearest 16th on the soundtrack grid — no off-grid escape hatch. */
+  quantizeWhenNearest(when: number): number {
+    const STEP = MUSIC_16TH_SEC;
+    const origin = this.gridOrigin || when;
+    const steps = Math.round((when - origin) / STEP);
+    return origin + Math.max(0, steps) * STEP;
+  }
+
+  /**
+   * Continuous Phase 1 ladder position, 0..4. Sits at m-1 when minute m
+   * starts and slides up to m across the first 8 seconds — the crescendo.
+   */
+  private static ladderPos(elapsedSec: number): number {
+    const m = Math.min(4, Math.floor(elapsedSec / 60));
+    if (m === 0) return 0;
+    return Math.min(4, (m - 1) + Math.min(1, (elapsedSec % 60) / 8));
+  }
+
+  /** Linear interpolation through a per-minute table at a ladder position. */
+  private static lerpTab(tbl: number[], pos: number): number {
+    const i = Math.max(0, Math.min(tbl.length - 1, Math.floor(pos)));
+    const j = Math.min(tbl.length - 1, i + 1);
+    const f = Math.min(1, Math.max(0, pos - i));
+    return tbl[i] + (tbl[j] - tbl[i]) * f;
+  }
+
+  /** Volume curve along the ladder — minutes 4–5 climb harder (TSO crest). */
+  private actVolume(pos: number): number {
+    const v = MusicDirector.lerpTab([1.06, 1.14, 1.22, 1.32, 1.42], pos);
+    if (this.basaltElapsed >= 290 && this.allowClimax) return Math.min(1.45, v + 0.03);
+    return v;
+  }
+
+  /** Ease intensity + volume toward targets each scheduler slice. */
+  private tickIntensity(): void {
+    const d = this.intensityTarget - this.intensity;
+    this.intensity += d * 0.12;
+    const vd = this.volumeTarget - this.volumeMul;
+    this.volumeMul += vd * 0.1;
+    if (this.bus && core.ctx) {
+      // Soft cap near 1.45 so finale crest stays powerful without harsh clip.
+      const g = Math.min(1.45, Math.max(0.0001, this.volumeMul));
+      this.bus.gain.setTargetAtTime(g, core.ctx.currentTime, 0.08);
+    }
+  }
+
+  /** Warrior drumline bus — rises with the corps so battery sits in the mix. */
+  private rideSfxBus(gain: number): void {
+    if (!core.sfxBus || !core.ctx) return;
+    core.sfxBus.gain.setTargetAtTime(Math.max(0.0001, gain), core.ctx.currentTime, 0.12);
+  }
+
+  /** Hall send — wider brass/choir space in the finale. */
+  private rideReverb(gain: number): void {
+    if (!this.reverbGain || !core.ctx) return;
+    this.reverbGain.gain.setTargetAtTime(Math.max(0.0001, gain), core.ctx.currentTime, 0.2);
+  }
+
+  /**
+   * Soft in-key presence beds for living species. One slot per species,
+   * capped, scheduled on the 16th grid — color under the drumline, not a
+   * second melody fighting the ostinato.
+   */
+  private playPresence(t: number, s16: number, bar: number): void {
+    // Presence rides from Act 0 (front ensemble) onward — color under the book.
+    if (!this.bus) return;
+    if (this.mode !== 'basalt' && this.mode !== 'intro') return;
+    const thick = this.musicTier >= 4 ? 1.65 : this.musicTier >= 3 ? 1.45 : this.musicTier >= 2 ? 1.25 : 1;
+    const g = (0.016 + this.intensity * 0.012) * thick;
+
+    type Role = 'titan' | 'command' | 'swarm' | 'air' | 'siege' | 'skirmish';
+    const roleOf = (sp: SpeciesId): Role => {
+      if (sp === 'trex' || sp === 'bear') return 'titan';
+      if (sp === 'lion' || sp === 'bighorn') return 'command';
+      if (sp === 'fireants' || sp === 'porcupine') return 'swarm';
+      if (sp === 'eagle' || sp === 'bees') return 'air';
+      if (sp === 'beetles') return 'siege';
+      return 'skirmish';
+    };
+    const prio: Record<Role, number> = { titan: 0, air: 1, swarm: 2, command: 3, siege: 4, skirmish: 5 };
+    const picked: SpeciesId[] = [];
+    const seen = new Set<Role>();
+    const ordered = [...this.presenceSpecies].sort((a, b) => prio[roleOf(a)] - prio[roleOf(b)]);
+    for (const sp of ordered) {
+      const r = roleOf(sp);
+      if (r === 'air' && sp === 'bees') continue; // bee buzz bed already handles hive
+      if (seen.has(r) && r !== 'air') continue;
+      seen.add(r);
+      picked.push(sp);
+      if (picked.length >= 4) break;
+    }
+
+    for (const sp of picked) {
+      const role = roleOf(sp);
+      if (role === 'titan' && s16 === 0) {
+        // Low D–A open fifth under the taiko.
+        voice({ type: 'sine', freq: 73.4, dur: 1.8, gain: g * 0.9, attack: 0.2, bus: this.bus, when: t, pan: -0.15 });
+        voice({ type: 'triangle', freq: 110, dur: 1.8, gain: g * 0.55, attack: 0.25, bus: this.bus, when: t, pan: 0.15 });
+        if (this.musicTier >= 2 && bar % 2 === 0) {
+          voice({ type: 'sawtooth', freq: 146.8, dur: 0.9, gain: g * 0.22, filterFreq: 420, attack: 0.08, bus: this.bus, when: t });
+        }
+      } else if (role === 'command' && bar % 4 === 0 && s16 === 0) {
+        // Short F–A–D fragment, scale-locked.
+        voice({ type: 'triangle', freq: 174.6, dur: 0.28, gain: g * 0.7, attack: 0.02, bus: this.bus, when: t, pan: -0.2 });
+        voice({ type: 'triangle', freq: 220, dur: 0.28, gain: g * 0.55, attack: 0.02, bus: this.bus, when: t + 0.15, pan: 0.1 });
+        voice({ type: 'triangle', freq: 293.7, dur: 0.4, gain: g * 0.45, attack: 0.02, bus: this.bus, when: t + 0.3, pan: 0.2 });
+      } else if (role === 'swarm' && s16 % 4 === 2) {
+        // Quiet scale ticks on offbeats — dust, not a lead.
+        voice({ type: 'triangle', freq: s16 === 2 ? 293.7 : 349.2, dur: 0.05, gain: g * 0.35, bus: this.bus, when: t });
+      } else if (role === 'air' && s16 === 8) {
+        this.shimmer(t, 587.3, 1.4, g * 0.55);
+      } else if (role === 'siege' && s16 === 0 && bar % 2 === 1) {
+        voice({ type: 'sine', freq: 98, dur: 1.2, gain: g * 0.5, attack: 0.15, bus: this.bus, when: t, pan: 0.25 });
+        voice({ type: 'triangle', freq: 146.8, dur: 1.0, gain: g * 0.28, attack: 0.18, bus: this.bus, when: t });
+      } else if (role === 'skirmish' && this.musicTier >= 2 && bar % 4 === 2 && s16 === 0) {
+        voice({ type: 'triangle', freq: 220, dur: 0.35, gain: g * 0.4, attack: 0.03, bus: this.bus, when: t, pan: -0.25 });
+        voice({ type: 'triangle', freq: 330, dur: 0.35, gain: g * 0.28, attack: 0.03, bus: this.bus, when: t, pan: 0.25 });
+      }
+    }
+  }
+
+  /** Hive buzz bed — soft detuned drones while bees are on the field. */
+  private beeBuzz(t: number, inten: number): void {
+    if (!this.bus || !this.beePresence) return;
+    const g = 0.018 + inten * 0.014;
+    voice({ type: 'sawtooth', freq: 220, dur: 0.32, gain: g, attack: 0.08, filterFreq: 900, bus: this.bus, when: t, pan: -0.25 });
+    voice({ type: 'sawtooth', freq: 233, dur: 0.32, gain: g * 0.85, attack: 0.1, filterFreq: 1100, bus: this.bus, when: t, pan: 0.25 });
+    voice({ type: 'triangle', freq: 440, dur: 0.28, gain: g * 0.35, attack: 0.12, bus: this.bus, when: t });
+  }
+
+  /** The Zimmer hit — public so the cinematic can score its reveals. */
+  braam(freq = 73.4, dur = 1.8, gain = 0.5): void {
+    const ctx = core.ensure();
+    if (!ctx || !this.bus) return;
+    const t0 = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t0);
+    out.gain.exponentialRampToValueAtTime(gain, t0 + dur * 0.28);
+    out.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(160, t0);
+    lp.frequency.exponentialRampToValueAtTime(900, t0 + dur * 0.4);
+    lp.frequency.exponentialRampToValueAtTime(220, t0 + dur);
+    lp.Q.value = 1.2;
+    lp.connect(out);
+    out.connect(this.bus);
+    for (const cents of [-12, -5, 0, 6, 13]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq * Math.pow(2, cents / 1200);
+      osc.connect(lp);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.1);
+    }
+    // Sub octave reinforcement.
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = freq / 2;
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.0001, t0);
+    subG.gain.exponentialRampToValueAtTime(gain * 0.8, t0 + dur * 0.3);
+    subG.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    sub.connect(subG);
+    subG.connect(this.bus);
+    sub.start(t0);
+    sub.stop(t0 + dur + 0.1);
+  }
+
+  /** Rising tension sweep (phase transition, cinematic climax). */
+  riser(dur = 2.0): void {
+    const ctx = core.ensure();
+    if (!ctx || !this.bus) return;
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(80 * (i + 1), t0);
+      osc.frequency.exponentialRampToValueAtTime(320 * (i + 1), t0 + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.07, t0 + dur * 0.8);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.2);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(300, t0);
+      bp.frequency.exponentialRampToValueAtTime(2400, t0 + dur);
+      osc.connect(bp);
+      bp.connect(g);
+      g.connect(this.bus);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.3);
+    }
+  }
+
+  private taiko(t: number, big: boolean, vel = 1): void {
+    if (!this.bus) return;
+    voice({ type: 'sine', freq: big ? 88 : 130, freqEnd: big ? 40 : 62, dur: big ? 0.42 : 0.24, gain: (big ? 0.55 : 0.3) * vel, bus: this.bus, when: t });
+    noise({ dur: big ? 0.18 : 0.09, gain: (big ? 0.22 : 0.12) * vel, filterFreq: big ? 900 : 1600, filterEnd: 200, bus: this.bus, when: t });
+  }
+
+  private stringNote(t: number, freq: number, vel: number, dur = 0.14, filterHz = 1500): void {
+    if (!this.bus) return;
+    // Detuned pair, panned apart — a section, not a single player.
+    voice({ type: 'sawtooth', freq, dur, gain: 0.085 * vel, filterFreq: filterHz, filterQ: 1.6, attack: 0.012, bus: this.bus, when: t, pan: -0.28 });
+    voice({ type: 'sawtooth', freq: freq * 1.004, dur, gain: 0.055 * vel, filterFreq: filterHz * 0.75, attack: 0.012, bus: this.bus, when: t, pan: 0.22 });
+  }
+
+  /** Low brass mass — open fifth under the bass (full corps / finale). */
+  private lowBrass(t: number, freq: number, dur: number, gain = 0.07): void {
+    if (!this.bus) return;
+    voice({ type: 'sawtooth', freq, dur, gain, filterFreq: 380, filterQ: 0.9, attack: 0.12, bus: this.bus, when: t, pan: -0.18 });
+    voice({ type: 'sawtooth', freq: freq * 1.5, dur, gain: gain * 0.55, filterFreq: 520, attack: 0.14, bus: this.bus, when: t, pan: 0.22 });
+    voice({ type: 'sine', freq: freq / 2, dur, gain: gain * 0.7, attack: 0.18, bus: this.bus, when: t });
+  }
+
+  /** Grid-scheduled braam with stereo seat — antiphonal L/R walls in the finale. */
+  private braamAt(t: number, freq: number, dur: number, gain: number, pan = 0): void {
+    const ctx = core.ensure();
+    if (!ctx || !this.bus) return;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(gain, t + dur * 0.28);
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(160, t);
+    lp.frequency.exponentialRampToValueAtTime(1000, t + dur * 0.4);
+    lp.frequency.exponentialRampToValueAtTime(220, t + dur);
+    lp.Q.value = 1.2;
+    const panner = ctx.createStereoPanner();
+    panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), t);
+    lp.connect(out);
+    out.connect(panner);
+    panner.connect(this.bus);
+    for (const cents of [-12, -5, 0, 6, 13]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq * Math.pow(2, cents / 1200);
+      osc.connect(lp);
+      osc.start(t);
+      osc.stop(t + dur + 0.1);
+    }
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.value = freq / 2;
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.0001, t);
+    subG.gain.exponentialRampToValueAtTime(gain * 0.85, t + dur * 0.3);
+    subG.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    sub.connect(subG);
+    subG.connect(this.bus);
+    sub.start(t);
+    sub.stop(t + dur + 0.1);
+    // Short sub "air hit" under the wall.
+    voice({ type: 'sine', freq: 42, freqEnd: 28, dur: 0.22, gain: gain * 0.45, bus: this.bus, when: t });
+  }
+
+  /** SATB-ish D-minor choir sustain — real section mass for the finale. */
+  private choirSustain(t: number, dur: number, gain: number): void {
+    if (!this.bus) return;
+    // D3 F3 A3 Bb3 — minor triad + flat-6 color
+    const parts: Array<[number, number]> = [
+      [146.8, -0.45],
+      [174.6, -0.2],
+      [220, 0.2],
+      [233.1, 0.45],
+    ];
+    for (const [freq, pan] of parts) {
+      voice({ type: 'triangle', freq, dur, gain, attack: dur * 0.35, bus: this.bus, when: t, pan });
+      voice({ type: 'sine', freq: freq * 1.002, dur, gain: gain * 0.65, attack: dur * 0.4, bus: this.bus, when: t, pan: -pan * 0.5 });
+    }
+  }
+
+  /**
+   * Sustained legato string section — held harmony under the rhythm from
+   * minute 1 (the "Time" bed: what turns a loop into a piece). Detuned saw
+   * pairs per chord tone; extra octaves join as the minutes climb.
+   */
+  private legatoStrings(t: number, freqs: number[], dur: number, gain: number, filterHz: number, pos: number): void {
+    if (!this.bus) return;
+    // Octave voices FADE in along the continuous ladder — no terraced entries.
+    const l2 = Math.max(0, Math.min(1, pos - 1));
+    const l3 = Math.max(0, Math.min(1, pos - 2));
+    const l4 = Math.max(0, Math.min(1, pos - 3));
+    freqs.forEach((f, i) => {
+      const pan = (i % 2 === 0 ? -1 : 1) * (0.15 + i * 0.09);
+      voice({ type: 'sawtooth', freq: f, dur, gain, filterFreq: filterHz, attack: 0.5, bus: this.bus, when: t, pan });
+      voice({ type: 'sawtooth', freq: f * 1.006, dur, gain: gain * 0.7, filterFreq: filterHz * 0.85, attack: 0.6, bus: this.bus, when: t, pan: -pan * 0.7 });
+      if (l2 > 0.03) {
+        voice({ type: 'sawtooth', freq: f * 2.004, dur, gain: gain * 0.3 * l2, filterFreq: filterHz * 1.4, attack: 0.7, bus: this.bus, when: t, pan: pan * 0.5 });
+      }
+    });
+    if (l3 > 0.03) voice({ type: 'sine', freq: freqs[0] * 0.5, dur, gain: gain * 0.8 * l3, attack: 0.55, bus: this.bus, when: t });
+    if (l4 > 0.03) voice({ type: 'triangle', freq: freqs[freqs.length - 1] * 2, dur, gain: gain * 0.5 * l4, attack: 0.8, bus: this.bus, when: t, pan: 0.3 });
+  }
+
+  /** The theme as a soft, clean seed — the "piano" of minutes 1–2, kept as
+   *  sparkle doubling once the horns take over. */
+  private softTheme(t0: number, mult: number, gain: number, notes: Array<[number, number, number]> = MusicDirector.THEME): void {
+    if (!this.bus) return;
+    const STEP = MUSIC_16TH_SEC;
+    for (const [st, freq, durSteps] of notes) {
+      const t = t0 + st * STEP;
+      voice({ type: 'triangle', freq: freq * mult, dur: durSteps * STEP + 0.3, gain, attack: 0.006, bus: this.bus, when: t, pan: 0.12 });
+      voice({ type: 'sine', freq: freq * mult * 2.002, dur: durSteps * STEP * 0.5 + 0.15, gain: gain * 0.35, attack: 0.006, bus: this.bus, when: t, pan: -0.15 });
+    }
+  }
+
+  /** Play a theme strain in a chosen section voice — the rotation that keeps
+   *  the motif fresh (horn statement vs legato string section). */
+  private playStrain(t0: number, notes: Array<[number, number, number]>, mult: number, gain: number, kind: 'horn' | 'strings'): void {
+    if (!this.bus) return;
+    const STEP = MUSIC_16TH_SEC;
+    for (const [st, freq, durSteps] of notes) {
+      const t = t0 + st * STEP;
+      const dur = durSteps * STEP + 0.12;
+      if (kind === 'horn') {
+        this.horn(t, freq * mult, dur, gain);
+      } else {
+        voice({ type: 'sawtooth', freq: freq * mult, dur: dur + 0.08, gain, filterFreq: 1900, filterQ: 1.1, attack: 0.05, bus: this.bus, when: t, pan: -0.12 });
+        voice({ type: 'sawtooth', freq: freq * mult * 1.005, dur: dur + 0.08, gain: gain * 0.6, filterFreq: 1500, attack: 0.06, bus: this.bus, when: t, pan: 0.14 });
+      }
+    }
+  }
+
+  /** Cello answering phrase in the back half of each cycle — the second
+   *  voice in dialogue with the theme (from minute 2; brass doubles later). */
+  private playAnswer(t0: number, gain: number, brass = false): void {
+    if (!this.bus) return;
+    const STEP = MUSIC_16TH_SEC;
+    for (const [st, freq, durSteps] of MusicDirector.CELLO_ANSWER) {
+      const t = t0 + st * STEP;
+      const dur = durSteps * STEP + 0.15;
+      voice({ type: 'sawtooth', freq, dur, gain, filterFreq: 480, attack: 0.06, bus: this.bus, when: t, pan: -0.22 });
+      voice({ type: 'sawtooth', freq: freq * 1.005, dur, gain: gain * 0.6, filterFreq: 380, attack: 0.08, bus: this.bus, when: t, pan: 0.18 });
+      if (brass) {
+        voice({ type: 'sawtooth', freq: freq * 0.5, dur, gain: gain * 0.5, filterFreq: 300, attack: 0.1, bus: this.bus, when: t });
+      }
+    }
+  }
+
+  /** Reverse-cymbal swell through the breath bar — tension INTO the arrival. */
+  private cymbalSwell(t: number, dur: number, gain: number): void {
+    const ctx = core.ensure();
+    if (!ctx || !this.bus) return;
+    const src = ctx.createBufferSource();
+    src.buffer = getNoise(ctx);
+    src.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(1200, t);
+    hp.frequency.exponentialRampToValueAtTime(5200, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + dur);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.12);
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(this.bus);
+    src.start(t);
+    src.stop(t + dur + 0.2);
+  }
+
+  /** The minute-5 company-front hit. Fires on a bar downbeat; the braam is
+   *  PITCHED to that bar's chord root so it lands inside the harmony. */
+  private arrivalHit(t: number, freq: number, inten: number): void {
+    if (!this.bus) return;
+    this.braamAt(t, freq, 1.85, 0.54 + inten * 0.12, 0);
+    this.taiko(t, true, 1.15);
+    this.taiko(t + MUSIC_16TH_SEC, false, 0.7);
+    this.crash(t, 0.148);
+  }
+
+  /** Shared soft-clip curve — real distortion for the guitar stack. */
+  private static guitarCurve: Float32Array<ArrayBuffer> | null = null;
+
+  /** Distorted power chord (root + fifth + octave saws through a tanh
+   *  waveshaper) — the TSO guitar wall for minutes 4–5. */
+  private powerChord(t: number, freq: number, dur: number, gain: number, pan = 0): void {
+    const ctx = core.ensure();
+    if (!ctx || !this.bus) return;
+    if (!MusicDirector.guitarCurve) {
+      const n = 1024;
+      const c = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        c[i] = Math.tanh(2.6 * x);
+      }
+      MusicDirector.guitarCurve = c;
+    }
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = MusicDirector.guitarCurve;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2600;
+    lp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    shaper.connect(lp);
+    lp.connect(g);
+    if (typeof ctx.createStereoPanner === 'function') {
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      g.connect(p);
+      p.connect(this.bus);
+    } else {
+      g.connect(this.bus);
+    }
+    for (const [f, cents] of [[freq, 0], [freq, 6], [freq * 1.5, -5], [freq * 2, 4]] as Array<[number, number]>) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = f * Math.pow(2, cents / 1200);
+      osc.connect(shaper);
+      osc.start(t);
+      osc.stop(t + dur + 0.05);
+    }
+  }
+
+  /** Full-ensemble unison stab — guitar, strings, low brass and kick hitting
+   *  one grid cell together (the gathering's punctuation). */
+  private ensembleStab(t: number, root: number, vel = 1): void {
+    if (!this.bus) return;
+    this.powerChord(t, root, 0.26, 0.075 * vel, 0);
+    this.rockKick(t, 1.05 * vel);
+    this.taiko(t, true, 0.9 * vel);
+    this.lowBrass(t, root, 0.3, 0.07 * vel);
+    voice({ type: 'sawtooth', freq: root * 2, dur: 0.24, gain: 0.055 * vel, filterFreq: 2200, attack: 0.004, bus: this.bus, when: t, pan: -0.15 });
+    voice({ type: 'sawtooth', freq: root * 3, dur: 0.22, gain: 0.035 * vel, filterFreq: 2600, attack: 0.004, bus: this.bus, when: t, pan: 0.17 });
+  }
+
+  /** Tight rock kick under the taiko — the driving quarter pulse. */
+  private rockKick(t: number, vel = 1): void {
+    if (!this.bus) return;
+    voice({ type: 'sine', freq: 115, freqEnd: 42, dur: 0.16, gain: 0.34 * vel, bus: this.bus, when: t });
+    noise({ dur: 0.05, gain: 0.1 * vel, filterFreq: 2600, filterEnd: 300, bus: this.bus, when: t });
+  }
+
+  /** Rock tom — pitched between the taiko floor and the snare. The voice of
+   *  the minute-5 drummer's relentless 16th groove and turnaround fills. */
+  private tom(t: number, freq: number, vel = 1): void {
+    if (!this.bus) return;
+    voice({ type: 'sine', freq, freqEnd: freq * 0.55, dur: 0.22, gain: 0.3 * vel, bus: this.bus, when: t });
+    voice({ type: 'triangle', freq: freq * 1.5, freqEnd: freq * 0.7, dur: 0.1, gain: 0.08 * vel, bus: this.bus, when: t });
+    noise({ dur: 0.03, gain: 0.05 * vel, filterFreq: 1800, filterEnd: 400, bus: this.bus, when: t });
+  }
+
+  /** Rock snare — backbeats and the roll into each arrival. */
+  private snare(t: number, vel = 1): void {
+    if (!this.bus) return;
+    noise({ dur: 0.14, gain: 0.16 * vel, filterFreq: 1700, filterType: 'highpass', bus: this.bus, when: t });
+    voice({ type: 'triangle', freq: 190, freqEnd: 120, dur: 0.09, gain: 0.12 * vel, bus: this.bus, when: t });
+  }
+
+  /** Loud crash cymbal — arrivals and the minute 4–5 downbeats. */
+  private crash(t: number, gain = 0.09): void {
+    if (!this.bus) return;
+    noise({ dur: 1.1, gain, filterFreq: 4200, filterType: 'highpass', bus: this.bus, when: t });
+    noise({ dur: 0.5, gain: gain * 0.5, filterFreq: 2400, filterType: 'highpass', bus: this.bus, when: t });
+  }
+
+  private padChord(t: number, freqs: number[], dur: number, gain = 0.05): void {
+    if (!this.bus) return;
+    freqs.forEach((f, i) => {
+      const pan = ((i % 2 === 0 ? -1 : 1) * (0.15 + i * 0.08));
+      voice({ type: 'triangle', freq: f, dur, gain, attack: dur * 0.3, bus: this.bus, when: t, pan });
+      voice({ type: 'triangle', freq: f * 1.003, dur, gain: gain * 0.7, attack: dur * 0.35, bus: this.bus, when: t, pan: -pan });
+    });
+  }
+
+  /** Low sustained cello bed — the dark floor under the ostinato. */
+  private cello(t: number, freq: number, dur: number, gain = 0.1): void {
+    if (!this.bus) return;
+    voice({ type: 'sawtooth', freq, dur, gain, filterFreq: 320, attack: 0.25, bus: this.bus, when: t, pan: -0.2 });
+    voice({ type: 'sawtooth', freq: freq * 1.006, dur, gain: gain * 0.75, filterFreq: 260, attack: 0.3, bus: this.bus, when: t, pan: 0.2 });
+  }
+
+  /** High shimmer strings — a cold sustained gleam above the action. */
+  private shimmer(t: number, freq: number, dur: number, gain = 0.022): void {
+    if (!this.bus) return;
+    voice({ type: 'triangle', freq, dur, gain, attack: dur * 0.45, bus: this.bus, when: t, pan: 0.35 });
+    voice({ type: 'triangle', freq: freq * 1.007, dur, gain: gain * 0.8, attack: dur * 0.5, bus: this.bus, when: t, pan: -0.35 });
+  }
+
+  /** Synth french horn — carries the theme. */
+  private horn(t: number, freq: number, dur: number, gain = 0.085): void {
+    if (!this.bus) return;
+    voice({ type: 'sawtooth', freq, dur, gain, filterFreq: 820, filterQ: 0.8, attack: 0.055, bus: this.bus, when: t, pan: -0.08 });
+    voice({ type: 'sawtooth', freq: freq * 1.005, dur, gain: gain * 0.5, filterFreq: 640, attack: 0.07, bus: this.bus, when: t, pan: 0.12 });
+    voice({ type: 'triangle', freq: freq * 2, dur, gain: gain * 0.22, attack: 0.05, bus: this.bus, when: t });
+  }
+
+  /** Harp / celesta pluck for the Oasis. */
+  private harp(t: number, freq: number, gain = 0.055, pan = 0.2): void {
+    if (!this.bus) return;
+    voice({ type: 'sine', freq, dur: 0.7, gain, attack: 0.004, bus: this.bus, when: t, pan });
+    voice({ type: 'triangle', freq: freq * 2.01, dur: 0.35, gain: gain * 0.3, attack: 0.004, bus: this.bus, when: t, pan: -pan * 0.6 });
+  }
+
+  /** Tick-hat: tiny filtered noise keeping the 16th grid alive. */
+  private hat(t: number, vel = 1): void {
+    if (!this.bus) return;
+    noise({ dur: 0.035, gain: 0.045 * vel, filterFreq: 6800, filterType: 'highpass', bus: this.bus, when: t });
+  }
+
+  /** Schedule the full 2-bar theme starting at t0. mult shifts the octave. */
+  private playTheme(t0: number, mult = 1, gain = 0.085): void {
+    const STEP = MUSIC_16TH_SEC;
+    for (const [st, freq, durSteps] of MusicDirector.THEME) {
+      this.horn(t0 + st * STEP, freq * mult, durSteps * STEP + 0.12, gain);
+    }
+  }
+
+  private schedule(): void {
+    const ctx = core.ctx;
+    if (!ctx || !this.running) return;
+    this.tickIntensity();
+    const STEP = MUSIC_16TH_SEC;
+    while (this.nextNoteTime < ctx.currentTime + 0.3) {
+      this.playStep(this.step, this.nextNoteTime);
+      this.nextNoteTime += STEP;
+      this.step++;
+    }
+  }
+
+  private playStep(step: number, t: number): void {
+    const s16 = step % 16; // position in bar
+    const bar = Math.floor(step / 16);
+    const inten = this.intensity;
+
+    // Capture the phrase anchor BEFORE anything harmonic plays, so the
+    // presence beds and the chord loop share one clock from the first step.
+    if (this.mode === 'basalt' && this.phraseOrigin < 0) this.phraseOrigin = bar;
+
+    // Living bee buzz rides under every mode once a swarm is on the field.
+    if (this.beePresence && s16 % 2 === 0) this.beeBuzz(t, inten);
+    // Species presence beds ride the PHRASE-ANCHORED bar in battle so their
+    // figures (the command F–A–D arpeggio, titan/siege color notes) land on
+    // the same chord cycle as the score — never a random offset per battle.
+    this.playPresence(t, s16, this.mode === 'basalt' ? bar - this.phraseOrigin : bar);
+
+    switch (this.mode) {
+      case 'menu': {
+        // Brooding, quiet: pulse, slow pads, a distant statement of the theme.
+        if (s16 === 0 || s16 === 8) {
+          voice({ type: 'sine', freq: 36.7, dur: 0.5, gain: 0.3, bus: this.bus, when: t });
+        }
+        if (step % 64 === 0) this.padChord(t, [146.8, 220, 293.7], 4.5, 0.04);
+        if (step % 64 === 32) this.padChord(t, [130.8, 196, 246.9], 4.5, 0.035);
+        if (bar % 4 === 0 && s16 === 0) this.cello(t, 73.4, 4.6, 0.07);
+        if (bar % 8 === 2 && s16 === 0) this.shimmer(t, 587.3, 4.2, 0.014);
+        // The theme drifts in from far away every 16 bars.
+        if (bar % 16 === 6 && s16 === 0) this.playTheme(t, 0.5, 0.05);
+        break;
+      }
+
+      case 'intro': {
+        // Option A — pre-corps cinematic bed: intensity-gated, no act-tier finale.
+        const cell = MusicDirector.OSTINATO[bar % 4];
+        const gate = inten > 0.55 ? 1 : inten > 0.3 ? (s16 % 2 === 0 ? 1 : 0) : (s16 % 4 === 0 ? 1 : 0);
+        if (gate) {
+          const accent = s16 % 4 === 0 ? 1.25 : 0.85;
+          this.stringNote(t, cell[s16], accent * (0.7 + inten * 0.5));
+        }
+        if (s16 === 0) {
+          voice({ type: 'sawtooth', freq: MusicDirector.BASS[bar % 4], dur: 2.2, gain: 0.26, filterFreq: 130, attack: 0.03, bus: this.bus, when: t });
+          this.cello(t, MusicDirector.CELLO[bar % 4], 2.4, 0.085 + inten * 0.03);
+        }
+        if (s16 === 4) this.shimmer(t, bar % 4 === 1 ? 466.2 : 587.3, 2.0, 0.016 + inten * 0.012);
+        if (s16 === 0) this.taiko(t, true, 0.85 + inten * 0.2);
+        if (s16 === 10) this.taiko(t, false, 0.9);
+        if (inten > 0.5 && s16 === 13) this.taiko(t, false, 0.7);
+        if (inten > 0.75 && s16 % 4 === 2) this.taiko(t, false, 0.45);
+        if (inten > 0.35 && s16 % 2 === 1) this.hat(t, s16 % 4 === 3 ? 1 : 0.6);
+        if (bar % 8 === 4 && s16 === 0) this.playTheme(t, 1, 0.07 + inten * 0.05);
+        if (step % 128 === 0 && step > 0) this.braam(73.4, 1.6, 0.34 + inten * 0.2);
+        if (step % 64 === 48) {
+          voice({ type: 'triangle', freq: 587.3, dur: 2.2, gain: 0.03, attack: 0.8, bus: this.bus, when: t, pan: 0.3 });
+          voice({ type: 'triangle', freq: 622.3, dur: 2.2, gain: 0.026, attack: 0.9, bus: this.bus, when: t, pan: -0.3 });
+        }
+        break;
+      }
+
+      case 'basalt': {
+        // Five-minute ADDITIVE ladder over ONE chord loop (Dm→Bb→Gm→A).
+        // Minute boundaries are 8-second SLIDES: every new voice fades in
+        // along the continuous ladder position — no cuts, no snaps. A soft
+        // cymbal swell hints at each boundary; the braam-and-crash arrival
+        // is reserved for ONE moment, the start of minute 5 (the final act).
+        // Phrase-anchored bar count: pb 0 is the bar Phase 1 began in, so
+        // the chord loop, verse/chorus halves and the suckout-and-slam all
+        // align to true section boundaries from the first downbeat.
+        // (phraseOrigin is captured at the top of playStep.)
+        const pb = bar - this.phraseOrigin;
+        const cell = MusicDirector.OSTINATO[pb % 4];
+
+        // Continuous ladder position at the scheduled time t.
+        const ctxNow = core.ctx ? core.ctx.currentTime : t;
+        const elapsedAtT = this.basaltElapsed + Math.max(0, t - ctxNow);
+        const m = Math.min(4, Math.floor(elapsedAtT / 60));
+        // Minute FROZEN at this bar's downbeat: every minute-gated TRIGGER
+        // in the bar reads one value, so a bar can never change its mind
+        // mid-flight (no double theme statements at minute boundaries).
+        // Continuous gains (pos/l1..l4) still slide freely — that's the
+        // 8-second crescendo; it moves no events.
+        const mBar = Math.min(4, Math.max(0, Math.floor((elapsedAtT - s16 * MUSIC_16TH_SEC) / 60)));
+        const pos = MusicDirector.ladderPos(elapsedAtT);
+        const l1 = Math.max(0, Math.min(1, pos));
+        const l2 = Math.max(0, Math.min(1, pos - 1));
+        const l3 = Math.max(0, Math.min(1, pos - 2));
+        const l4 = Math.max(0, Math.min(1, pos - 3));
+        // The DRUMMER: a full rock kit that bleeds in from ~3:30 and owns
+        // minute 5 — relentless drive, verse and chorus alike. Only the
+        // suckout and the arrival breath ever cut him off.
+        const drummer = Math.min(1, Math.max(0, (elapsedAtT - 210) / 38));
+
+        // --- Minute-boundary craft --------------------------------------
+        if (s16 === 0) {
+          const secToFlip = 60 - (elapsedAtT % 60);
+          if (this.arrivalArmed && step >= this.breathUntilStep) {
+            // The one true arrival — always the downbeat the breath built
+            // into, braam pitched to this bar's chord root.
+            this.arrivalArmed = false;
+            this.musicTier = 4;
+            this.arrivalBar = pb;
+            this.arrivalHit(t, MusicDirector.CELLO[pb % 4], inten);
+            this.powerChord(t, MusicDirector.BED_CHORDS[pb % 4][0], 1.2, 0.085);
+          } else if (m < 4 && this.musicTier < 4) {
+            this.musicTier = m;
+            // Minutes 2–4 approach: only a soft swell — the slide speaks.
+            if (m < 3 && elapsedAtT > 5 && secToFlip <= 2.4 && this.swellMinute !== m) {
+              this.swellMinute = m;
+              this.cymbalSwell(t, 2.3, 0.028 + m * 0.007);
+            }
+            // Minute 5 approach: arm the ONE Babylon arrival (breath bar).
+            if (m === 3 && !this.arrivalArmed && secToFlip <= 2.4) {
+              this.arrivalArmed = true;
+              this.breathUntilStep = step + 16;
+              this.cymbalSwell(t, 2.3, 0.09);
+            }
+          } else if (m >= 4 && this.musicTier < 4) {
+            // Missed the breath window (hidden tab) — land the arrival on
+            // this downbeat anyway, still inside the harmony.
+            this.arrivalArmed = false;
+            this.musicTier = 4;
+            this.arrivalBar = pb;
+            this.arrivalHit(t, MusicDirector.CELLO[pb % 4], inten);
+            this.powerChord(t, MusicDirector.BED_CHORDS[pb % 4][0], 1.2, 0.085);
+          }
+        }
+        const breath = this.arrivalArmed && step < this.breathUntilStep;
+        const filterOpen = MusicDirector.lerpTab([1400, 1400, 1900, 2100, 2400], pos);
+
+        // --- Verse/chorus form (Believer / Higher) ------------------------
+        // Each 8-bar phrase splits: bars 0–3 VERSE (lean, hypnotic), bars
+        // 4–7 CHORUS (stacked, soaring). The additive minute ladder scales
+        // both — contrast lives INSIDE every minute, so nothing goes stale.
+        const bar8 = pb % 8;
+        const phraseIdx = Math.floor(pb / 8);
+        const chorusHalf = bar8 >= 4;
+        const lift = chorusHalf ? 1.08 : 0.94 + 0.14 * l3;
+        // Minutes 4–5: the wall NEVER drops — verse layers converge to
+        // chorus weight as minute 4 slides in. Minutes 1–3 keep lean verses.
+        const wall = chorusHalf ? 1 : l3;
+        // The boil (subtle battle authority): a packed on-screen brawl
+        // pushes rhythm density up to about a third of one ladder layer.
+        // The clock still leads; the battle seasons.
+        const boil = Math.max(0, this.armyHeat - 0.5) * 0.7;
+        // Believer suckout, phrase-aligned (THE CONTRACT): the suction owns
+        // beats 3–4 of the LAST verse bar — the A chord, the cycle's final
+        // measure. The SLAM lands on the next downbeat — the Dm bar, the
+        // first chord of a NEW cycle — and theme A's first note sounds ON
+        // that same downbeat. Suction → slam+theme, never theme-after-slam.
+        // From minute 4 onward, where the kit and guitars sell the slam.
+        const suckTail = bar8 === 3 && mBar >= 3 && !breath;
+        const inSuck = suckTail && s16 >= 8;
+        const slamBar = bar8 === 4 && mBar >= 3 && !breath && pb !== this.arrivalBar;
+
+        // THE GATHERING (the one dip per phrase): beats 1–2 of the pre-
+        // chorus bar carry two full-ensemble unison stabs over the wall;
+        // beats 3–4 are the suction — falling sub + a snare-roll crescendo
+        // (the dip stays HOT, a drumline rolling into the hit) — and the
+        // slam lands with Motif A on the Dm downbeat of the new cycle.
+        if (suckTail && (s16 === 0 || s16 === 4)) {
+          this.ensembleStab(t, MusicDirector.BED_CHORDS[pb % 4][0], 0.75 + 0.4 * l3);
+        }
+        if (suckTail && s16 === 8) {
+          // The drop: falling sub off the A-bar root; alternate phrases add
+          // a rising sweep. The chained-lift taikos below are the pickup.
+          voice({ type: 'sine', freq: MusicDirector.CELLO[pb % 4], freqEnd: 30, dur: 0.55, gain: 0.34, bus: this.bus, when: t });
+          if (phraseIdx % 2 === 0) {
+            voice({ type: 'triangle', freq: 320, freqEnd: 1280, dur: 1.0, gain: 0.045, attack: 0.05, bus: this.bus, when: t, pan: 0.2 });
+          }
+        }
+        if (inSuck) {
+          // 16th snare roll swelling through the suction into the slam.
+          this.snare(t, (0.22 + (s16 - 8) * 0.075) * Math.max(0.45, l3));
+        }
+        if (slamBar && s16 === 0) {
+          // The slam has a guaranteed FLOOR independent of l3, so even in
+          // minute 4's opening slide it reads as intentional punctuation.
+          this.taiko(t, true, 1.15 + 0.1 * l3);
+          this.crash(t, 0.09 + 0.05 * l3);
+          this.snare(t, Math.max(0.55, 1.15 * l3));
+          this.powerChord(t, MusicDirector.BED_CHORDS[pb % 4][0], 1.0, 0.045 + 0.025 * l3, 0);
+        }
+
+        // Wide bar (minute 5): every second chorus bar the kit opens to
+        // half-time — kick on one, one enormous snare on three, air around
+        // both. Heavy is mass with room to land, not busyness.
+        const wideBar = l4 > 0.5 && bar8 === 5 && !breath;
+
+        // --- Ostinato engine (suspense — never stops) --------------------
+        // 8ths at first; the offbeat 16ths FADE in across minute 3's build
+        // (a hot brawl can boil them in a notch early). The octave stack is
+        // chorus-only in minutes 1–3 and full-time once the wall is up.
+        const offbeat16 = s16 % 2 === 1;
+        // During the suction (beats 3–4 of the pre-slam bar) the ostinato
+        // goes silent — the falling sub and the snare roll carry the bar.
+        const gate = breath ? s16 % 4 === 0 : inSuck ? false : (!offbeat16 || l2 + boil > 0.03);
+        if (gate) {
+          const accent = s16 % 4 === 0 ? 1.25 : 0.85;
+          let strVel = accent * (0.62 + inten * 0.4) * MusicDirector.lerpTab([1, 1, 1.12, 1.2, 1.28], pos) * lift;
+          if (offbeat16 && !breath) strVel *= Math.min(1, l2 + boil);
+          if (strVel > 0.02) {
+            this.stringNote(t, cell[s16], strVel, 0.14, filterOpen);
+            if (!inSuck && wall > 0.03) {
+              if (l2 > 0.03) this.stringNote(t, cell[s16] * 2, strVel * (0.55 + 0.15 * l3) * l2 * wall, 0.12, filterOpen * 1.1);
+              if (l3 > 0.03 && s16 % 2 === 0) this.stringNote(t, cell[s16] * 2, strVel * 0.35 * l3 * wall, 0.11, 2600);
+              if (l4 > 0.03 && s16 % 4 === 0) this.stringNote(t, cell[s16] * 4, strVel * 0.28 * l4 * wall, 0.1, 3000);
+            }
+          }
+        }
+
+        // --- Floor: sub bass + cello + low brass mass (brass fades in) ---
+        if (s16 === 0) {
+          voice({
+            type: 'sawtooth', freq: MusicDirector.BASS[pb % 4], dur: 2.2,
+            gain: 0.24 + 0.015 * pos, filterFreq: 130, attack: 0.03, bus: this.bus, when: t,
+          });
+          this.cello(t, MusicDirector.CELLO[pb % 4], 2.4, 0.08 + inten * 0.03 + pos * 0.004);
+          if (l2 > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4], 2.2, (0.055 + inten * 0.045) * l2 * (0.8 + 0.2 * wall));
+          if (l3 > 0.03 && wall > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4] * 0.5, 2.2, (0.035 + inten * 0.03) * l3 * wall);
+          if (l4 > 0.03 && wall > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4], 2.2, (0.04 + inten * 0.025) * l4 * wall);
+        }
+
+        // --- Legato string bed: held harmony from MINUTE 1, locked to the
+        // ostinato progression. Every 8th bar the A chord suspends (Asus4)
+        // and resolves 4→3 — the whole ensemble cadences together.
+        // In a suction bar the bed decays before beat 3 so the drop is real.
+        if (!breath && s16 === 0) {
+          const bedGain = (0.015 + pos * 0.005 + inten * 0.008) * lift;
+          const bedHz = 750 + pos * 250;
+          if (pb % 8 === 7) {
+            this.legatoStrings(t, MusicDirector.A_SUS4, 1.25, bedGain, bedHz, pos);
+            this.legatoStrings(t + 1.2, MusicDirector.BED_CHORDS[3], 1.3, bedGain, bedHz, pos);
+          } else {
+            this.legatoStrings(t, MusicDirector.BED_CHORDS[pb % 4], suckTail ? 1.1 : 2.5, bedGain, bedHz, pos);
+          }
+        }
+        if (l4 * wall > 0.03 && !breath && s16 === 0) {
+          this.choirSustain(t, 2.5, (0.033 + inten * 0.018) * l4 * wall);
+        }
+
+        if (s16 === 4 && !suckTail) {
+          this.shimmer(t, pb % 4 === 1 ? 466.2 : (mBar >= 4 ? 698.5 : 587.3), 2.0, 0.014 + inten * 0.014 + pos * 0.002);
+        }
+
+        // --- No-Leaf-Clover breath (minutes 4–5): strings and brass -------
+        // crescendo through beats 3–4 of every second bar, peaking exactly
+        // ON the next downbeat — the wall arrives pre-loaded, every time.
+        if (mBar >= 3 && s16 === 8 && pb % 2 === 1 && !suckTail && !breath) {
+          const next = MusicDirector.BED_CHORDS[(pb + 1) % 4];
+          const sg = (0.026 + inten * 0.013) * l3;
+          voice({ type: 'sawtooth', freq: next[0] * 2, dur: 1.5, gain: sg, filterFreq: 1500, attack: 1.18, bus: this.bus, when: t, pan: -0.2 });
+          voice({ type: 'sawtooth', freq: next[2], dur: 1.5, gain: sg * 0.8, filterFreq: 1200, attack: 1.2, bus: this.bus, when: t, pan: 0.2 });
+          voice({ type: 'sawtooth', freq: next[0] / 2, dur: 1.5, gain: sg * 0.9, filterFreq: 420, attack: 1.2, bus: this.bus, when: t });
+        }
+
+        // --- Battery: heartbeat always; new pulses bloom, never jump ------
+        if (s16 === 0) this.taiko(t, true, (0.8 + inten * 0.2 + pos * 0.02) * lift);
+        if (s16 === 10 && !inSuck) this.taiko(t, false, 0.85);
+        if (inten > 0.42 && s16 === 13 && !inSuck) this.taiko(t, false, 0.65);
+        if (l2 + boil > 0.05 && s16 % 4 === 2 && !inSuck) this.taiko(t, false, 0.4 * Math.min(1, l2 + boil));
+        // Min 5: the drumline goes full corps — driving 8ths, wall up.
+        if (l4 * wall > 0.05 && !breath && !inSuck && !wideBar && s16 % 2 === 0 && s16 !== 0 && s16 !== 10) this.taiko(t, false, 0.3 * l4 * wall);
+        // Chained lift into every chorus (last verse bar): reverse swell +
+        // ramping taiko run. Early minutes keep the run ON the 16th grid —
+        // exposed off-grid hits there read as the band losing the beat. The
+        // off-grid 12/8 swagger only returns from minute 4, once the swell
+        // and snare are loud enough to sell it as intentional.
+        if (bar8 === 3 && !breath && mBar >= 1) {
+          const sp = l3 > 0.1 ? 0.2 : MUSIC_16TH_SEC;
+          if (s16 === 8) {
+            if (l2 > 0.1) this.cymbalSwell(t, 1.15, 0.016 + 0.02 * l3);
+            this.taiko(t, false, 0.3);
+            this.taiko(t + sp, false, 0.38);
+            this.taiko(t + sp * 2, false, 0.46);
+          }
+          if (s16 === 12) {
+            this.taiko(t, false, 0.5);
+            this.taiko(t + sp, false, 0.58);
+            this.taiko(t + sp * 2, false, 0.66 + 0.2 * l3);
+            if (l3 > 0.1) this.snare(t + sp * 2, 0.45 * l3);
+          }
+        }
+        // Breath-bar fill (minute 5 only): the roll into the one arrival.
+        if (breath && s16 >= 8 && s16 % 2 === 0) this.taiko(t, false, 0.5 + (s16 - 8) * 0.05);
+        if (breath && (s16 === 13 || s16 === 15)) this.taiko(t, false, 0.67);
+        if (breath && s16 >= 8) this.snare(t, 0.35 + (s16 - 8) * 0.09);
+
+        // --- The DRUMMER (bleeds in ~3:30, owns minute 5) -----------------
+        // Relentless 16th tom groove + driving 8th kick + backbeats even in
+        // the verses + two-bar turnaround fills crashing onto the downbeat.
+        // Minute 5 is the POWER BALLAD crest: everything hits harder — l4
+        // weights the toms, kick, backbeats and fills, and crashes wash
+        // over every bar line.
+        if (drummer > 0.03 && !breath && !inSuck) {
+          const heavy = 1 + 0.4 * l4;
+          const fillBar = pb % 2 === 1;
+          if (wideBar) {
+            // HALF-TIME: kick on one, one enormous snare on three, crash
+            // wash — then back to the driving groove next bar.
+            if (s16 === 0) { this.rockKick(t, 1.1 * drummer); this.crash(t, 0.08 * l4); }
+            if (s16 === 8) { this.snare(t, 1.35 * l4 * drummer); this.tom(t, 88, 0.9 * l4 * drummer); }
+          } else {
+            if (fillBar && s16 >= 12) {
+              // Turnaround: snare-and-tom run up the last beat.
+              this.snare(t, (0.4 + (s16 - 12) * 0.16) * drummer * heavy);
+              this.tom(t, 150 - (s16 - 12) * 18, (0.6 + (s16 - 12) * 0.1) * drummer * heavy);
+              if (l4 > 0.3 && s16 === 15) this.tom(t + 0.075, 78, 0.9 * l4); // flam into the crash
+            } else {
+              const acc = s16 % 4 === 0 ? 1 : s16 % 2 === 0 ? 0.7 : 0.42;
+              this.tom(t, s16 % 8 < 4 ? 110 : 88, acc * (0.72 + 0.26 * l4) * drummer);
+            }
+            if (s16 % 2 === 0 && s16 % 4 !== 0) this.rockKick(t, (0.5 + 0.3 * l4) * drummer);
+            if (!chorusHalf && (s16 === 4 || (s16 === 12 && !fillBar))) this.snare(t, (0.75 + 0.35 * l4) * drummer);
+            if (pb % 2 === 0 && s16 === 0) this.crash(t, (0.065 + 0.05 * l4) * drummer);
+            // Minute 5: crash wash on the odd bar lines too — ride the crest.
+            if (l4 > 0.5 && pb % 2 === 1 && s16 === 0) this.crash(t, 0.055 * l4);
+          }
+        }
+
+        // --- TSO crest (minutes 4–5): the wall holds, verse and chorus ----
+        // The drop-D riff rings everywhere once minute 4 arrives (fading in
+        // across the slide); only the suckout and the breath ever dip.
+        if (l3 > 0.04 && !breath && !inSuck && wall > 0.03) {
+          const root = MusicDirector.BED_CHORDS[pb % 4][0];
+          if (s16 % 4 === 0 && !wideBar) this.rockKick(t, ((0.85 + 0.15 * wall) + 0.3 * l4) * l3);
+          if ((s16 === 4 || s16 === 12) && !wideBar) this.snare(t, (0.9 + 0.45 * l4) * l3 * wall);
+          if (l4 > 0.05 && (s16 === 7 || s16 === 15) && !wideBar) this.snare(t, 0.35 * l4 * wall);
+          if (s16 === 0) this.powerChord(t, root, wideBar ? 2.3 : 1.15, (0.055 + 0.02 * l4) * l3 * wall, 0);
+          if ((s16 === 6 || s16 === 10) && !wideBar) this.powerChord(t, root, 0.28, 0.04 * l3 * wall, s16 === 6 ? -0.2 : 0.2);
+          if (l4 > 0.04 && s16 % 2 === 0 && s16 >= 8 && !wideBar) this.powerChord(t, root * 2, 0.11, 0.018 * l4 * wall, 0.3);
+          if (l4 > 0.04 && s16 % 4 === 3 && !wideBar) this.powerChord(t, root, 0.1, 0.036 * l4 * wall, -0.25);
+          // Mid-chorus crash refresher in the final minute.
+          if (mBar >= 4 && bar8 === 6 && s16 === 0) this.crash(t, 0.085 * l3);
+        }
+
+        // Hats fade in across minute 2; a hot brawl boils them in early.
+        if (l1 + boil > 0.03 && !breath && !inSuck && s16 % 2 === 1) {
+          this.hat(t, (s16 % 4 === 3 ? 1 : 0.55) * Math.min(1, l1 + boil * 0.6) * (0.8 + 0.2 * wall));
+        }
+
+        // --- The theme: the A-STRAIN owns every chorus -------------------
+        // THE CONTRACT: theme A's first note is ALWAYS the downbeat of the
+        // Dm bar — the first chord of a new cycle. In minutes 4–5 the slam
+        // shares that same downbeat (suction → slam+theme, one moment).
+        // The voice still rotates horn → strings → horn-with-octave.
+        if (bar8 === 4 && s16 === 0 && !breath) {
+          const strain = MusicDirector.THEME;
+          if (l2 <= 0.05) {
+            // Minutes 1–2: the soft seed carries the statement (Time model).
+            const seedGain = MusicDirector.lerpTab([0.046, 0.052, 0.036, 0.03, 0.026], pos) + (pos < 2 ? inten * 0.012 : 0);
+            this.softTheme(t, 2, seedGain, strain);
+          } else if (mBar >= 3) {
+            // SECTION DIALOGUE (minutes 4–5): the horn section states the
+            // first half, the STRING SECTION answers the second half an
+            // octave up — leader swaps each phrase. Register RATCHET over
+            // a 3-phrase cycle: dialogue alone → +octave strings → +horns
+            // doubled an octave up (the full-corps stacked hornline).
+            const g = (0.095 + inten * 0.05 + 0.02 * l4) * Math.min(1, l2 + 0.2);
+            const ratchet = phraseIdx % 3;
+            const halfA = strain.filter(([st]) => st < 16);
+            const halfB = strain.filter(([st]) => st >= 16);
+            if (phraseIdx % 2 === 1) {
+              this.playStrain(t, halfA, 2, g * 0.55, 'strings');
+              this.playStrain(t, halfB, 1, g, 'horn');
+            } else {
+              this.playStrain(t, halfA, 1, g, 'horn');
+              this.playStrain(t, halfB, 2, g * 0.55, 'strings');
+            }
+            if (ratchet >= 1) this.playStrain(t, strain, 2, g * 0.3 * l3, 'strings');
+            if (ratchet === 2 && l4 > 0.05) this.playStrain(t, strain, 2, g * 0.42 * l4, 'horn');
+            this.softTheme(t, 2, 0.026, strain);
+            if (ratchet >= 1) {
+              // The soar: sustained descant riding above the dialogue.
+              voice({ type: 'triangle', freq: 880, dur: 4.6, gain: (0.018 + inten * 0.008) * l3, attack: 1.4, bus: this.bus, when: t, pan: 0.25 });
+              voice({ type: 'triangle', freq: 880 * 1.005, dur: 4.6, gain: 0.015 * l3, attack: 1.6, bus: this.bus, when: t, pan: -0.25 });
+            }
+          } else {
+            const g = (0.095 + inten * 0.05 + 0.02 * l4) * Math.min(1, l2 + 0.2);
+            const vsel = phraseIdx % 3;
+            if (vsel === 0) {
+              // The cinematic voice: the intro's LONE horn — unadorned, no
+              // sparkle, no descant. A naked statement over the groove.
+              this.playStrain(t, strain, 1, g, 'horn');
+            } else if (vsel === 1) {
+              this.playStrain(t, strain, 1, g * 0.85, 'strings');
+              this.softTheme(t, 2, 0.026, strain);
+            } else {
+              this.playStrain(t, strain, 1, g, 'horn');
+              if (l3 > 0.05) this.playStrain(t, strain, 2, g * 0.4 * l3, 'strings');
+              this.softTheme(t, 2, 0.026, strain);
+            }
+            if (vsel !== 0 && l3 > 0.05) {
+              // The soar: sustained descant riding above the statement.
+              voice({ type: 'triangle', freq: 880, dur: 4.6, gain: (0.018 + inten * 0.008) * l3, attack: 1.4, bus: this.bus, when: t, pan: 0.25 });
+              voice({ type: 'triangle', freq: 880 * 1.005, dur: 4.6, gain: 0.015 * l3, attack: 1.6, bus: this.bus, when: t, pan: -0.25 });
+            }
+          }
+        }
+        // Verse melody — on the PHRASE DOWNBEAT (bar 1, the Dm bar), never
+        // bar 2: every strain starts on the first chord of a new cycle.
+        // Minutes 1–4: a whispered opening fragment every other phrase
+        // (lone horn once the horns exist). Minute 5: the descending
+        // B-STRAIN (composed Dm→Bb) on the naked horn, EVERY phrase — the
+        // verse answer to each chorus's A-strain slam (3–4 statements).
+        if (bar8 === 0 && s16 === 0 && !breath) {
+          if (mBar >= 4) {
+            this.playStrain(t, MusicDirector.THEME_B, 1, 0.06 + inten * 0.022, 'horn');
+            this.softTheme(t, 2, 0.02, MusicDirector.THEME_B);
+          } else if (phraseIdx % 2 === 1) {
+            if (l2 > 0.05) {
+              this.playStrain(t, MusicDirector.THEME_FRAG, 1, (0.05 + inten * 0.02) * l2, 'horn');
+            } else {
+              this.softTheme(t, phraseIdx % 4 === 1 ? 2 : 1, 0.028 + 0.012 * l1, MusicDirector.THEME_FRAG);
+            }
+          }
+        }
+        // --- The answer: cello line in the chorus back half ---------------
+        if (l1 > 0.03 && bar8 === 6 && s16 === 0 && !breath) {
+          this.playAnswer(t, (0.05 + inten * 0.02 + pos * 0.006) * l1, pos >= 3);
+        }
+
+        // Cadential braam: once per TWO phrases, on the phrase downbeat.
+        // The suckout slams carry all other punctuation — no 4:50 crest
+        // braam; the drummer and crash wash own the finale.
+        if (pb > 0 && s16 === 0 && !breath && pb % 16 === 0) {
+          this.braamAt(t, 73.4, 1.6, 0.3 + inten * 0.15 + 0.1 * l2, 0);
+        }
+
+        if (pb % 4 === 3 && s16 === 0) {
+          voice({ type: 'triangle', freq: 587.3, dur: 2.2, gain: 0.026 + inten * 0.01 + pos * 0.002, attack: 0.8, bus: this.bus, when: t, pan: 0.3 });
+          voice({ type: 'triangle', freq: mBar >= 4 ? 698.5 : 622.3, dur: 2.2, gain: 0.022 + inten * 0.01, attack: 0.9, bus: this.bus, when: t, pan: -0.3 });
+        }
+        break;
+      }
+
+      case 'transition': {
+        // Suspended: choir swell + heartbeat + a climbing tremolo shimmer;
+        // the riser was fired on entry.
+        if (s16 === 0) this.padChord(t, [146.8, 220, 293.7, 440], 2.6, 0.06);
+        if (s16 === 0 || s16 === 6) {
+          voice({ type: 'sine', freq: 60, freqEnd: 45, dur: 0.3, gain: 0.32, bus: this.bus, when: t });
+        }
+        if (s16 === 8) this.shimmer(t, 587.3 * (1 + (bar % 4) * 0.06), 1.6, 0.02);
+        break;
+      }
+
+      case 'oasis': {
+        // Hopeful but driving: pads, harp arpeggios, plucked lead, lighter
+        // taikos — same heartbeat, warmer light.
+        const chord = MusicDirector.OASIS_PADS[bar % 4];
+        if (s16 === 0) {
+          this.padChord(t, chord, 2.6, 0.05);
+          voice({ type: 'sine', freq: chord[0] / 2, dur: 2.2, gain: 0.22, bus: this.bus, when: t });
+          this.cello(t, chord[0] / 2, 2.4, 0.06);
+        }
+        // Harp / celesta arpeggio climbing the chord on the 8ths.
+        if (s16 % 2 === 0) {
+          const tone = chord[(s16 >> 1) % 4] * 2;
+          this.harp(t, tone, 0.04 + inten * 0.02, (s16 >> 1) % 2 === 0 ? 0.28 : -0.28);
+        }
+        // Lead line on the off beats, denser as battle heats up.
+        if (s16 % 2 === 0 && (s16 % 4 === 2 || inten > 0.45)) {
+          const note = MusicDirector.OASIS_LEAD[(bar * 2 + (s16 >> 1)) % 8];
+          voice({ type: 'sine', freq: note, dur: 0.32, gain: 0.085, attack: 0.01, bus: this.bus, when: t, pan: 0.1 });
+        }
+        if (s16 === 0) this.taiko(t, true, 0.8);
+        if (s16 === 8) this.taiko(t, false, 0.7);
+        if (inten > 0.6 && s16 === 12) this.taiko(t, false, 0.5);
+        if (inten > 0.45 && s16 % 4 === 3) this.hat(t, 0.5);
+        // The theme returns in the light — up an octave, gentler.
+        if (bar % 8 === 4 && s16 === 0) this.playTheme(t, 2, 0.045);
+        // Shimmer.
+        if (step % 32 === 24) this.shimmer(t, 1174.7, 1.6, 0.02);
+        break;
+      }
+
+      case 'ended': {
+        if (s16 === 0 && bar % 2 === 0) this.padChord(t, [146.8, 220, 293.7, 370], 4, 0.05);
+        if (s16 === 0 && bar % 8 === 1) this.playTheme(t, 1, 0.055);
+        if (s16 === 0 && bar % 4 === 0) this.cello(t, 73.4, 4.2, 0.06);
+        break;
+      }
+    }
+  }
+}
+
+function makeImpulse(ctx: AudioContext, seconds: number, decay: number): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * seconds);
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return buf;
+}
+
+export const music = new MusicDirector();
+
+/** Map game phases onto music modes (used by the game screen). */
+export function musicModeForPhase(phase: 'basalt' | 'transition' | 'oasis' | 'ended'): MusicMode {
+  return phase;
+}
