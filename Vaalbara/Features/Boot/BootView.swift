@@ -19,7 +19,7 @@ struct BootView: View {
         }
         .task {
             glow = true
-            try? await appState.audio.configureSession()
+            try? appState.audio.configureSession()
             try? await Task.sleep(for: .milliseconds(900))
             appState.finishBoot()
         }

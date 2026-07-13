@@ -30,8 +30,7 @@ def collect_resource_files() -> list[Path]:
         resources.append(assets)
     art = ROOT / "Vaalbara" / "Resources" / "Art"
     if art.exists():
-        resources.extend(sorted(art.rglob("*")))
-        resources = [p for p in resources if p.is_file()]
+        resources.extend(p for p in sorted(art.rglob("*")) if p.is_file())
     return resources
 
 

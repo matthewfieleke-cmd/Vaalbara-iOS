@@ -2,8 +2,18 @@
 
 ## The red X means “build failed”
 
-1. In Xcode’s **left sidebar**, click the **Issue Navigator** icon (triangle with `!`) — or press **⌘5**.
-2. Read the error messages there. Common first-time fixes:
+The **red circle with a number** (e.g. `1`) in the top toolbar is Xcode’s error count.
+
+1. Press **⌘5** to open the **Issue Navigator** (triangle with `!`).
+2. Click the error row to read the message.
+
+**Most common first error (especially before signing is set):**
+
+> *Signing for "Vaalbara" requires a development team. Select a development team in the Signing & Capabilities editor.*
+
+That is fixed under **Signing & Capabilities** (steps below) — not in `Package.swift`.
+
+Other common fixes:
    - **Package resolution:** File → Packages → Reset Package Caches, then Resolve Package Versions.
    - **Signing:** set your Development Team (steps below).
    - **Wrong project:** you should see `VaalbaraApp.swift`, not `ContentView.swift`. If you see `ContentView`, you opened a different Xcode project — use the cloned `Vaalbara-iOS` repo.

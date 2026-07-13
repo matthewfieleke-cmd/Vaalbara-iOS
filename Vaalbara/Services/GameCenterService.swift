@@ -25,6 +25,7 @@ public final class GameCenterService: ObservableObject {
     @Published public private(set) var localPlayerName: String?
 
     private var currentStreak = 0
+    private var cachedScores: [Leaderboard: Int] = [:]
 
     private init() {}
 
@@ -44,38 +45,20 @@ public final class GameCenterService: ObservableObject {
     public func submitWin(isDuel: Bool) {
         guard isAuthenticated else { return }
         currentStreak += 1
-        GKLeaderboard.submitScore(
-            score(for: .totalWins) + 1,
-            context: 0,
-            player: GKLocalPlayer.local,
-            leaderboardIDs: [Leaderboard.totalWins.rawValue],
-            completionHandler: { _ in }
-        )
-        if isDuel {
-            GKLeaderboard.submitScore(
-                score(for: .duelWins) + 1,
-                context: 0,
-                player: GKLocalPlayer.local,
-                leaderboardIDs: [Leaderboard.duelWins.rawValue],
-                completionHandler: { _ in }
-            )
-        }
-        GKLeaderboard.submitScore(
-            Int(currentStreak),
-            context: 0,
-            player: GKLocalPlayer.local,
-            leaderboardIDs: [Leaderboard.winStreak.rawValue],
-            completionHandler: { _ in }
-        )
+        submit(score(for: .totalWins) + 1, to: .totalWins)
+        if isDuel { submit(score(for: .duelWins) + 1, to: .duelWins) }
+        submit(currentStreak, to: .winStreak)
+        cachedScores[.totalWins] = score(for: .totalWins) + 1
+        if isDuel { cachedScores[.duelWins] = score(for: .duelWins) + 1 }
+        cachedScores[.winStreak] = currentStreak
         unlock(.firstVictory, percent: 100)
     }
 
     public func submitLoss() {
         currentStreak = 0
-        if isAuthenticated {
-            GKLeaderboard.submitScore(0, context: 0, player: GKLocalPlayer.local,
-                leaderboardIDs: [Leaderboard.winStreak.rawValue], completionHandler: { _ in })
-        }
+        cachedScores[.winStreak] = 0
+        guard isAuthenticated else { return }
+        submit(0, to: .winStreak)
     }
 
     public func unlock(_ achievement: Achievement, percent: Double = 100) {
@@ -83,11 +66,19 @@ public final class GameCenterService: ObservableObject {
         let ach = GKAchievement(identifier: achievement.rawValue)
         ach.percentComplete = percent
         ach.showsCompletionBanner = true
-        GKAchievement.report([ach], withCompletionHandler: { _ in })
+        GKAchievement.report([ach]) { _ in }
     }
 
     private func score(for board: Leaderboard) -> Int {
-        // Local cache until GK fetch is wired; sufficient for v1 scaffold.
-        0
+        cachedScores[board, default: 0]
+    }
+
+    private func submit(_ value: Int, to board: Leaderboard) {
+        GKLeaderboard.submitScore(
+            value,
+            context: 0,
+            player: GKLocalPlayer.local,
+            leaderboardIDs: [board.rawValue]
+        ) { _ in }
     }
 }
