@@ -4,10 +4,26 @@ Native **iOS 17+** app (Swift / Xcode) and reference **web** build of the same g
 
 ## iOS (App Store target)
 
+**First time on your Mac:**
+
 ```bash
-./Scripts/setup-ios.sh    # copies art + generates Vaalbara.xcodeproj (requires XcodeGen on Mac)
-open Vaalbara.xcodeproj   # set your Development Team, then build & run
+# 1. Clone the repo (if you haven't already)
+git clone https://github.com/matthewfieleke-cmd/Vaalbara-iOS.git
+cd Vaalbara-iOS
+
+# 2. Use the branch with the native iOS scaffold
+git checkout cursor/native-ios-scaffold-8a48
+
+# 3. Run setup from INSIDE the repo folder (not your home directory)
+./Scripts/setup-ios.sh
+
+# 4. Open in Xcode
+open Vaalbara.xcodeproj
 ```
+
+Set your **Development Team** in Signing & Capabilities, then build & run.
+
+> **XcodeGen is optional.** The repo includes `Vaalbara.xcodeproj` (or generates it via `Scripts/generate-xcodeproj.py`). You do not need `brew install xcodegen` unless you edit `project.yml`.
 
 Modular Swift packages:
 

@@ -1,0 +1,726 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		EE3073148CA35476AF2E8691 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F677395F443251E9BB426A5B /* AppState.swift */; };
+		502D052B30E35F4B8CDC8FCF /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B67940FD2C157DEB058CC29 /* RootView.swift */; };
+		CF91ED16A8855098A782DE73 /* VaalbaraTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710B1EFF67B054AF8331522B /* VaalbaraTheme.swift */; };
+		40394EA78235586B85F50A30 /* BattleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A4120E37DCD53EDBEA39582 /* BattleView.swift */; };
+		794D7681B5CA5EBCB3FB95E9 /* BootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F58DE114525C078006663A /* BootView.swift */; };
+		3E1A4ECA406C58588E1AEBCA /* CinematicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC78A38B8CD525D9BAA0327 /* CinematicView.swift */; };
+		E130DB13AF14555F9AC848FA /* DuelSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4288ADCE90F5F7A8862C017 /* DuelSetupView.swift */; };
+		D79776310BAE5134A1DC3CED /* DuelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B677C11A6FD56B29C4D6318 /* DuelView.swift */; };
+		09DA0BE143D455B7BDCF05AA /* FactionSelectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27684F560F98542F9099A260 /* FactionSelectView.swift */; };
+		F5FC9EB05AE05EB088B378EE /* MatchmakingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E740FBFA74AC59369C89F78F /* MatchmakingView.swift */; };
+		47F2C671A61D5BA38E7E8C85 /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD1336AC5C7951F3B8980CEC /* MenuView.swift */; };
+		8A8F20CD974C5C24957C1F41 /* ResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC7AD41496D50EEA4D72EAC /* ResultsView.swift */; };
+		FDB6A945190150569BA45327 /* BattleCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E250170787E56F38331778C /* BattleCanvasView.swift */; };
+		4F36E01F5420536FB21F93BF /* GameCenterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E50C7B53425701A27F7172 /* GameCenterService.swift */; };
+		42F6A5FD67DA56A1AA7C997A /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531A048B8E8B5B5D93ABF071 /* HapticsService.swift */; };
+		3E0F5A81E18B5188B2CF5F5F /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E2600C88825985A52A83D2 /* ProfileStore.swift */; };
+		342FDF3AA9765FD18BF03416 /* VaalbaraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2428AF2E025611911D389F /* VaalbaraApp.swift */; };
+		AF3C0272DFBD52439B5B5946 /* bear-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = D98842D9C47F5D929FA16C3A /* bear-attack.webp */; };
+		4EFBA26733945599BA31B2F1 /* bear-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 15692F205BCD55DAB50F9358 /* bear-down.webp */; };
+		DD978A788CB85EB184C22C80 /* bear-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = F8EC96B4ED685969A8A69654 /* bear-intro.webp */; };
+		14FD28D7F1FB568B8E717623 /* bear-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = EB64828BB49750DE80293CEE /* bear-ko.webp */; };
+		7417EC07E889560AAF8F2EFA /* bear-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 8B50688A292950E5A867D1A8 /* bear-run.webp */; };
+		87128F69442F5259A3C04CE2 /* bear-swat.webp in Resources */ = {isa = PBXBuildFile; fileRef = BF4ED6388E2A59B696147A62 /* bear-swat.webp */; };
+		3D2505F6E0D85C14809C3315 /* bear-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 83CF3AC1223E5962A1F65950 /* bear-up.webp */; };
+		7B973A0C4F35555896F0293D /* bees-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 80815583D00A5EDF8B719865 /* bees-attack.webp */; };
+		86B63B2E0DAF508A9C3FE86A /* bees-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = A6925470432B5C0B96F1D9A1 /* bees-down.webp */; };
+		5492C9AA445A5BFD887CD2F9 /* bees-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 38DB6DB7E1865B6E835F514C /* bees-intro.webp */; };
+		A32E5896677E5E588EB1CE77 /* bees-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 449B9D35AA095990878D8B8E /* bees-ko.webp */; };
+		74ADF5BA260E5966BF1B0EFD /* bees-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = C55B50E8D4E953F18B769C7A /* bees-run.webp */; };
+		4579E25B67C65B7C95F92CF3 /* bees-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = AACB96E0E90E54AE8BBB4975 /* bees-up.webp */; };
+		A17118E613E75749BE5CC73E /* beetle-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 28B2FABB024B5585A14F277C /* beetle-attack.webp */; };
+		FA96669027A1552BA0B2F771 /* beetle-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 0861BE1ADE1055859690BCD3 /* beetle-down.webp */; };
+		12250A0B3F8F5F7CB48495D5 /* beetle-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = A0BF0DAB50965C0DB3618265 /* beetle-intro.webp */; };
+		639A9F59CABF51DDA490B6A8 /* beetle-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = CF395FB376905076A6AD3790 /* beetle-ko.webp */; };
+		0F220AB01AB75D7CBBE0EAA4 /* beetle-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = CE621646E49050B7BA0D5F5B /* beetle-run.webp */; };
+		2E20F8CF98A454C9A2183AA2 /* beetle-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = EE3D533DC5FE57D58418DC7F /* beetle-up.webp */; };
+		5C3CC62DE14D5D5C9555E0FC /* bighorn-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 6F5294AA0FB453B5988BE255 /* bighorn-attack.webp */; };
+		D2002F72E42D5866AF357E95 /* bighorn-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 1D6860BE16F551BBA60A6519 /* bighorn-down.webp */; };
+		1A54F6BD83435E2FB13D8B3E /* bighorn-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 2F1942EB6EE7526ABB09BF2A /* bighorn-intro.webp */; };
+		34A526D4556C5092A8DDE8A8 /* bighorn-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 92FE0059DAF45D2CAF1B3E27 /* bighorn-ko.webp */; };
+		BB7FF0DFE42954A98570F50E /* bighorn-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = D653C693B5915C15BF3255E4 /* bighorn-run.webp */; };
+		43198837DE1E5593AAE67C39 /* bighorn-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = D61E3FC4107C53D38793CB11 /* bighorn-up.webp */; };
+		E526C32EC41657C2926BBB4D /* eagle-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 3EC39A5367B65C779B8EAACD /* eagle-attack.webp */; };
+		8CBAB0E5497C5234892BFD81 /* eagle-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = C476264F04305B0A831A2231 /* eagle-down.webp */; };
+		5E9BA2A5EF83597799F2B86F /* eagle-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = A1E11734E6C3563297BF1780 /* eagle-intro.webp */; };
+		2B81575174C053D2B5FB678A /* eagle-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = E2016696F8D45139B22B6E52 /* eagle-ko.webp */; };
+		8636F8BFF3DF54DDAF53B9FE /* eagle-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 2FB8C37DB2385B57AA075EA0 /* eagle-run.webp */; };
+		8CCAF832290D518AA4CBBB27 /* eagle-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = C90FF942DF4A51C785B1741B /* eagle-up.webp */; };
+		6E7423DD9D6055D58C44BE68 /* fireants-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 9E85C66BC0F35F82AD113E26 /* fireants-attack.webp */; };
+		31B64222BAAD52A4833FBB3A /* fireants-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 504B5C98A0465612BA0FC100 /* fireants-down.webp */; };
+		7E37D678A87C5FDF9F2D3605 /* fireants-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 74AE976CC2415777B44E6502 /* fireants-intro.webp */; };
+		0DA320EFF1F95FC2BD9006CD /* fireants-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 84010EBF0CF458C7BF57C974 /* fireants-ko.webp */; };
+		2DC6E8DC3B1F592E853E2B72 /* fireants-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 388FECCF4302509D991537A3 /* fireants-run.webp */; };
+		EFC8A18D73EA536EA0CF112B /* fireants-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 407BB5B0792C5C81986AA4BF /* fireants-up.webp */; };
+		2C39A6BDBC965262B7AF1BF9 /* honeybadger-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 638AB0F5E26C5B68830A885D /* honeybadger-attack.webp */; };
+		C6A5FCEF25A7530E891874D2 /* honeybadger-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 0FEBEDBE6B8C55C49381F31C /* honeybadger-down.webp */; };
+		6955BF73C0625184B96AD51D /* honeybadger-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 6EF0ABCAD9535DAB837BF068 /* honeybadger-intro.webp */; };
+		1DB6F7D5C8D4569C8DA11129 /* honeybadger-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 8ABFC08520A75620BDC4657C /* honeybadger-ko.webp */; };
+		785B62A88D855F9A9CD90B1D /* honeybadger-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = C0D2230FCCA25DED9C61FBA3 /* honeybadger-run.webp */; };
+		EADBC44B04F2557794BD8D17 /* honeybadger-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 157E49E92A655D7FB8A84D69 /* honeybadger-up.webp */; };
+		94D6BBEE1A5A5B109077E0E0 /* lion-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 8CB7528681715D0F8FD7F239 /* lion-attack.webp */; };
+		1C09BEBAA8A95E45BC842144 /* lion-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = E1B121E5BAA357ED9C86DF24 /* lion-down.webp */; };
+		11B50A4615455C38802FEBBF /* lion-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 65455B973DD3573A92CD78AB /* lion-intro.webp */; };
+		B7886EC4766C5EE385C3C2B0 /* lion-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 50913373987252B799C2C2D2 /* lion-ko.webp */; };
+		50DD153DBEC4574EAF512BDB /* lion-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 40294E20F2D4532AA57612F5 /* lion-run.webp */; };
+		A16DB8E7AF22506881B0B5E1 /* lion-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = FF8AD66ECD1D534D898616BF /* lion-up.webp */; };
+		BDE9A985D9185FDAA0594C91 /* porcupine-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = 6F8AA6FDE773567A9797FA84 /* porcupine-attack.webp */; };
+		556B8176C1875E77A2908366 /* porcupine-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = F09F712E06FD5257A4B9F218 /* porcupine-down.webp */; };
+		D4CAD55519225B24BF0B1B80 /* porcupine-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 7A3D2BCFE639504D81BB47D4 /* porcupine-intro.webp */; };
+		8765D07FCAE05C6998881AC8 /* porcupine-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = ECAD0D22A8BB5069B04E8C5C /* porcupine-ko.webp */; };
+		2916811463CD58F3A3069744 /* porcupine-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 55F02BBED632503AA1758553 /* porcupine-run.webp */; };
+		21CCBD18DA4557E49077614B /* porcupine-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 208F45B627365A51993382C6 /* porcupine-up.webp */; };
+		7C2987460A9E5FA9AA9F0D0F /* scorpion-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = D255AA8E53F6533CB151005A /* scorpion-attack.webp */; };
+		CC3C52F0E79B5E9A8953791D /* scorpion-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = F34E5E3F272B58EEAB8FD168 /* scorpion-down.webp */; };
+		35EF462794825167BEE5C2A9 /* scorpion-duel-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = AABDC12BB5075E299813BFB1 /* scorpion-duel-attack.webp */; };
+		62DBF310A5F0528286E73A0C /* scorpion-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 8755F9AC0D6058AEA0774B6A /* scorpion-intro.webp */; };
+		2B8FA553C6205960B8376063 /* scorpion-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = D616E9EC5A7955C3B2A02A05 /* scorpion-ko.webp */; };
+		7A168A189C2C53CC91D0F3E1 /* scorpion-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 10D27211F94C5B21BF97719F /* scorpion-run.webp */; };
+		CFEA6BCD25F659DEA8E5533F /* scorpion-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 0B9EA1A5E4A2528392137F84 /* scorpion-up.webp */; };
+		472A690515C45A1A8763C825 /* trex-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = EA06922E304D522EAE320728 /* trex-attack.webp */; };
+		19351D37B9BB5000832CEB7D /* trex-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 3F8D2B53B80B5E368ED6A2E8 /* trex-down.webp */; };
+		0AC29F538479511594DDF8AF /* trex-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = E701940977D65D06876E8D6F /* trex-intro.webp */; };
+		E457AEA639CB50268487A7F2 /* trex-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 6F6A5BFA24F35CBF91D7C50B /* trex-ko.webp */; };
+		E9A0BF4AE343504E952763E6 /* trex-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = 058F4C610FF852BA9A6FE929 /* trex-run.webp */; };
+		312FEBACFDF35042B7651B8F /* trex-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 754D6FDABAB358C2AFABA6DB /* trex-up.webp */; };
+		63A733B0B4D85C4FB9ACB3F4 /* wolf-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = BD2B3CC9FD7858EB86EEE084 /* wolf-attack.webp */; };
+		B19C62E0458C5797843EE8BC /* wolf-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 80A9D2AE51D958CDB366635F /* wolf-down.webp */; };
+		56E190F095805C4BA971B63A /* wolf-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = 8C9453BC7D4B53FC91DA15B0 /* wolf-intro.webp */; };
+		13D1473CBC225BAB98F6829A /* wolf-ko.webp in Resources */ = {isa = PBXBuildFile; fileRef = 22613D4E8DB75C15BC8E4823 /* wolf-ko.webp */; };
+		0816AC6A26B656A0B6F62BCC /* wolf-run.webp in Resources */ = {isa = PBXBuildFile; fileRef = D6211A1F2440510C80666B52 /* wolf-run.webp */; };
+		3BDF150AA4CA510FB9CC6C48 /* wolf-up.webp in Resources */ = {isa = PBXBuildFile; fileRef = 99FA4D1973D5517899B52E5D /* wolf-up.webp */; };
+		50C4BBE33AA25AEEA9E66192 /* arena1.webp in Resources */ = {isa = PBXBuildFile; fileRef = 0CDCE1E2586F5246B689D280 /* arena1.webp */; };
+		396D3846B61F56A1BA037CB0 /* arena2.webp in Resources */ = {isa = PBXBuildFile; fileRef = 6259774E4834584E8AA3355F /* arena2.webp */; };
+		197FB7273B83564CB737BF15 /* bear.webp in Resources */ = {isa = PBXBuildFile; fileRef = FC0D2DD195A65DF298942A1B /* bear.webp */; };
+		97FEEADF90AB59BD8EE8C092 /* bees.webp in Resources */ = {isa = PBXBuildFile; fileRef = DA1E1C17A40050D5A1386E78 /* bees.webp */; };
+		20D1CBAB919C50F5AE214450 /* beetles.webp in Resources */ = {isa = PBXBuildFile; fileRef = E4170DE66DF65BF4A87798B2 /* beetles.webp */; };
+		B45FA02BB7B75BC0A213931C /* bighorn.webp in Resources */ = {isa = PBXBuildFile; fileRef = 71A322A135755988BF94B2A1 /* bighorn.webp */; };
+		88C0FBAD816E5915AE3A9365 /* duel-basalt.webp in Resources */ = {isa = PBXBuildFile; fileRef = 685CFA7A968B5CF0B682BBB9 /* duel-basalt.webp */; };
+		10631EA3CD91536B826BD12B /* duel-oasis.webp in Resources */ = {isa = PBXBuildFile; fileRef = B8D2539A697C5329886A8FB7 /* duel-oasis.webp */; };
+		212EF6A98B615135AD29FCAE /* eagle.webp in Resources */ = {isa = PBXBuildFile; fileRef = CB0EF16CC9BC5EAC91CB6185 /* eagle.webp */; };
+		13A36FC3D1B15A15B4872A23 /* fireants.webp in Resources */ = {isa = PBXBuildFile; fileRef = E8C2A1832BB85E6EA7176CA4 /* fireants.webp */; };
+		614CD1B4DB9D58419849A911 /* fort-front-ruin.webp in Resources */ = {isa = PBXBuildFile; fileRef = E918C6AFDD4051E498F19540 /* fort-front-ruin.webp */; };
+		941BFB8F9D3D5AA585D75FB2 /* fort-front.webp in Resources */ = {isa = PBXBuildFile; fileRef = 3FE0557D227157DD9A1D30E2 /* fort-front.webp */; };
+		829291C9613858C68A450FFE /* fort-rear-ruin.webp in Resources */ = {isa = PBXBuildFile; fileRef = C1169E4B925A582EB3BA81D9 /* fort-rear-ruin.webp */; };
+		839EDE8D80495AAD892D7A19 /* fort-rear.webp in Resources */ = {isa = PBXBuildFile; fileRef = C131EEC488D45D3890368184 /* fort-rear.webp */; };
+		2FD8BFE09D195B149C567D2B /* honeybadger.webp in Resources */ = {isa = PBXBuildFile; fileRef = 2CF0484CC35B59D48594DB9E /* honeybadger.webp */; };
+		C1CA8DE1579A53988B260AD3 /* lion.webp in Resources */ = {isa = PBXBuildFile; fileRef = 00D1404ED6785CC69B12AAEC /* lion.webp */; };
+		36460756B107500ABF42CA5E /* porcupine.webp in Resources */ = {isa = PBXBuildFile; fileRef = 16B09A93A1C0515B9A50CF1E /* porcupine.webp */; };
+		CD3CA064C55D5426AA9005E3 /* scorpion.webp in Resources */ = {isa = PBXBuildFile; fileRef = 99876520425B5A18B9E5E23E /* scorpion.webp */; };
+		7BDBD95CC81C5620AD813D9D /* trex.webp in Resources */ = {isa = PBXBuildFile; fileRef = B3C423244A13580C84CB1B5B /* trex.webp */; };
+		2893D25D78105783AAF6F37F /* wolves.webp in Resources */ = {isa = PBXBuildFile; fileRef = AC0783227B5654F8910AF85B /* wolves.webp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		509CA9BD969A54C68693FA15 /* Vaalbara.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vaalbara.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F677395F443251E9BB426A5B /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/App/AppState.swift"; sourceTree = SOURCE_ROOT; };
+		2B67940FD2C157DEB058CC29 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/App/RootView.swift"; sourceTree = SOURCE_ROOT; };
+		710B1EFF67B054AF8331522B /* VaalbaraTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/App/VaalbaraTheme.swift"; sourceTree = SOURCE_ROOT; };
+		7A4120E37DCD53EDBEA39582 /* BattleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Battle/BattleView.swift"; sourceTree = SOURCE_ROOT; };
+		A7F58DE114525C078006663A /* BootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Boot/BootView.swift"; sourceTree = SOURCE_ROOT; };
+		FFC78A38B8CD525D9BAA0327 /* CinematicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Cinematic/CinematicView.swift"; sourceTree = SOURCE_ROOT; };
+		B4288ADCE90F5F7A8862C017 /* DuelSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Duel/DuelSetupView.swift"; sourceTree = SOURCE_ROOT; };
+		0B677C11A6FD56B29C4D6318 /* DuelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Duel/DuelView.swift"; sourceTree = SOURCE_ROOT; };
+		27684F560F98542F9099A260 /* FactionSelectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Faction/FactionSelectView.swift"; sourceTree = SOURCE_ROOT; };
+		E740FBFA74AC59369C89F78F /* MatchmakingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Matchmaking/MatchmakingView.swift"; sourceTree = SOURCE_ROOT; };
+		FD1336AC5C7951F3B8980CEC /* MenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Menu/MenuView.swift"; sourceTree = SOURCE_ROOT; };
+		9AC7AD41496D50EEA4D72EAC /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Results/ResultsView.swift"; sourceTree = SOURCE_ROOT; };
+		3E250170787E56F38331778C /* BattleCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Rendering/BattleCanvasView.swift"; sourceTree = SOURCE_ROOT; };
+		E2E50C7B53425701A27F7172 /* GameCenterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/GameCenterService.swift"; sourceTree = SOURCE_ROOT; };
+		531A048B8E8B5B5D93ABF071 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/HapticsService.swift"; sourceTree = SOURCE_ROOT; };
+		89E2600C88825985A52A83D2 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/ProfileStore.swift"; sourceTree = SOURCE_ROOT; };
+		3A2428AF2E025611911D389F /* VaalbaraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/VaalbaraApp.swift"; sourceTree = SOURCE_ROOT; };
+		D98842D9C47F5D929FA16C3A /* bear-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-attack.webp"; sourceTree = SOURCE_ROOT; };
+		15692F205BCD55DAB50F9358 /* bear-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-down.webp"; sourceTree = SOURCE_ROOT; };
+		F8EC96B4ED685969A8A69654 /* bear-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-intro.webp"; sourceTree = SOURCE_ROOT; };
+		EB64828BB49750DE80293CEE /* bear-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-ko.webp"; sourceTree = SOURCE_ROOT; };
+		8B50688A292950E5A867D1A8 /* bear-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-run.webp"; sourceTree = SOURCE_ROOT; };
+		BF4ED6388E2A59B696147A62 /* bear-swat.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-swat.webp"; sourceTree = SOURCE_ROOT; };
+		83CF3AC1223E5962A1F65950 /* bear-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-up.webp"; sourceTree = SOURCE_ROOT; };
+		80815583D00A5EDF8B719865 /* bees-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bees-attack.webp"; sourceTree = SOURCE_ROOT; };
+		A6925470432B5C0B96F1D9A1 /* bees-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bees-down.webp"; sourceTree = SOURCE_ROOT; };
+		38DB6DB7E1865B6E835F514C /* bees-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bees-intro.webp"; sourceTree = SOURCE_ROOT; };
+		449B9D35AA095990878D8B8E /* bees-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bees-ko.webp"; sourceTree = SOURCE_ROOT; };
+		C55B50E8D4E953F18B769C7A /* bees-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bees-run.webp"; sourceTree = SOURCE_ROOT; };
+		AACB96E0E90E54AE8BBB4975 /* bees-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bees-up.webp"; sourceTree = SOURCE_ROOT; };
+		28B2FABB024B5585A14F277C /* beetle-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/beetle-attack.webp"; sourceTree = SOURCE_ROOT; };
+		0861BE1ADE1055859690BCD3 /* beetle-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/beetle-down.webp"; sourceTree = SOURCE_ROOT; };
+		A0BF0DAB50965C0DB3618265 /* beetle-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/beetle-intro.webp"; sourceTree = SOURCE_ROOT; };
+		CF395FB376905076A6AD3790 /* beetle-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/beetle-ko.webp"; sourceTree = SOURCE_ROOT; };
+		CE621646E49050B7BA0D5F5B /* beetle-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/beetle-run.webp"; sourceTree = SOURCE_ROOT; };
+		EE3D533DC5FE57D58418DC7F /* beetle-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/beetle-up.webp"; sourceTree = SOURCE_ROOT; };
+		6F5294AA0FB453B5988BE255 /* bighorn-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bighorn-attack.webp"; sourceTree = SOURCE_ROOT; };
+		1D6860BE16F551BBA60A6519 /* bighorn-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bighorn-down.webp"; sourceTree = SOURCE_ROOT; };
+		2F1942EB6EE7526ABB09BF2A /* bighorn-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bighorn-intro.webp"; sourceTree = SOURCE_ROOT; };
+		92FE0059DAF45D2CAF1B3E27 /* bighorn-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bighorn-ko.webp"; sourceTree = SOURCE_ROOT; };
+		D653C693B5915C15BF3255E4 /* bighorn-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bighorn-run.webp"; sourceTree = SOURCE_ROOT; };
+		D61E3FC4107C53D38793CB11 /* bighorn-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bighorn-up.webp"; sourceTree = SOURCE_ROOT; };
+		3EC39A5367B65C779B8EAACD /* eagle-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/eagle-attack.webp"; sourceTree = SOURCE_ROOT; };
+		C476264F04305B0A831A2231 /* eagle-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/eagle-down.webp"; sourceTree = SOURCE_ROOT; };
+		A1E11734E6C3563297BF1780 /* eagle-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/eagle-intro.webp"; sourceTree = SOURCE_ROOT; };
+		E2016696F8D45139B22B6E52 /* eagle-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/eagle-ko.webp"; sourceTree = SOURCE_ROOT; };
+		2FB8C37DB2385B57AA075EA0 /* eagle-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/eagle-run.webp"; sourceTree = SOURCE_ROOT; };
+		C90FF942DF4A51C785B1741B /* eagle-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/eagle-up.webp"; sourceTree = SOURCE_ROOT; };
+		9E85C66BC0F35F82AD113E26 /* fireants-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/fireants-attack.webp"; sourceTree = SOURCE_ROOT; };
+		504B5C98A0465612BA0FC100 /* fireants-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/fireants-down.webp"; sourceTree = SOURCE_ROOT; };
+		74AE976CC2415777B44E6502 /* fireants-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/fireants-intro.webp"; sourceTree = SOURCE_ROOT; };
+		84010EBF0CF458C7BF57C974 /* fireants-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/fireants-ko.webp"; sourceTree = SOURCE_ROOT; };
+		388FECCF4302509D991537A3 /* fireants-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/fireants-run.webp"; sourceTree = SOURCE_ROOT; };
+		407BB5B0792C5C81986AA4BF /* fireants-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/fireants-up.webp"; sourceTree = SOURCE_ROOT; };
+		638AB0F5E26C5B68830A885D /* honeybadger-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/honeybadger-attack.webp"; sourceTree = SOURCE_ROOT; };
+		0FEBEDBE6B8C55C49381F31C /* honeybadger-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/honeybadger-down.webp"; sourceTree = SOURCE_ROOT; };
+		6EF0ABCAD9535DAB837BF068 /* honeybadger-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/honeybadger-intro.webp"; sourceTree = SOURCE_ROOT; };
+		8ABFC08520A75620BDC4657C /* honeybadger-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/honeybadger-ko.webp"; sourceTree = SOURCE_ROOT; };
+		C0D2230FCCA25DED9C61FBA3 /* honeybadger-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/honeybadger-run.webp"; sourceTree = SOURCE_ROOT; };
+		157E49E92A655D7FB8A84D69 /* honeybadger-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/honeybadger-up.webp"; sourceTree = SOURCE_ROOT; };
+		8CB7528681715D0F8FD7F239 /* lion-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/lion-attack.webp"; sourceTree = SOURCE_ROOT; };
+		E1B121E5BAA357ED9C86DF24 /* lion-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/lion-down.webp"; sourceTree = SOURCE_ROOT; };
+		65455B973DD3573A92CD78AB /* lion-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/lion-intro.webp"; sourceTree = SOURCE_ROOT; };
+		50913373987252B799C2C2D2 /* lion-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/lion-ko.webp"; sourceTree = SOURCE_ROOT; };
+		40294E20F2D4532AA57612F5 /* lion-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/lion-run.webp"; sourceTree = SOURCE_ROOT; };
+		FF8AD66ECD1D534D898616BF /* lion-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/lion-up.webp"; sourceTree = SOURCE_ROOT; };
+		6F8AA6FDE773567A9797FA84 /* porcupine-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/porcupine-attack.webp"; sourceTree = SOURCE_ROOT; };
+		F09F712E06FD5257A4B9F218 /* porcupine-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/porcupine-down.webp"; sourceTree = SOURCE_ROOT; };
+		7A3D2BCFE639504D81BB47D4 /* porcupine-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/porcupine-intro.webp"; sourceTree = SOURCE_ROOT; };
+		ECAD0D22A8BB5069B04E8C5C /* porcupine-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/porcupine-ko.webp"; sourceTree = SOURCE_ROOT; };
+		55F02BBED632503AA1758553 /* porcupine-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/porcupine-run.webp"; sourceTree = SOURCE_ROOT; };
+		208F45B627365A51993382C6 /* porcupine-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/porcupine-up.webp"; sourceTree = SOURCE_ROOT; };
+		D255AA8E53F6533CB151005A /* scorpion-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-attack.webp"; sourceTree = SOURCE_ROOT; };
+		F34E5E3F272B58EEAB8FD168 /* scorpion-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-down.webp"; sourceTree = SOURCE_ROOT; };
+		AABDC12BB5075E299813BFB1 /* scorpion-duel-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-duel-attack.webp"; sourceTree = SOURCE_ROOT; };
+		8755F9AC0D6058AEA0774B6A /* scorpion-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-intro.webp"; sourceTree = SOURCE_ROOT; };
+		D616E9EC5A7955C3B2A02A05 /* scorpion-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-ko.webp"; sourceTree = SOURCE_ROOT; };
+		10D27211F94C5B21BF97719F /* scorpion-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-run.webp"; sourceTree = SOURCE_ROOT; };
+		0B9EA1A5E4A2528392137F84 /* scorpion-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/scorpion-up.webp"; sourceTree = SOURCE_ROOT; };
+		EA06922E304D522EAE320728 /* trex-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/trex-attack.webp"; sourceTree = SOURCE_ROOT; };
+		3F8D2B53B80B5E368ED6A2E8 /* trex-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/trex-down.webp"; sourceTree = SOURCE_ROOT; };
+		E701940977D65D06876E8D6F /* trex-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/trex-intro.webp"; sourceTree = SOURCE_ROOT; };
+		6F6A5BFA24F35CBF91D7C50B /* trex-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/trex-ko.webp"; sourceTree = SOURCE_ROOT; };
+		058F4C610FF852BA9A6FE929 /* trex-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/trex-run.webp"; sourceTree = SOURCE_ROOT; };
+		754D6FDABAB358C2AFABA6DB /* trex-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/trex-up.webp"; sourceTree = SOURCE_ROOT; };
+		BD2B3CC9FD7858EB86EEE084 /* wolf-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/wolf-attack.webp"; sourceTree = SOURCE_ROOT; };
+		80A9D2AE51D958CDB366635F /* wolf-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/wolf-down.webp"; sourceTree = SOURCE_ROOT; };
+		8C9453BC7D4B53FC91DA15B0 /* wolf-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/wolf-intro.webp"; sourceTree = SOURCE_ROOT; };
+		22613D4E8DB75C15BC8E4823 /* wolf-ko.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/wolf-ko.webp"; sourceTree = SOURCE_ROOT; };
+		D6211A1F2440510C80666B52 /* wolf-run.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/wolf-run.webp"; sourceTree = SOURCE_ROOT; };
+		99FA4D1973D5517899B52E5D /* wolf-up.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/wolf-up.webp"; sourceTree = SOURCE_ROOT; };
+		0CDCE1E2586F5246B689D280 /* arena1.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/arena1.webp"; sourceTree = SOURCE_ROOT; };
+		6259774E4834584E8AA3355F /* arena2.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/arena2.webp"; sourceTree = SOURCE_ROOT; };
+		FC0D2DD195A65DF298942A1B /* bear.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/bear.webp"; sourceTree = SOURCE_ROOT; };
+		DA1E1C17A40050D5A1386E78 /* bees.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/bees.webp"; sourceTree = SOURCE_ROOT; };
+		E4170DE66DF65BF4A87798B2 /* beetles.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/beetles.webp"; sourceTree = SOURCE_ROOT; };
+		71A322A135755988BF94B2A1 /* bighorn.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/bighorn.webp"; sourceTree = SOURCE_ROOT; };
+		685CFA7A968B5CF0B682BBB9 /* duel-basalt.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/duel-basalt.webp"; sourceTree = SOURCE_ROOT; };
+		B8D2539A697C5329886A8FB7 /* duel-oasis.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/duel-oasis.webp"; sourceTree = SOURCE_ROOT; };
+		CB0EF16CC9BC5EAC91CB6185 /* eagle.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/eagle.webp"; sourceTree = SOURCE_ROOT; };
+		E8C2A1832BB85E6EA7176CA4 /* fireants.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/fireants.webp"; sourceTree = SOURCE_ROOT; };
+		E918C6AFDD4051E498F19540 /* fort-front-ruin.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/fort-front-ruin.webp"; sourceTree = SOURCE_ROOT; };
+		3FE0557D227157DD9A1D30E2 /* fort-front.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/fort-front.webp"; sourceTree = SOURCE_ROOT; };
+		C1169E4B925A582EB3BA81D9 /* fort-rear-ruin.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/fort-rear-ruin.webp"; sourceTree = SOURCE_ROOT; };
+		C131EEC488D45D3890368184 /* fort-rear.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/fort-rear.webp"; sourceTree = SOURCE_ROOT; };
+		2CF0484CC35B59D48594DB9E /* honeybadger.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/honeybadger.webp"; sourceTree = SOURCE_ROOT; };
+		00D1404ED6785CC69B12AAEC /* lion.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/lion.webp"; sourceTree = SOURCE_ROOT; };
+		16B09A93A1C0515B9A50CF1E /* porcupine.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/porcupine.webp"; sourceTree = SOURCE_ROOT; };
+		99876520425B5A18B9E5E23E /* scorpion.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/scorpion.webp"; sourceTree = SOURCE_ROOT; };
+		B3C423244A13580C84CB1B5B /* trex.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/trex.webp"; sourceTree = SOURCE_ROOT; };
+		AC0783227B5654F8910AF85B /* wolves.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/wolves.webp"; sourceTree = SOURCE_ROOT; };
+		3ABAE6093A3554009464870B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Vaalbara/Info.plist; sourceTree = SOURCE_ROOT; };
+		CEA4F9437B7A580F9B25E541 /* Vaalbara.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Vaalbara/Vaalbara.entitlements; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A6FC395EE1D75BDF9B91E132 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C61387843CD0598BBC82CCE9 = {
+			isa = PBXGroup;
+			children = (
+				548E23E6586B530AB7EC0677 /* Vaalbara */,
+				6A2310287A5D5199B83353EE /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		6A2310287A5D5199B83353EE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				509CA9BD969A54C68693FA15 /* Vaalbara.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		548E23E6586B530AB7EC0677 /* Vaalbara */ = {
+			isa = PBXGroup;
+			children = (
+				F677395F443251E9BB426A5B /* AppState.swift */,
+				2B67940FD2C157DEB058CC29 /* RootView.swift */,
+				710B1EFF67B054AF8331522B /* VaalbaraTheme.swift */,
+				7A4120E37DCD53EDBEA39582 /* BattleView.swift */,
+				A7F58DE114525C078006663A /* BootView.swift */,
+				FFC78A38B8CD525D9BAA0327 /* CinematicView.swift */,
+				B4288ADCE90F5F7A8862C017 /* DuelSetupView.swift */,
+				0B677C11A6FD56B29C4D6318 /* DuelView.swift */,
+				27684F560F98542F9099A260 /* FactionSelectView.swift */,
+				E740FBFA74AC59369C89F78F /* MatchmakingView.swift */,
+				FD1336AC5C7951F3B8980CEC /* MenuView.swift */,
+				9AC7AD41496D50EEA4D72EAC /* ResultsView.swift */,
+				3E250170787E56F38331778C /* BattleCanvasView.swift */,
+				E2E50C7B53425701A27F7172 /* GameCenterService.swift */,
+				531A048B8E8B5B5D93ABF071 /* HapticsService.swift */,
+				89E2600C88825985A52A83D2 /* ProfileStore.swift */,
+				3A2428AF2E025611911D389F /* VaalbaraApp.swift */,
+				D98842D9C47F5D929FA16C3A /* bear-attack.webp */,
+				15692F205BCD55DAB50F9358 /* bear-down.webp */,
+				F8EC96B4ED685969A8A69654 /* bear-intro.webp */,
+				EB64828BB49750DE80293CEE /* bear-ko.webp */,
+				8B50688A292950E5A867D1A8 /* bear-run.webp */,
+				BF4ED6388E2A59B696147A62 /* bear-swat.webp */,
+				83CF3AC1223E5962A1F65950 /* bear-up.webp */,
+				80815583D00A5EDF8B719865 /* bees-attack.webp */,
+				A6925470432B5C0B96F1D9A1 /* bees-down.webp */,
+				38DB6DB7E1865B6E835F514C /* bees-intro.webp */,
+				449B9D35AA095990878D8B8E /* bees-ko.webp */,
+				C55B50E8D4E953F18B769C7A /* bees-run.webp */,
+				AACB96E0E90E54AE8BBB4975 /* bees-up.webp */,
+				28B2FABB024B5585A14F277C /* beetle-attack.webp */,
+				0861BE1ADE1055859690BCD3 /* beetle-down.webp */,
+				A0BF0DAB50965C0DB3618265 /* beetle-intro.webp */,
+				CF395FB376905076A6AD3790 /* beetle-ko.webp */,
+				CE621646E49050B7BA0D5F5B /* beetle-run.webp */,
+				EE3D533DC5FE57D58418DC7F /* beetle-up.webp */,
+				6F5294AA0FB453B5988BE255 /* bighorn-attack.webp */,
+				1D6860BE16F551BBA60A6519 /* bighorn-down.webp */,
+				2F1942EB6EE7526ABB09BF2A /* bighorn-intro.webp */,
+				92FE0059DAF45D2CAF1B3E27 /* bighorn-ko.webp */,
+				D653C693B5915C15BF3255E4 /* bighorn-run.webp */,
+				D61E3FC4107C53D38793CB11 /* bighorn-up.webp */,
+				3EC39A5367B65C779B8EAACD /* eagle-attack.webp */,
+				C476264F04305B0A831A2231 /* eagle-down.webp */,
+				A1E11734E6C3563297BF1780 /* eagle-intro.webp */,
+				E2016696F8D45139B22B6E52 /* eagle-ko.webp */,
+				2FB8C37DB2385B57AA075EA0 /* eagle-run.webp */,
+				C90FF942DF4A51C785B1741B /* eagle-up.webp */,
+				9E85C66BC0F35F82AD113E26 /* fireants-attack.webp */,
+				504B5C98A0465612BA0FC100 /* fireants-down.webp */,
+				74AE976CC2415777B44E6502 /* fireants-intro.webp */,
+				84010EBF0CF458C7BF57C974 /* fireants-ko.webp */,
+				388FECCF4302509D991537A3 /* fireants-run.webp */,
+				407BB5B0792C5C81986AA4BF /* fireants-up.webp */,
+				638AB0F5E26C5B68830A885D /* honeybadger-attack.webp */,
+				0FEBEDBE6B8C55C49381F31C /* honeybadger-down.webp */,
+				6EF0ABCAD9535DAB837BF068 /* honeybadger-intro.webp */,
+				8ABFC08520A75620BDC4657C /* honeybadger-ko.webp */,
+				C0D2230FCCA25DED9C61FBA3 /* honeybadger-run.webp */,
+				157E49E92A655D7FB8A84D69 /* honeybadger-up.webp */,
+				8CB7528681715D0F8FD7F239 /* lion-attack.webp */,
+				E1B121E5BAA357ED9C86DF24 /* lion-down.webp */,
+				65455B973DD3573A92CD78AB /* lion-intro.webp */,
+				50913373987252B799C2C2D2 /* lion-ko.webp */,
+				40294E20F2D4532AA57612F5 /* lion-run.webp */,
+				FF8AD66ECD1D534D898616BF /* lion-up.webp */,
+				6F8AA6FDE773567A9797FA84 /* porcupine-attack.webp */,
+				F09F712E06FD5257A4B9F218 /* porcupine-down.webp */,
+				7A3D2BCFE639504D81BB47D4 /* porcupine-intro.webp */,
+				ECAD0D22A8BB5069B04E8C5C /* porcupine-ko.webp */,
+				55F02BBED632503AA1758553 /* porcupine-run.webp */,
+				208F45B627365A51993382C6 /* porcupine-up.webp */,
+				D255AA8E53F6533CB151005A /* scorpion-attack.webp */,
+				F34E5E3F272B58EEAB8FD168 /* scorpion-down.webp */,
+				AABDC12BB5075E299813BFB1 /* scorpion-duel-attack.webp */,
+				8755F9AC0D6058AEA0774B6A /* scorpion-intro.webp */,
+				D616E9EC5A7955C3B2A02A05 /* scorpion-ko.webp */,
+				10D27211F94C5B21BF97719F /* scorpion-run.webp */,
+				0B9EA1A5E4A2528392137F84 /* scorpion-up.webp */,
+				EA06922E304D522EAE320728 /* trex-attack.webp */,
+				3F8D2B53B80B5E368ED6A2E8 /* trex-down.webp */,
+				E701940977D65D06876E8D6F /* trex-intro.webp */,
+				6F6A5BFA24F35CBF91D7C50B /* trex-ko.webp */,
+				058F4C610FF852BA9A6FE929 /* trex-run.webp */,
+				754D6FDABAB358C2AFABA6DB /* trex-up.webp */,
+				BD2B3CC9FD7858EB86EEE084 /* wolf-attack.webp */,
+				80A9D2AE51D958CDB366635F /* wolf-down.webp */,
+				8C9453BC7D4B53FC91DA15B0 /* wolf-intro.webp */,
+				22613D4E8DB75C15BC8E4823 /* wolf-ko.webp */,
+				D6211A1F2440510C80666B52 /* wolf-run.webp */,
+				99FA4D1973D5517899B52E5D /* wolf-up.webp */,
+				0CDCE1E2586F5246B689D280 /* arena1.webp */,
+				6259774E4834584E8AA3355F /* arena2.webp */,
+				FC0D2DD195A65DF298942A1B /* bear.webp */,
+				DA1E1C17A40050D5A1386E78 /* bees.webp */,
+				E4170DE66DF65BF4A87798B2 /* beetles.webp */,
+				71A322A135755988BF94B2A1 /* bighorn.webp */,
+				685CFA7A968B5CF0B682BBB9 /* duel-basalt.webp */,
+				B8D2539A697C5329886A8FB7 /* duel-oasis.webp */,
+				CB0EF16CC9BC5EAC91CB6185 /* eagle.webp */,
+				E8C2A1832BB85E6EA7176CA4 /* fireants.webp */,
+				E918C6AFDD4051E498F19540 /* fort-front-ruin.webp */,
+				3FE0557D227157DD9A1D30E2 /* fort-front.webp */,
+				C1169E4B925A582EB3BA81D9 /* fort-rear-ruin.webp */,
+				C131EEC488D45D3890368184 /* fort-rear.webp */,
+				2CF0484CC35B59D48594DB9E /* honeybadger.webp */,
+				00D1404ED6785CC69B12AAEC /* lion.webp */,
+				16B09A93A1C0515B9A50CF1E /* porcupine.webp */,
+				99876520425B5A18B9E5E23E /* scorpion.webp */,
+				B3C423244A13580C84CB1B5B /* trex.webp */,
+				AC0783227B5654F8910AF85B /* wolves.webp */,
+				3ABAE6093A3554009464870B /* Info.plist */,
+				CEA4F9437B7A580F9B25E541 /* Vaalbara.entitlements */,
+			);
+			path = Vaalbara;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1D2082ED5F0B556FA34CF001 /* Vaalbara */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2FE4238AFC17522DBB3B7947 /* Build configuration list for PBXNativeTarget "Vaalbara" */;
+			buildPhases = (
+				77F50DE8E3EA58F2A0BBA4FF /* Sources */,
+				A6FC395EE1D75BDF9B91E132 /* Frameworks */,
+				0248064B14E75BB7AD1328BF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Vaalbara;
+			packageProductDependencies = (
+				0E32DFD4DA8057559B37AE77 /* VaalbaraCore */,
+				871561FCD97B59C78291B5AA /* VaalbaraEngine */,
+				452C065BC7F35F539162E8DC /* VaalbaraAudio */,
+				5973115740BF551CA3992B83 /* VaalbaraNetworking */,
+			);
+			productName = Vaalbara;
+			productReference = 509CA9BD969A54C68693FA15 /* Vaalbara.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5F565B1EE1005F0D9BE2297D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					1D2082ED5F0B556FA34CF001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = BA39F7D7BBF852FB9348B708 /* Build configuration list for PBXProject "Vaalbara" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C61387843CD0598BBC82CCE9;
+			packageReferences = (
+				10F6A4F3216158D1ACE1C883 /* XCLocalSwiftPackageReference "VaalbaraCore" */,
+				6ED730BF0D3D5D1BA4AFE36F /* XCLocalSwiftPackageReference "VaalbaraEngine" */,
+				A435F402ECA652FBB2111E3A /* XCLocalSwiftPackageReference "VaalbaraAudio" */,
+				699B41E9B835578AA0DACF56 /* XCLocalSwiftPackageReference "VaalbaraNetworking" */,
+			);
+			productRefGroup = 6A2310287A5D5199B83353EE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1D2082ED5F0B556FA34CF001 /* Vaalbara */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0248064B14E75BB7AD1328BF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AF3C0272DFBD52439B5B5946 /* bear-attack.webp in Resources */,
+				4EFBA26733945599BA31B2F1 /* bear-down.webp in Resources */,
+				DD978A788CB85EB184C22C80 /* bear-intro.webp in Resources */,
+				14FD28D7F1FB568B8E717623 /* bear-ko.webp in Resources */,
+				7417EC07E889560AAF8F2EFA /* bear-run.webp in Resources */,
+				87128F69442F5259A3C04CE2 /* bear-swat.webp in Resources */,
+				3D2505F6E0D85C14809C3315 /* bear-up.webp in Resources */,
+				7B973A0C4F35555896F0293D /* bees-attack.webp in Resources */,
+				86B63B2E0DAF508A9C3FE86A /* bees-down.webp in Resources */,
+				5492C9AA445A5BFD887CD2F9 /* bees-intro.webp in Resources */,
+				A32E5896677E5E588EB1CE77 /* bees-ko.webp in Resources */,
+				74ADF5BA260E5966BF1B0EFD /* bees-run.webp in Resources */,
+				4579E25B67C65B7C95F92CF3 /* bees-up.webp in Resources */,
+				A17118E613E75749BE5CC73E /* beetle-attack.webp in Resources */,
+				FA96669027A1552BA0B2F771 /* beetle-down.webp in Resources */,
+				12250A0B3F8F5F7CB48495D5 /* beetle-intro.webp in Resources */,
+				639A9F59CABF51DDA490B6A8 /* beetle-ko.webp in Resources */,
+				0F220AB01AB75D7CBBE0EAA4 /* beetle-run.webp in Resources */,
+				2E20F8CF98A454C9A2183AA2 /* beetle-up.webp in Resources */,
+				5C3CC62DE14D5D5C9555E0FC /* bighorn-attack.webp in Resources */,
+				D2002F72E42D5866AF357E95 /* bighorn-down.webp in Resources */,
+				1A54F6BD83435E2FB13D8B3E /* bighorn-intro.webp in Resources */,
+				34A526D4556C5092A8DDE8A8 /* bighorn-ko.webp in Resources */,
+				BB7FF0DFE42954A98570F50E /* bighorn-run.webp in Resources */,
+				43198837DE1E5593AAE67C39 /* bighorn-up.webp in Resources */,
+				E526C32EC41657C2926BBB4D /* eagle-attack.webp in Resources */,
+				8CBAB0E5497C5234892BFD81 /* eagle-down.webp in Resources */,
+				5E9BA2A5EF83597799F2B86F /* eagle-intro.webp in Resources */,
+				2B81575174C053D2B5FB678A /* eagle-ko.webp in Resources */,
+				8636F8BFF3DF54DDAF53B9FE /* eagle-run.webp in Resources */,
+				8CCAF832290D518AA4CBBB27 /* eagle-up.webp in Resources */,
+				6E7423DD9D6055D58C44BE68 /* fireants-attack.webp in Resources */,
+				31B64222BAAD52A4833FBB3A /* fireants-down.webp in Resources */,
+				7E37D678A87C5FDF9F2D3605 /* fireants-intro.webp in Resources */,
+				0DA320EFF1F95FC2BD9006CD /* fireants-ko.webp in Resources */,
+				2DC6E8DC3B1F592E853E2B72 /* fireants-run.webp in Resources */,
+				EFC8A18D73EA536EA0CF112B /* fireants-up.webp in Resources */,
+				2C39A6BDBC965262B7AF1BF9 /* honeybadger-attack.webp in Resources */,
+				C6A5FCEF25A7530E891874D2 /* honeybadger-down.webp in Resources */,
+				6955BF73C0625184B96AD51D /* honeybadger-intro.webp in Resources */,
+				1DB6F7D5C8D4569C8DA11129 /* honeybadger-ko.webp in Resources */,
+				785B62A88D855F9A9CD90B1D /* honeybadger-run.webp in Resources */,
+				EADBC44B04F2557794BD8D17 /* honeybadger-up.webp in Resources */,
+				94D6BBEE1A5A5B109077E0E0 /* lion-attack.webp in Resources */,
+				1C09BEBAA8A95E45BC842144 /* lion-down.webp in Resources */,
+				11B50A4615455C38802FEBBF /* lion-intro.webp in Resources */,
+				B7886EC4766C5EE385C3C2B0 /* lion-ko.webp in Resources */,
+				50DD153DBEC4574EAF512BDB /* lion-run.webp in Resources */,
+				A16DB8E7AF22506881B0B5E1 /* lion-up.webp in Resources */,
+				BDE9A985D9185FDAA0594C91 /* porcupine-attack.webp in Resources */,
+				556B8176C1875E77A2908366 /* porcupine-down.webp in Resources */,
+				D4CAD55519225B24BF0B1B80 /* porcupine-intro.webp in Resources */,
+				8765D07FCAE05C6998881AC8 /* porcupine-ko.webp in Resources */,
+				2916811463CD58F3A3069744 /* porcupine-run.webp in Resources */,
+				21CCBD18DA4557E49077614B /* porcupine-up.webp in Resources */,
+				7C2987460A9E5FA9AA9F0D0F /* scorpion-attack.webp in Resources */,
+				CC3C52F0E79B5E9A8953791D /* scorpion-down.webp in Resources */,
+				35EF462794825167BEE5C2A9 /* scorpion-duel-attack.webp in Resources */,
+				62DBF310A5F0528286E73A0C /* scorpion-intro.webp in Resources */,
+				2B8FA553C6205960B8376063 /* scorpion-ko.webp in Resources */,
+				7A168A189C2C53CC91D0F3E1 /* scorpion-run.webp in Resources */,
+				CFEA6BCD25F659DEA8E5533F /* scorpion-up.webp in Resources */,
+				472A690515C45A1A8763C825 /* trex-attack.webp in Resources */,
+				19351D37B9BB5000832CEB7D /* trex-down.webp in Resources */,
+				0AC29F538479511594DDF8AF /* trex-intro.webp in Resources */,
+				E457AEA639CB50268487A7F2 /* trex-ko.webp in Resources */,
+				E9A0BF4AE343504E952763E6 /* trex-run.webp in Resources */,
+				312FEBACFDF35042B7651B8F /* trex-up.webp in Resources */,
+				63A733B0B4D85C4FB9ACB3F4 /* wolf-attack.webp in Resources */,
+				B19C62E0458C5797843EE8BC /* wolf-down.webp in Resources */,
+				56E190F095805C4BA971B63A /* wolf-intro.webp in Resources */,
+				13D1473CBC225BAB98F6829A /* wolf-ko.webp in Resources */,
+				0816AC6A26B656A0B6F62BCC /* wolf-run.webp in Resources */,
+				3BDF150AA4CA510FB9CC6C48 /* wolf-up.webp in Resources */,
+				50C4BBE33AA25AEEA9E66192 /* arena1.webp in Resources */,
+				396D3846B61F56A1BA037CB0 /* arena2.webp in Resources */,
+				197FB7273B83564CB737BF15 /* bear.webp in Resources */,
+				97FEEADF90AB59BD8EE8C092 /* bees.webp in Resources */,
+				20D1CBAB919C50F5AE214450 /* beetles.webp in Resources */,
+				B45FA02BB7B75BC0A213931C /* bighorn.webp in Resources */,
+				88C0FBAD816E5915AE3A9365 /* duel-basalt.webp in Resources */,
+				10631EA3CD91536B826BD12B /* duel-oasis.webp in Resources */,
+				212EF6A98B615135AD29FCAE /* eagle.webp in Resources */,
+				13A36FC3D1B15A15B4872A23 /* fireants.webp in Resources */,
+				614CD1B4DB9D58419849A911 /* fort-front-ruin.webp in Resources */,
+				941BFB8F9D3D5AA585D75FB2 /* fort-front.webp in Resources */,
+				829291C9613858C68A450FFE /* fort-rear-ruin.webp in Resources */,
+				839EDE8D80495AAD892D7A19 /* fort-rear.webp in Resources */,
+				2FD8BFE09D195B149C567D2B /* honeybadger.webp in Resources */,
+				C1CA8DE1579A53988B260AD3 /* lion.webp in Resources */,
+				36460756B107500ABF42CA5E /* porcupine.webp in Resources */,
+				CD3CA064C55D5426AA9005E3 /* scorpion.webp in Resources */,
+				7BDBD95CC81C5620AD813D9D /* trex.webp in Resources */,
+				2893D25D78105783AAF6F37F /* wolves.webp in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		77F50DE8E3EA58F2A0BBA4FF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE3073148CA35476AF2E8691 /* AppState.swift in Sources */,
+				502D052B30E35F4B8CDC8FCF /* RootView.swift in Sources */,
+				CF91ED16A8855098A782DE73 /* VaalbaraTheme.swift in Sources */,
+				40394EA78235586B85F50A30 /* BattleView.swift in Sources */,
+				794D7681B5CA5EBCB3FB95E9 /* BootView.swift in Sources */,
+				3E1A4ECA406C58588E1AEBCA /* CinematicView.swift in Sources */,
+				E130DB13AF14555F9AC848FA /* DuelSetupView.swift in Sources */,
+				D79776310BAE5134A1DC3CED /* DuelView.swift in Sources */,
+				09DA0BE143D455B7BDCF05AA /* FactionSelectView.swift in Sources */,
+				F5FC9EB05AE05EB088B378EE /* MatchmakingView.swift in Sources */,
+				47F2C671A61D5BA38E7E8C85 /* MenuView.swift in Sources */,
+				8A8F20CD974C5C24957C1F41 /* ResultsView.swift in Sources */,
+				FDB6A945190150569BA45327 /* BattleCanvasView.swift in Sources */,
+				4F36E01F5420536FB21F93BF /* GameCenterService.swift in Sources */,
+				42F6A5FD67DA56A1AA7C997A /* HapticsService.swift in Sources */,
+				3E0F5A81E18B5188B2CF5F5F /* ProfileStore.swift in Sources */,
+				342FDF3AA9765FD18BF03416 /* VaalbaraApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		404596B6DE60566897233C9F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		3DE98795B02954CDB4F4BB3E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.9;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		3CAA5FD080EC56ACBB81F769 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Vaalbara/Vaalbara.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Vaalbara/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3BA15AA875035DC094469CA6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Vaalbara/Vaalbara.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Vaalbara/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BA39F7D7BBF852FB9348B708 /* Build configuration list for PBXProject "Vaalbara" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				404596B6DE60566897233C9F /* Debug */,
+				3DE98795B02954CDB4F4BB3E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2FE4238AFC17522DBB3B7947 /* Build configuration list for PBXNativeTarget "Vaalbara" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3CAA5FD080EC56ACBB81F769 /* Debug */,
+				3BA15AA875035DC094469CA6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		10F6A4F3216158D1ACE1C883 /* XCLocalSwiftPackageReference "VaalbaraCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/VaalbaraCore;
+		};
+		6ED730BF0D3D5D1BA4AFE36F /* XCLocalSwiftPackageReference "VaalbaraEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/VaalbaraEngine;
+		};
+		A435F402ECA652FBB2111E3A /* XCLocalSwiftPackageReference "VaalbaraAudio" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/VaalbaraAudio;
+		};
+		699B41E9B835578AA0DACF56 /* XCLocalSwiftPackageReference "VaalbaraNetworking" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/VaalbaraNetworking;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0E32DFD4DA8057559B37AE77 /* VaalbaraCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VaalbaraCore;
+		};
+		871561FCD97B59C78291B5AA /* VaalbaraEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VaalbaraEngine;
+		};
+		452C065BC7F35F539162E8DC /* VaalbaraAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VaalbaraAudio;
+		};
+		5973115740BF551CA3992B83 /* VaalbaraNetworking */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VaalbaraNetworking;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5F565B1EE1005F0D9BE2297D /* Project object */;
+}
