@@ -44,7 +44,11 @@ online multiplayer are reserved for a future release. Bundle ID:
 
 ## Web (reference PWA)
 
-A high-fidelity, mobile-first multiplayer PWA tactics game — real-time arena battles with the resource economy and card cycling of Clash Royale, set on the dying supercontinent of Vaalbara. Painted arenas and frame-animated characters, procedural particles and a fully synthesized Zimmer-style score — zero audio files, offline-capable.
+A high-fidelity, mobile-first tactics game — real-time arena battles combining
+positional strategy with a cycling card economy, set on the dying
+supercontinent of Vaalbara. Painted arenas and frame-animated characters,
+procedural particles and a fully synthesized cinematic score — zero audio
+files, offline-capable.
 
 ## Play
 

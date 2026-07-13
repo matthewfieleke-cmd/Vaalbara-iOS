@@ -483,7 +483,7 @@ export const OBELISK_HP = 2050;
 export const RUBBLE_VISIBLE_DEPTH = 0.06;
 export const OBELISK_RADIUS = 0.55;
 /** Units only auto-acquire enemies inside this radius; otherwise they push
- *  the lane toward the enemy obelisk (Clash-Royale-style tower pressure). */
+ *  the lane toward the enemy obelisk (lane-based tower pressure). */
 /** Units only auto-acquire enemies inside this radius; otherwise they push
  *  the lane toward the enemy gatehouse. Kept tight so opposite-lane armies
  *  don't vacuum into one midfield brawl — both fortresses can take pressure
