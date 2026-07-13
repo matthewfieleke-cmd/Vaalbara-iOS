@@ -464,6 +464,11 @@ public struct GameState: Codable, Sendable {
 public struct TickResult: Sendable {
     public let state: GameState
     public let events: [GameEvent]
+
+    public init(state: GameState, events: [GameEvent]) {
+        self.state = state
+        self.events = events
+    }
 }
 
 // MARK: - Meta
