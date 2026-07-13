@@ -24,6 +24,7 @@
 		42F6A5FD67DA56A1AA7C997A /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531A048B8E8B5B5D93ABF071 /* HapticsService.swift */; };
 		3E0F5A81E18B5188B2CF5F5F /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E2600C88825985A52A83D2 /* ProfileStore.swift */; };
 		342FDF3AA9765FD18BF03416 /* VaalbaraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2428AF2E025611911D389F /* VaalbaraApp.swift */; };
+		C3EC2B752EE254499057A134 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 899A14F655C85BCD939FC765 /* Assets.xcassets */; };
 		AF3C0272DFBD52439B5B5946 /* bear-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = D98842D9C47F5D929FA16C3A /* bear-attack.webp */; };
 		4EFBA26733945599BA31B2F1 /* bear-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 15692F205BCD55DAB50F9358 /* bear-down.webp */; };
 		DD978A788CB85EB184C22C80 /* bear-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = F8EC96B4ED685969A8A69654 /* bear-intro.webp */; };
@@ -118,6 +119,10 @@
 		CD3CA064C55D5426AA9005E3 /* scorpion.webp in Resources */ = {isa = PBXBuildFile; fileRef = 99876520425B5A18B9E5E23E /* scorpion.webp */; };
 		7BDBD95CC81C5620AD813D9D /* trex.webp in Resources */ = {isa = PBXBuildFile; fileRef = B3C423244A13580C84CB1B5B /* trex.webp */; };
 		2893D25D78105783AAF6F37F /* wolves.webp in Resources */ = {isa = PBXBuildFile; fileRef = AC0783227B5654F8910AF85B /* wolves.webp */; };
+		B9D1E585CE6C58A4A918EB46 /* VaalbaraCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0E32DFD4DA8057559B37AE77 /* VaalbaraCore */; };
+		7CCCBAF5F47959B7ABA11D7B /* VaalbaraEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 871561FCD97B59C78291B5AA /* VaalbaraEngine */; };
+		CC9823EFF9535629A964E664 /* VaalbaraAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 452C065BC7F35F539162E8DC /* VaalbaraAudio */; };
+		57B0714CE6D05CC19EBE512E /* VaalbaraNetworking in Frameworks */ = {isa = PBXBuildFile; productRef = 5973115740BF551CA3992B83 /* VaalbaraNetworking */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -139,6 +144,7 @@
 		531A048B8E8B5B5D93ABF071 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/HapticsService.swift"; sourceTree = SOURCE_ROOT; };
 		89E2600C88825985A52A83D2 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/ProfileStore.swift"; sourceTree = SOURCE_ROOT; };
 		3A2428AF2E025611911D389F /* VaalbaraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/VaalbaraApp.swift"; sourceTree = SOURCE_ROOT; };
+		899A14F655C85BCD939FC765 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Vaalbara/Assets.xcassets"; sourceTree = SOURCE_ROOT; };
 		D98842D9C47F5D929FA16C3A /* bear-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-attack.webp"; sourceTree = SOURCE_ROOT; };
 		15692F205BCD55DAB50F9358 /* bear-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-down.webp"; sourceTree = SOURCE_ROOT; };
 		F8EC96B4ED685969A8A69654 /* bear-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-intro.webp"; sourceTree = SOURCE_ROOT; };
@@ -242,6 +248,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9D1E585CE6C58A4A918EB46 /* VaalbaraCore in Frameworks */,
+				7CCCBAF5F47959B7ABA11D7B /* VaalbaraEngine in Frameworks */,
+				CC9823EFF9535629A964E664 /* VaalbaraAudio in Frameworks */,
+				57B0714CE6D05CC19EBE512E /* VaalbaraNetworking in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -284,6 +294,7 @@
 				531A048B8E8B5B5D93ABF071 /* HapticsService.swift */,
 				89E2600C88825985A52A83D2 /* ProfileStore.swift */,
 				3A2428AF2E025611911D389F /* VaalbaraApp.swift */,
+				899A14F655C85BCD939FC765 /* Assets.xcassets */,
 				D98842D9C47F5D929FA16C3A /* bear-attack.webp */,
 				15692F205BCD55DAB50F9358 /* bear-down.webp */,
 				F8EC96B4ED685969A8A69654 /* bear-intro.webp */,
@@ -454,6 +465,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C3EC2B752EE254499057A134 /* Assets.xcassets in Resources */,
 				AF3C0272DFBD52439B5B5946 /* bear-attack.webp in Resources */,
 				4EFBA26733945599BA31B2F1 /* bear-down.webp in Resources */,
 				DD978A788CB85EB184C22C80 /* bear-intro.webp in Resources */,

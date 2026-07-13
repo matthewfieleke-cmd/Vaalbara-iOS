@@ -113,9 +113,12 @@ def main() -> None:
     package_refs: list[str] = []
     package_deps: list[str] = []
     target_package_deps: list[str] = []
+    framework_build_files: list[str] = []
+    framework_phase_files: list[str] = []
     for pkg_name, pkg_path in packages:
         pref = uid(f"pkgref:{pkg_name}")
         pdep = uid(f"pkgdep:{pkg_name}")
+        pbuild = uid(f"pkgbuild:{pkg_name}")
         package_refs.append(
             f'\t\t{pref} /* XCLocalSwiftPackageReference "{pkg_name}" */ = {{\n'
             f'\t\t\tisa = XCLocalSwiftPackageReference;\n'
@@ -130,6 +133,10 @@ def main() -> None:
             f'\t\t}};'
         )
         target_package_deps.append(f"\t\t\t\t{pdep} /* {pkg_name} */,")
+        framework_build_files.append(
+            f"\t\t{pbuild} /* {pkg_name} in Frameworks */ = {{isa = PBXBuildFile; productRef = {pdep} /* {pkg_name} */; }};"
+        )
+        framework_phase_files.append(f"\t\t\t\t{pbuild} /* {pkg_name} in Frameworks */,")
 
     sources_list = "\n".join(f"\t\t\t\t{uid(f'build:{sf}')} /* {sf.name} in Sources */," for sf in swift_files)
     resources_list = "\n".join(f"\t\t\t\t{uid(f'build:{rf}')} /* {rf.name} in Resources */," for rf in resource_files)
@@ -148,6 +155,7 @@ def main() -> None:
 /* Begin PBXBuildFile section */
 {chr(10).join(build_files_sources)}
 {chr(10).join(build_files_resources)}
+{chr(10).join(framework_build_files)}
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -160,6 +168,7 @@ def main() -> None:
 \t\t\tisa = PBXFrameworksBuildPhase;
 \t\t\tbuildActionMask = 2147483647;
 \t\t\tfiles = (
+{chr(10).join(framework_phase_files)}
 \t\t\t);
 \t\t\trunOnlyForDeploymentPostprocessing = 0;
 \t\t}};
