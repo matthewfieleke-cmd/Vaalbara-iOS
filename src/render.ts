@@ -252,7 +252,10 @@ export class Renderer {
     this.canvas.style.height = `${cssH}px`;
     this.unit = Math.min(cssW / (WORLD_W + 0.5), cssH / (WORLD_H + 1.6));
     this.ox = (cssW - WORLD_W * this.unit) / 2;
-    this.oy = (cssH - WORLD_H * this.unit) / 2 + this.unit * 0.35;
+    // Keep the painted world vertically centered in the available battlefield
+    // rectangle. The previous +0.35-unit bias left excess space above the
+    // arena and crowded its lower edge in both Basalt and Oasis.
+    this.oy = (cssH - WORLD_H * this.unit) / 2;
   }
 
   /** World -> screen px. Seat 1 sees the world rotated 180°. */
