@@ -391,6 +391,11 @@ public struct PhaseConfig: Codable, Sendable {
     public let phase1Ticks: Int
     public let phase2Ticks: Int
 
+    public init(phase1Ticks: Int, phase2Ticks: Int) {
+        self.phase1Ticks = phase1Ticks
+        self.phase2Ticks = phase2Ticks
+    }
+
     public static let standard = PhaseConfig(
         phase1Ticks: WorldConstants.phase1Ticks,
         phase2Ticks: WorldConstants.phase2Ticks
@@ -420,6 +425,40 @@ public struct GameState: Codable, Sendable {
     public var captureMeter: Double
     public var winner: MatchWinner?
     public var dominanceP0: Double
+
+    public init(
+        seed: UInt32,
+        cfg: PhaseConfig,
+        tick: Tick,
+        phase: GamePhase,
+        phaseTicksLeft: Int,
+        units: [UnitState],
+        projectiles: [ProjectileState],
+        zones: [ZoneState],
+        props: [PropState],
+        obelisks: [ObeliskState],
+        pendingLava: [PendingLavaRain],
+        players: [PlayerBoardState],
+        captureMeter: Double,
+        winner: MatchWinner?,
+        dominanceP0: Double
+    ) {
+        self.seed = seed
+        self.cfg = cfg
+        self.tick = tick
+        self.phase = phase
+        self.phaseTicksLeft = phaseTicksLeft
+        self.units = units
+        self.projectiles = projectiles
+        self.zones = zones
+        self.props = props
+        self.obelisks = obelisks
+        self.pendingLava = pendingLava
+        self.players = players
+        self.captureMeter = captureMeter
+        self.winner = winner
+        self.dominanceP0 = dominanceP0
+    }
 }
 
 public struct TickResult: Sendable {

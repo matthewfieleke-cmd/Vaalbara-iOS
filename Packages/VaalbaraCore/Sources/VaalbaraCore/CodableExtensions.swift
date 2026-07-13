@@ -54,3 +54,50 @@ extension MatchWinner {
         }
     }
 }
+
+extension PlayerAction {
+    private enum CodingKeys: String, CodingKey {
+        case type, card, x, y, dirX, dirY
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "deploy":
+            self = .deploy(
+                card: try container.decode(CardId.self, forKey: .card),
+                x: try container.decode(Double.self, forKey: .x),
+                y: try container.decode(Double.self, forKey: .y),
+                dirX: try container.decode(Double.self, forKey: .dirX),
+                dirY: try container.decode(Double.self, forKey: .dirY)
+            )
+        case "spell":
+            self = .spell(
+                card: try container.decode(CardId.self, forKey: .card),
+                x: try container.decode(Double.self, forKey: .x),
+                y: try container.decode(Double.self, forKey: .y)
+            )
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: type)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .deploy(let card, let x, let y, let dirX, let dirY):
+            try container.encode("deploy", forKey: .type)
+            try container.encode(card, forKey: .card)
+            try container.encode(x, forKey: .x)
+            try container.encode(y, forKey: .y)
+            try container.encode(dirX, forKey: .dirX)
+            try container.encode(dirY, forKey: .dirY)
+        case .spell(let card, let x, let y):
+            try container.encode("spell", forKey: .type)
+            try container.encode(card, forKey: .card)
+            try container.encode(x, forKey: .x)
+            try container.encode(y, forKey: .y)
+        }
+    }
+}
