@@ -136,7 +136,7 @@ interface DisplayUnit {
   /** Body pitch (canvas radians, unmirrored space) toward travel direction —
    *  side-profile art reads as "heading" up/down field instead of strafing. */
   lean: number;
-  /** Directional view with hysteresis — Clash-style marching art. */
+  /** Directional view with hysteresis for three-quarter marching art. */
   dir: ViewDir;
   dirHold: number;
   /** Water immersion 0–1: how deep the legs sit below the pond surface. */
@@ -2012,7 +2012,7 @@ export class Renderer {
       const wasWet = d.wet > 0.06;
       d.wet += (wetTarget - d.wet) * clamp(dt * 4.5, 0, 1);
       const isWet = d.wet > 0.06;
-      // Clash-style depth: actors shrink slightly toward the far end of the
+      // Arena depth: actors shrink slightly toward the far end of the
       // field and grow toward the near edge, selling the 3/4 camera.
       const depthK = clamp((p.y - this.oy) / Math.max(1, WORLD_H * this.unit), 0, 1);
       const depthScale = (0.9 + depthK * 0.2) * causewayScale;
