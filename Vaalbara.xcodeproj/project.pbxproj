@@ -706,18 +706,22 @@
 /* Begin XCSwiftPackageProductDependency section */
 		0E32DFD4DA8057559B37AE77 /* VaalbaraCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 10F6A4F3216158D1ACE1C883 /* XCLocalSwiftPackageReference "VaalbaraCore" */;
 			productName = VaalbaraCore;
 		};
 		871561FCD97B59C78291B5AA /* VaalbaraEngine */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 6ED730BF0D3D5D1BA4AFE36F /* XCLocalSwiftPackageReference "VaalbaraEngine" */;
 			productName = VaalbaraEngine;
 		};
 		452C065BC7F35F539162E8DC /* VaalbaraAudio */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = A435F402ECA652FBB2111E3A /* XCLocalSwiftPackageReference "VaalbaraAudio" */;
 			productName = VaalbaraAudio;
 		};
 		5973115740BF551CA3992B83 /* VaalbaraNetworking */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 699B41E9B835578AA0DACF56 /* XCLocalSwiftPackageReference "VaalbaraNetworking" */;
 			productName = VaalbaraNetworking;
 		};
 /* End XCSwiftPackageProductDependency section */

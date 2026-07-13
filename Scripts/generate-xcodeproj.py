@@ -126,6 +126,7 @@ def main() -> None:
         package_deps.append(
             f'\t\t{pdep} /* {pkg_name} */ = {{\n'
             f'\t\t\tisa = XCSwiftPackageProductDependency;\n'
+            f'\t\t\tpackage = {pref} /* XCLocalSwiftPackageReference "{pkg_name}" */;\n'
             f'\t\t\tproductName = {pkg_name};\n'
             f'\t\t}};'
         )

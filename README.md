@@ -23,6 +23,8 @@ open Vaalbara.xcodeproj
 
 Set your **Development Team** in Signing & Capabilities, then build & run.
 
+**Stuck on the red X or can’t find Signing?** See [docs/XCODE-SETUP.md](docs/XCODE-SETUP.md).
+
 > **XcodeGen is optional.** The repo includes `Vaalbara.xcodeproj` (or generates it via `Scripts/generate-xcodeproj.py`). You do not need `brew install xcodegen` unless you edit `project.yml`.
 
 Modular Swift packages:
