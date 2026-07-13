@@ -2,6 +2,7 @@ import SwiftUI
 import VaalbaraCore
 import VaalbaraEngine
 
+@MainActor
 struct BattleView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var driver = TickDriver()

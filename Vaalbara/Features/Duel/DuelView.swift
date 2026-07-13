@@ -49,6 +49,7 @@ struct DuelView: View {
         }
     }
 
+    @MainActor
     private func resolve(_ intent: DuelIntent) {
         guard var current = state else { return }
         current = DuelEngine.resolve(state: current, playerIntent: intent, botIntent: botIntent)
