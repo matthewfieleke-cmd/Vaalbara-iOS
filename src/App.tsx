@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { FactionId, GameState, PlayerId, Profile, Screen, SpeciesId } from './types';
-import { loadProfile, recordResult } from './net';
+import type { BotStrength, FactionId, GameState, PlayerId, Profile, Screen, SpeciesId } from './types';
+import { loadBotStrength, loadProfile, recordResult, saveBotStrength } from './net';
 import type { MatchSession } from './net';
 import { music, playResult, setMuted, unlockAudio } from './audio';
 import { loadSprites } from './sprites';
@@ -20,6 +20,7 @@ export function App() {
   const [session, setSession] = useState<MatchSession | null>(null);
   const [result, setResult] = useState<{ winner: PlayerId | 'tie'; state: GameState | null; seat: PlayerId } | null>(null);
   const [muted, setMutedState] = useState(false);
+  const [botStrength, setBotStrength] = useState<BotStrength>(() => loadBotStrength());
   /** Forces a fresh GameScreen mount per match. */
   const [matchNonce, setMatchNonce] = useState(0);
   const [duel, setDuel] = useState<{ faction: FactionId; order: SpeciesId[] } | null>(null);
@@ -139,6 +140,11 @@ export function App() {
 
       {screen === 'faction' && (
         <FactionSelect
+          botStrength={botStrength}
+          onBotStrengthChange={(strength) => {
+            setBotStrength(strength);
+            saveBotStrength(strength);
+          }}
           onBack={() => setScreen('menu')}
           onConfirm={(f) => {
             setFaction(f);
@@ -156,7 +162,12 @@ export function App() {
       )}
 
       {screen === 'game' && session && (
-        <GameScreen key={matchNonce} session={session} onEnd={endMatch} />
+        <GameScreen
+          key={matchNonce}
+          session={session}
+          botStrength={botStrength}
+          onEnd={endMatch}
+        />
       )}
 
       {screen === 'results' && result && (

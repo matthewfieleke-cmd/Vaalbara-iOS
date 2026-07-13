@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "sim": "tsx scripts/simtest.ts",
+    "bot-strength-check": "tsx scripts/bot-strength-check.ts",
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {

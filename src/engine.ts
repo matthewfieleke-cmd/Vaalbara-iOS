@@ -22,7 +22,7 @@ import {
   TICK_MS, TRANSITION_TICKS, VENT_DMG, WORLD_H, WORLD_W, armyCap, fortPads, inDeployBand, inWorld,
 } from './types';
 import type {
-  CardId, FactionId, GameEvent, GameState, ObeliskState, PhaseConfig, PlayerId,
+  BotStrength, CardId, FactionId, GameEvent, GameState, ObeliskState, PhaseConfig, PlayerId,
   PlayerInput, PropState, TickResult, UnitState, UnitStats, Vec2,
 } from './types';
 import { LAVA_RAIN, MECHANICS, SPELL_BALANCE, buildDeck, cardDef, speciesDef } from './data';
@@ -1771,12 +1771,13 @@ export class BotBrain {
   private punishUntil = 0;
   /** Wing of the previous deploy — the dual-lane squeeze alternates it. */
   private lastLane: 0 | 1 | null = null;
-  constructor(private seat: PlayerId, seed: number) {
+  constructor(private seat: PlayerId, seed: number, private strength: BotStrength = 'normal') {
     this.rng = makeRng(seed ^ 0xb07);
   }
 
   think(st: GameState): PlayerInput['action'] | null {
     if (st.phase !== 'basalt' && st.phase !== 'oasis') return null;
+    const strong = this.strength === 'strong';
     // Punish-push detection runs before any cooldown gate so a player
     // deployment is never missed: fresh enemy bodies open a short window
     // where the bot answers immediately, back to back.
@@ -1784,24 +1785,24 @@ export class BotBrain {
     let newFoe = false;
     for (const id of foeIds) if (!this.knownFoes.has(id)) { newFoe = true; break; }
     this.knownFoes = new Set(foeIds);
-    if (newFoe) this.punishUntil = st.tick + 10;
+    if (newFoe) this.punishUntil = st.tick + (strong ? 16 : 10);
     const punishing = st.tick < this.punishUntil;
 
     if (st.tick < this.nextActionTick) return null;
     // Act on OWN-priority ticks (input ordering alternates seat priority by
     // tick parity — acting off-parity donated every contested army-cap and
     // lane-cap slot to the opponent). Punish windows override the wait.
-    if (!punishing && st.tick % 2 !== this.seat % 2) return null;
+    if (!strong && !punishing && st.tick % 2 !== this.seat % 2) return null;
     const me = st.players[this.seat];
     // Near the aqua cap every idle beat wastes income — spend with urgency.
-    const flush = me.aqua >= 7;
+    const flush = me.aqua >= (strong ? 6.25 : 7);
 
     const lavaInHand = me.hand.includes(LAVA_RAIN_CARD);
     if (lavaInHand && me.aqua >= cardDef(LAVA_RAIN_CARD, st.phase).cost) {
       const enemies = st.units.filter((u) => u.hp > 0 && u.owner !== this.seat && isCombatVisible(st, u));
       if (enemies.length >= 2) {
         let best: Vec2 | null = null;
-        let bestScore = 2;
+        let bestScore = strong ? 0 : 2;
         for (const e of enemies) {
           const score = enemies.filter((o) => dist2(o.x, o.y, e.x, e.y) <= 1.7 * 1.7).length;
           if (score > bestScore) {
@@ -1809,8 +1810,8 @@ export class BotBrain {
             best = { x: e.x, y: e.y };
           }
         }
-        if (best && (bestScore >= 3 || (this.rng() < 0.55 && bestScore >= 2))) {
-          this.nextActionTick = st.tick + 4;
+        if (best && (strong ? bestScore >= 2 : bestScore >= 3 || (this.rng() < 0.55 && bestScore >= 2))) {
+          this.nextActionTick = st.tick + (strong ? 2 : 4);
           return { type: 'spell', card: LAVA_RAIN_CARD, x: best.x, y: best.y };
         }
       }
@@ -1828,16 +1829,40 @@ export class BotBrain {
     const foes = st.units.filter((u) => u.hp > 0 && u.owner !== this.seat);
     const foeFlyers = foes.filter((u) => !!speciesDef(u.species).stats?.flying).length;
     const foeAntiAir = foes.some((u) => !!speciesDef(u.species).stats?.canHitAir);
-    const scored = affordable.map((c) => {
+    const scoreCard = (c: CardId): number => {
       const d = cardDef(c, st.phase);
-      let s = d.cost + this.rng() * 1.8;
+      let s = strong ? d.cost : d.cost + this.rng() * 1.8;
       if (d.kind === 'unit') {
-        if (foeFlyers > 0 && d.stats?.canHitAir) s += 2;
-        if (!foeAntiAir && d.stats?.flying) s += 1.5;
+        if (!strong && foeFlyers > 0 && d.stats?.canHitAir) s += 2;
+        if (!strong && !foeAntiAir && d.stats?.flying) s += 1.5;
+        if (strong && d.stats) {
+          // Strong evaluates the whole deployed formation rather than treating
+          // price as quality. This avoids wasting five aqua on a lone support
+          // unit when an efficient pair or tank is the better board play.
+          const totalHp = d.stats.hp * d.stats.count;
+          const totalDmg = d.stats.dmg * d.stats.count;
+          s = totalHp / 100 + totalDmg / 15 + d.stats.speed * 4 - d.cost * 0.35;
+          if (foes.length >= 3 && d.stats.count > 1) s += 1.2;
+          if (foes.some((u) => speciesDef(u.species).stats?.heavy) && d.stats.heavy) s += 0.8;
+          if (foeFlyers > 0 && d.stats.canHitAir) s += 3.5;
+          if (!foeAntiAir && d.stats.flying) s += 2.5;
+        }
       }
-      return { c, s };
-    });
+      return s;
+    };
+    const scored = affordable.map((c) => ({ c, s: scoreCard(c) }));
     scored.sort((a, b) => b.s - a.s);
+    if (strong && !flush && !punishing) {
+      const urgentDefense = st.obelisks
+        .filter((o) => o.owner === this.seat && o.hp > 0)
+        .some((o) => foes.some((u) => dist2(u.x, u.y, o.x, o.y) <= 4.5 * 4.5));
+      const bestAffordable = scored[0]?.s ?? -Infinity;
+      const nearAffordableUpgrade = me.hand
+        .map((c) => ({ c, d: cardDef(c, st.phase), s: scoreCard(c) }))
+        .filter(({ d, s }) => d.kind === 'unit' && d.cost > me.aqua && d.cost - me.aqua <= 1.1 && s > bestAffordable + 1)
+        .sort((a, b) => b.s - a.s)[0];
+      if (!urgentDefense && nearAffordableUpgrade) return null;
+    }
     // Walk the scored list: a spell being HELD for a better clump must not
     // stall the whole turn — pressure falls through to the best unit.
     let pick: CardId | null = null;
@@ -1858,7 +1883,7 @@ export class BotBrain {
           }
         }
         if (bestN < 2 && !flush) continue; // hold it — try the next card
-        this.nextActionTick = st.tick + 4;
+        this.nextActionTick = st.tick + (strong ? 2 : 4);
         return { type: 'spell', card: cand.c as CardId, x: best.x, y: best.y };
       }
       pick = cand.c as CardId;
@@ -1885,9 +1910,11 @@ export class BotBrain {
       // deploys so the defense has to split its attention.
       if (flush && this.lastLane !== null) lane = (1 - this.lastLane) as 0 | 1;
       // Commit to a crumbling wing (finishing blow).
-      if (wings.length > 0 && this.rng() < 0.65) {
+      if (wings.length > 0 && (strong || this.rng() < 0.65)) {
         const weakest = wings.reduce((a, b) => (b.hp < a.hp ? b : a));
-        if (weakest.hp < weakest.maxHp * 0.55) lane = weakest.wing;
+        // Strong maintains objective focus from the opening deployment; Normal
+        // only commits after a gate is already visibly weakened.
+        if (strong || weakest.hp < weakest.maxHp * 0.55) lane = weakest.wing;
       }
       // Highest priority: defend a gate under real pressure.
       const myWings = st.obelisks.filter((o) => o.owner === this.seat && o.hp > 0);
@@ -1900,7 +1927,7 @@ export class BotBrain {
           danger = w.wing;
         }
       }
-      if (danger !== null && dangerN >= 2 && this.rng() < 0.85) lane = danger;
+      if (danger !== null && dangerN >= (strong ? 3 : 2) && (strong || this.rng() < 0.85)) lane = danger;
       // Respect lane soft-cap so the bot doesn't invent mid-lane soup.
       const flying = !!def.stats?.flying;
       const chosen = preferDeployLane(st, this.seat, lane, flying, def.stats?.count ?? 1);
@@ -1908,14 +1935,28 @@ export class BotBrain {
       lane = chosen;
       const pad = pads[lane];
       this.lastLane = lane;
-      this.nextActionTick = st.tick + (punishing ? 1 : 2);
+      this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
       return { type: 'deploy', card: pick, x: pad.x, y: pad.y, dirX: 0, dirY };
     }
-    const x = Math.max(0.8, Math.min(WORLD_W - 0.8, WORLD_W / 2 + (this.rng() - 0.5) * 5));
+    // Strong play aims its Oasis deployment through the enemy concentration
+    // and toward the pond instead of scattering randomly across the baseline.
+    const visibleFoes = foes.filter((u) => isCombatVisible(st, u));
+    const targetX = strong && visibleFoes.length > 0
+      ? visibleFoes.reduce((sum, u) => sum + u.x, 0) / visibleFoes.length
+      : WORLD_W / 2;
+    const spread = strong ? (this.rng() - 0.5) * 0.7 : (this.rng() - 0.5) * 5;
+    const x = Math.max(0.8, Math.min(WORLD_W - 0.8, targetX + spread));
     const y = this.seat === 0
       ? WORLD_H - DEPLOY_DEPTH + 0.4 + this.rng() * (DEPLOY_DEPTH - 0.9)
       : 0.5 + this.rng() * (DEPLOY_DEPTH - 0.9);
-    this.nextActionTick = st.tick + (punishing ? 1 : 2);
-    return { type: 'deploy', card: pick, x, y, dirX: (this.rng() - 0.5) * 0.8, dirY };
+    this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
+    return {
+      type: 'deploy',
+      card: pick,
+      x,
+      y,
+      dirX: strong ? (WORLD_W / 2 - x) * 0.45 : (this.rng() - 0.5) * 0.8,
+      dirY,
+    };
   }
 }

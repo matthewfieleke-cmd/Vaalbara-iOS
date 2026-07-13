@@ -1,13 +1,17 @@
 import { useState } from 'react';
-import type { FactionId } from '../types';
+import type { BotStrength, FactionId } from '../types';
 import { FACTIONS } from '../data';
 import { SpriteArt } from './SpriteArt';
 import { playUi } from '../audio';
 
 export function FactionSelect({
+  botStrength,
+  onBotStrengthChange,
   onConfirm,
   onBack,
 }: {
+  botStrength: BotStrength;
+  onBotStrengthChange: (strength: BotStrength) => void;
   onConfirm: (faction: FactionId) => void;
   onBack: () => void;
 }) {
@@ -46,6 +50,27 @@ export function FactionSelect({
           </button>
         );
       })}
+      <div className="bot-strength">
+        <span className="bot-strength-label">Bot strength</span>
+        <div className="bot-strength-toggle" role="group" aria-label="Bot strength">
+          {(['normal', 'strong'] as const).map((strength) => (
+            <button
+              key={strength}
+              className={botStrength === strength ? 'selected' : ''}
+              aria-pressed={botStrength === strength}
+              onClick={() => {
+                onBotStrengthChange(strength);
+                playUi('tap');
+              }}
+            >
+              {strength}
+            </button>
+          ))}
+        </div>
+        <span className="bot-strength-hint">
+          {botStrength === 'strong' ? 'Sharper counters and tactical pressure' : 'Balanced for a first campaign'}
+        </span>
+      </div>
       <div className="menu-actions">
         <button className="btn btn-primary" onClick={() => onConfirm(picked)}>
           March to the Basalt Fields

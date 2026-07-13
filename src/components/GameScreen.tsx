@@ -3,7 +3,7 @@ import {
   LAVA_RAIN_CARD, PHASE1_TICKS, PHASE2_TICKS, PHASE_SPELL_CARD, TICK_MS, WORLD_H, WORLD_W,
   armyCap, fortPads, inDeployBand,
 } from '../types';
-import type { CardId, GameEvent, GameState, PlayerId, SpeciesId } from '../types';
+import type { BotStrength, CardId, GameEvent, GameState, PlayerId, SpeciesId } from '../types';
 import { cardDef } from '../data';
 import { BotBrain, TickDriver, preferDeployLane } from '../engine';
 import { Renderer } from '../render';
@@ -34,9 +34,11 @@ interface Banner {
 
 export function GameScreen({
   session,
+  botStrength,
   onEnd,
 }: {
   session: MatchSession;
+  botStrength: BotStrength;
   onEnd: (winner: PlayerId | 'tie', finalState: GameState) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -78,7 +80,7 @@ export function GameScreen({
     ro.observe(wrap);
     renderer.start();
 
-    const bot = session.mode === 'local' ? new BotBrain(1, session.seed) : null;
+    const bot = session.mode === 'local' ? new BotBrain(1, session.seed, botStrength) : null;
     botRef.current = bot;
 
     // Debug/playtest overrides (?p1ticks=20&p2ticks=15) shorten the phases.

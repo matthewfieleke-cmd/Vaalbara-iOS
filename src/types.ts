@@ -377,6 +377,8 @@ export interface Profile {
   favouriteFaction: FactionId;
 }
 
+export type BotStrength = 'normal' | 'strong';
+
 export type MatchMode = 'local' | 'online-host' | 'online-guest';
 
 export interface MatchConfig {

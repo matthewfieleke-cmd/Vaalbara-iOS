@@ -14,7 +14,7 @@
  *    interpolation so corrections never pop.
  * ========================================================================== */
 
-import type { FactionId, PlayerId, PlayerInput, Profile } from './types';
+import type { BotStrength, FactionId, PlayerId, PlayerInput, Profile } from './types';
 
 /* ------------------------------------------------------------------------ */
 /* Firebase configuration discovery                                           */
@@ -64,6 +64,23 @@ export function discoverFirebaseKeys(): FirebaseKeys | null {
 /* ------------------------------------------------------------------------ */
 
 const PROFILE_KEY = 'vaalbara.profile';
+const BOT_STRENGTH_KEY = 'vaalbara.botStrength';
+
+export function loadBotStrength(): BotStrength {
+  try {
+    return localStorage.getItem(BOT_STRENGTH_KEY) === 'strong' ? 'strong' : 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+export function saveBotStrength(strength: BotStrength): void {
+  try {
+    localStorage.setItem(BOT_STRENGTH_KEY, strength);
+  } catch {
+    /* storage full / private mode — non-fatal */
+  }
+}
 
 export function loadProfile(): Profile {
   try {
