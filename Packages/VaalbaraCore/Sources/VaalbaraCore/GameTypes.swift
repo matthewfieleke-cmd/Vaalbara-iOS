@@ -476,6 +476,22 @@ public struct Profile: Codable, Sendable {
     public var games: Int
     public var favouriteFaction: FactionId
 
+    public init(
+        name: String,
+        wins: Int,
+        losses: Int,
+        ties: Int,
+        games: Int,
+        favouriteFaction: FactionId
+    ) {
+        self.name = name
+        self.wins = wins
+        self.losses = losses
+        self.ties = ties
+        self.games = games
+        self.favouriteFaction = favouriteFaction
+    }
+
     public static func defaultProfile() -> Profile {
         Profile(
             name: "Wanderer-\(Int.random(in: 1000...9999))",
@@ -568,6 +584,14 @@ public struct DuelFighter: Codable, Sendable {
     public var maxHp: Int
     public var fury: Int
     public var debuffs: [String]
+
+    public init(species: SpeciesId, hp: Int, maxHp: Int, fury: Int, debuffs: [String]) {
+        self.species = species
+        self.hp = hp
+        self.maxHp = maxHp
+        self.fury = fury
+        self.debuffs = debuffs
+    }
 }
 
 public struct DuelState: Codable, Sendable {
@@ -578,6 +602,24 @@ public struct DuelState: Codable, Sendable {
     public var log: [String]
     public var winner: DuelSide?
     public var awaitingIntent: Bool
+
+    public init(
+        seed: UInt32,
+        exchange: Int,
+        active: [DuelFighter?],
+        benches: [[SpeciesId]],
+        log: [String],
+        winner: DuelSide?,
+        awaitingIntent: Bool
+    ) {
+        self.seed = seed
+        self.exchange = exchange
+        self.active = active
+        self.benches = benches
+        self.log = log
+        self.winner = winner
+        self.awaitingIntent = awaitingIntent
+    }
 }
 
 public struct DuelSetup: Sendable {
