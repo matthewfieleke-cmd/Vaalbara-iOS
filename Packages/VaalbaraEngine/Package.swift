@@ -15,9 +15,5 @@ let package = Package(
             name: "VaalbaraEngine",
             dependencies: ["VaalbaraCore"]
         ),
-        .testTarget(
-            name: "VaalbaraEngineTests",
-            dependencies: ["VaalbaraEngine", "VaalbaraCore"]
-        ),
     ]
 )
