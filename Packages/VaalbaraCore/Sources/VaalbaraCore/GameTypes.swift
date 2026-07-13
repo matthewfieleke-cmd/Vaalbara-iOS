@@ -453,7 +453,17 @@ public enum MatchOutcome: Sendable {
 // MARK: - Duel mode
 
 public enum DuelIntent: String, Codable, CaseIterable, Sendable {
-    case strike, `guard`, special
+    case strike
+    case defend = "guard" // Swift keyword — raw value matches web duel.ts
+    case special
+
+    public var label: String {
+        switch self {
+        case .strike: return "Strike"
+        case .defend: return "Guard"
+        case .special: return "Special"
+        }
+    }
 }
 
 public struct DuelSpecial: Sendable {

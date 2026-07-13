@@ -27,7 +27,7 @@ struct DuelView: View {
 
             HStack(spacing: 12) {
                 ForEach(DuelIntent.allCases, id: \.self) { intent in
-                    Button(intent.rawValue.capitalized) {
+                    Button(intent.label) {
                         resolve(intent)
                     }
                     .buttonStyle(VaalbaraSecondaryButtonStyle())
