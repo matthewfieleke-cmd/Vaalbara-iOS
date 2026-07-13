@@ -664,11 +664,8 @@ export class Renderer {
     const r = this.boardRect();
     const t = this.time;
 
-    // Island slab shadow + wall.
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.beginPath();
-    ctx.ellipse(r.left + r.w / 2, r.top + r.h + 9, r.w * 0.54, 15, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Island slab wall. Keep the painted arena grounded without adding a
+    // separate oval drop shadow beneath it.
     const wall = ctx.createLinearGradient(0, r.top + r.h, 0, r.top + r.h + 12);
     wall.addColorStop(0, world === 'oasis' ? 'hsl(30 30% 22%)' : 'hsl(258 16% 14%)');
     wall.addColorStop(1, world === 'oasis' ? 'hsl(28 32% 10%)' : 'hsl(258 18% 5%)');
