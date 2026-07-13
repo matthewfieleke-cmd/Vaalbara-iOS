@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import type { Profile } from '../types';
 import { discoverFirebaseKeys } from '../net';
 
+const PRIVACY_URL = 'https://matthewfieleke-cmd.github.io/Vaalbara-iOS/privacy.html';
+const SUPPORT_URL = 'https://matthewfieleke-cmd.github.io/Vaalbara-iOS/support.html';
+
 /** Main menu hub with a live procedural ember-scape backdrop. */
 export function Menu({
   profile,
@@ -125,6 +128,11 @@ export function Menu({
           ▸ Replay intro cinematic
         </button>
       </div>
+      <nav className="legal-links" aria-label="Support and legal">
+        <a href={SUPPORT_URL}>Support</a>
+        <span aria-hidden="true">·</span>
+        <a href={PRIVACY_URL}>Privacy</a>
+      </nav>
     </div>
   );
 }

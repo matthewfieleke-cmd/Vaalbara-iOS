@@ -36,7 +36,9 @@ Modular Swift packages:
 | `VaalbaraAudio` | AVAudioEngine procedural score (port in progress from `src/audio.ts`) |
 | `VaalbaraNetworking` | `MatchTransport` protocol — v1 offline; Firebase stub for future multiplayer |
 
-v1 ships **offline vs bot** + **Duels**, with Game Center leaderboards/achievements. Bundle ID: `com.vaalbara.thelastoasis`.
+The iOS v1 ships **offline vs bot** + **Duels** on iPhone. Game Center and
+online multiplayer are reserved for a future release. Bundle ID:
+`com.vaalbara.thelastoasis`.
 
 ---
 

@@ -1,9 +1,14 @@
 import Foundation
 import SwiftUI
+import UIKit
 import WebKit
 
 /// Hosts the complete production web game while the native screens are ported.
 struct WebGameView: UIViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -18,9 +23,13 @@ struct WebGameView: UIViewRepresentable {
         webView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
         webView.scrollView.bounces = false
+        webView.navigationDelegate = context.coordinator
 
         guard let indexURL = URL(string: "\(WebBundleSchemeHandler.scheme)://app/index.html") else {
-            assertionFailure("Could not construct bundled game URL")
+            webView.loadHTMLString(
+                "<html><body style='background:#000;color:#fff;font-family:-apple-system;padding:2rem'>Vaalbara could not start.</body></html>",
+                baseURL: nil
+            )
             return webView
         }
 
@@ -29,6 +38,29 @@ struct WebGameView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if url.scheme == WebBundleSchemeHandler.scheme {
+                decisionHandler(.allow)
+                return
+            }
+
+            if url.scheme == "https" || url.scheme == "http" {
+                UIApplication.shared.open(url)
+            }
+            decisionHandler(.cancel)
+        }
+    }
 }
 
 /// Serves the web bundle through one same-origin custom scheme. Loading it via

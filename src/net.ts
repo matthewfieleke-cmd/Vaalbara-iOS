@@ -40,6 +40,11 @@ declare global {
  *  3. Vite env vars (VITE_FIREBASE_API_KEY / VITE_FIREBASE_DB_URL)
  */
 export function discoverFirebaseKeys(): FirebaseKeys | null {
+  // App Store v1 is deliberately offline-only. The native wrapper's custom
+  // scheme is an explicit build/runtime boundary that prevents accidental
+  // Firebase activation even if configuration is added for the web edition.
+  if (window.location.protocol === 'vaalbara-game:') return null;
+
   if (window.VAALBARA_FIREBASE?.apiKey && window.VAALBARA_FIREBASE.databaseURL) {
     return window.VAALBARA_FIREBASE;
   }

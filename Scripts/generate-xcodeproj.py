@@ -33,6 +33,9 @@ def collect_resource_files() -> list[Path]:
         # Keep the production web bundle as a folder so relative asset URLs
         # continue to work inside WKWebView.
         resources.append(web_app)
+    privacy_manifest = ROOT / "Vaalbara" / "PrivacyInfo.xcprivacy"
+    if privacy_manifest.exists():
+        resources.append(privacy_manifest)
     art = ROOT / "Vaalbara" / "Resources" / "Art"
     if art.exists():
         resources.extend(p for p in sorted(art.rglob("*")) if p.is_file())
@@ -48,6 +51,8 @@ def pbx_file_ref(path: Path, id_name: str) -> tuple[str, str]:
         line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'
     elif path.suffix == ".plist":
         line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'
+    elif path.suffix == ".xcprivacy":
+        line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = text.xml; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'
     elif path.suffix == ".entitlements":
         line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'
     elif path.name.endswith(".xcassets"):
@@ -333,7 +338,7 @@ def main() -> None:
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
 \t\t\t\tDEVELOPMENT_TEAM = "";
-\t\t\t\tENABLE_PREVIEWS = YES;
+\t\t\t\tENABLE_PREVIEWS = NO;
 \t\t\t\tGENERATE_INFOPLIST_FILE = NO;
 \t\t\t\tINFOPLIST_FILE = Vaalbara/Info.plist;
 \t\t\t\tLD_RUNPATH_SEARCH_PATHS = (
@@ -344,7 +349,7 @@ def main() -> None:
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
-\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";
+\t\t\t\tTARGETED_DEVICE_FAMILY = 1;
 \t\t\t}};
 \t\t\tname = Debug;
 \t\t}};
@@ -356,7 +361,7 @@ def main() -> None:
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
 \t\t\t\tDEVELOPMENT_TEAM = "";
-\t\t\t\tENABLE_PREVIEWS = YES;
+\t\t\t\tENABLE_PREVIEWS = NO;
 \t\t\t\tGENERATE_INFOPLIST_FILE = NO;
 \t\t\t\tINFOPLIST_FILE = Vaalbara/Info.plist;
 \t\t\t\tLD_RUNPATH_SEARCH_PATHS = (
@@ -367,7 +372,7 @@ def main() -> None:
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
-\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";
+\t\t\t\tTARGETED_DEVICE_FAMILY = 1;
 \t\t\t}};
 \t\t\tname = Release;
 \t\t}};
@@ -452,6 +457,30 @@ def main() -> None:
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "{target_id}"
+            BuildableName = "{PROJECT_NAME}.app"
+            BlueprintName = "{PROJECT_NAME}"
+            ReferencedContainer = "container:{PROJECT_NAME}.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
 </Scheme>
 '''
     (scheme_dir / f"{PROJECT_NAME}.xcscheme").write_text(scheme)

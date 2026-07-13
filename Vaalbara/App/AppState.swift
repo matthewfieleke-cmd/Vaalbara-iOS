@@ -78,8 +78,6 @@ final class AppState: ObservableObject {
         profileStore.recordResult(outcome: outcome, faction: faction)
         profile = profileStore.profile
         audio.playResult(won: outcome == .win)
-        if outcome == .win { GameCenterService.shared.submitWin(isDuel: false) }
-        else if outcome == .loss { GameCenterService.shared.submitLoss() }
         screen = .results
     }
 

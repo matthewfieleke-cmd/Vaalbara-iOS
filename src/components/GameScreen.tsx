@@ -83,21 +83,29 @@ export function GameScreen({
     const bot = session.mode === 'local' ? new BotBrain(1, session.seed, botStrength) : null;
     botRef.current = bot;
 
-    // Debug/playtest overrides (?p1ticks=20&p2ticks=15) shorten the phases.
-    // Only honoured offline so online clients always share identical rules.
-    const params = new URLSearchParams(window.location.search);
-    const p1 = Number(params.get('p1ticks'));
-    const p2 = Number(params.get('p2ticks'));
-    const cfg = session.mode === 'local' && (p1 > 0 || p2 > 0)
-      ? { phase1Ticks: p1 > 0 ? p1 : PHASE1_TICKS, phase2Ticks: p2 > 0 ? p2 : PHASE2_TICKS }
-      : undefined;
+    // Debug/playtest overrides shorten phases without exposing rule changes in
+    // production builds.
+    let cfg: { phase1Ticks: number; phase2Ticks: number } | undefined;
+    if (import.meta.env.DEV) {
+      const params = new URLSearchParams(window.location.search);
+      const p1 = Number(params.get('p1ticks'));
+      const p2 = Number(params.get('p2ticks'));
+      if (session.mode === 'local' && (p1 > 0 || p2 > 0)) {
+        cfg = {
+          phase1Ticks: p1 > 0 ? p1 : PHASE1_TICKS,
+          phase2Ticks: p2 > 0 ? p2 : PHASE2_TICKS,
+        };
+      }
+    }
 
     const driver = new TickDriver(session.seed, session.factions, {
       onTick: ({ state, events }) => {
         renderer.onTick(state, events);
-        // Read-only snapshot for playtest/capture tooling (canvas UI has no
-        // DOM to query, so scripts watch the sim through this hook).
-        (window as unknown as { __vbState?: typeof state }).__vbState = state;
+        if (import.meta.env.DEV) {
+          // Read-only snapshot for playtest/capture tooling (canvas UI has no
+          // DOM to query, so scripts watch the sim through this hook).
+          (window as unknown as { __vbState?: typeof state }).__vbState = state;
+        }
         handleGameEvents(events);
         routeEvents(events, state);
         // Soundtrack: five-minute additive ladder (hard cuts); army tints
