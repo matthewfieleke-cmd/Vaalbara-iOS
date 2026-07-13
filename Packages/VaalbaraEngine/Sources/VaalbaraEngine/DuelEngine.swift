@@ -20,7 +20,7 @@ public enum DuelEngine {
     public static func resolve(state: DuelState, playerIntent: DuelIntent, botIntent: DuelIntent) -> DuelState {
         var next = state
         next.exchange += 1
-        next.log.append("Exchange \(next.exchange): \(playerIntent.rawValue) vs \(botIntent.rawValue)")
+        next.log.append("Exchange \(next.exchange): \(playerIntent.webIntent) vs \(botIntent.webIntent)")
         next.awaitingIntent = true
         return next
     }

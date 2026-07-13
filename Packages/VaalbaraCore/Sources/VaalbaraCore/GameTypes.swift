@@ -454,7 +454,7 @@ public enum MatchOutcome: Sendable {
 
 public enum DuelIntent: String, Codable, CaseIterable, Sendable {
     case strike
-    case defend = "guard" // Swift keyword — raw value matches web duel.ts
+    case defend
     case special
 
     public var label: String {
@@ -462,6 +462,24 @@ public enum DuelIntent: String, Codable, CaseIterable, Sendable {
         case .strike: return "Strike"
         case .defend: return "Guard"
         case .special: return "Special"
+        }
+    }
+
+    /// Maps web duel.ts intent strings when the full duel engine is ported.
+    public init?(webIntent: String) {
+        switch webIntent {
+        case "strike": self = .strike
+        case "guard", "defend": self = .defend
+        case "special": self = .special
+        default: return nil
+        }
+    }
+
+    public var webIntent: String {
+        switch self {
+        case .strike: return "strike"
+        case .defend: return "guard"
+        case .special: return "special"
         }
     }
 }
