@@ -1100,7 +1100,10 @@ button {
   align-items: center;
   justify-content: center;
   gap: 1.1rem;
-  padding: 2rem 1.6rem calc(2rem + var(--safe-bottom));
+  padding:
+    calc(2rem + var(--safe-top))
+    1.6rem
+    calc(2rem + var(--safe-bottom));
   text-align: center;
   position: relative;
   z-index: 1;

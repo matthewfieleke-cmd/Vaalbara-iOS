@@ -1736,9 +1736,15 @@ class MusicDirector {
         // first chord of a NEW cycle — and theme A's first note sounds ON
         // that same downbeat. Suction → slam+theme, never theme-after-slam.
         // From minute 4 onward, where the kit and guitars sell the slam.
-        const suckTail = bar8 === 3 && mBar >= 3 && !breath;
+        const progressionBar = pb % MusicDirector.BED_CHORDS.length;
+        const finalProgressionChord = progressionBar === MusicDirector.BED_CHORDS.length - 1;
+        const firstProgressionChord = progressionBar === 0;
+        const suckTail = bar8 === 3 && finalProgressionChord && mBar >= 3 && !breath;
         const inSuck = suckTail && s16 >= 8;
-        const slamBar = bar8 === 4 && mBar >= 3 && !breath && pb !== this.arrivalBar;
+        // Motif A and the slam share this exact scheduled step. Keeping one
+        // predicate for both prevents either event drifting to a later beat.
+        const themeADownbeat = bar8 === 4 && firstProgressionChord && s16 === 0 && !breath;
+        const slamAndThemeA = themeADownbeat && mBar >= 3 && pb !== this.arrivalBar;
 
         // THE GATHERING (the one dip per phrase): beats 1–2 of the pre-
         // chorus bar carry two full-ensemble unison stabs over the wall;
@@ -1760,7 +1766,7 @@ class MusicDirector {
           // 16th snare roll swelling through the suction into the slam.
           this.snare(t, (0.22 + (s16 - 8) * 0.075) * Math.max(0.45, l3));
         }
-        if (slamBar && s16 === 0) {
+        if (slamAndThemeA) {
           // The slam has a guaranteed FLOOR independent of l3, so even in
           // minute 4's opening slide it reads as intentional punctuation.
           this.taiko(t, true, 1.15 + 0.1 * l3);
@@ -1798,14 +1804,18 @@ class MusicDirector {
 
         // --- Floor: sub bass + cello + low brass mass (brass fades in) ---
         if (s16 === 0) {
+          // In the final progression chord, release the sustained floor just
+          // before beat 3 so beats 3–4 are a real suckout, not merely drums
+          // dropping over bass and cello that continue to ring.
+          const floorDuration = suckTail ? 1.1 : 2.2;
           voice({
-            type: 'sawtooth', freq: MusicDirector.BASS[pb % 4], dur: 2.2,
+            type: 'sawtooth', freq: MusicDirector.BASS[pb % 4], dur: floorDuration,
             gain: 0.24 + 0.015 * pos, filterFreq: 130, attack: 0.03, bus: this.bus, when: t,
           });
-          this.cello(t, MusicDirector.CELLO[pb % 4], 2.4, 0.08 + inten * 0.03 + pos * 0.004);
-          if (l2 > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4], 2.2, (0.055 + inten * 0.045) * l2 * (0.8 + 0.2 * wall));
-          if (l3 > 0.03 && wall > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4] * 0.5, 2.2, (0.035 + inten * 0.03) * l3 * wall);
-          if (l4 > 0.03 && wall > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4], 2.2, (0.04 + inten * 0.025) * l4 * wall);
+          this.cello(t, MusicDirector.CELLO[pb % 4], suckTail ? 1.1 : 2.4, 0.08 + inten * 0.03 + pos * 0.004);
+          if (l2 > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4], floorDuration, (0.055 + inten * 0.045) * l2 * (0.8 + 0.2 * wall));
+          if (l3 > 0.03 && wall > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4] * 0.5, floorDuration, (0.035 + inten * 0.03) * l3 * wall);
+          if (l4 > 0.03 && wall > 0.03) this.lowBrass(t, MusicDirector.CELLO[pb % 4], floorDuration, (0.04 + inten * 0.025) * l4 * wall);
         }
 
         // --- Legato string bed: held harmony from MINUTE 1, locked to the
@@ -1822,7 +1832,7 @@ class MusicDirector {
             this.legatoStrings(t, MusicDirector.BED_CHORDS[pb % 4], suckTail ? 1.1 : 2.5, bedGain, bedHz, pos);
           }
         }
-        if (l4 * wall > 0.03 && !breath && s16 === 0) {
+        if (l4 * wall > 0.03 && !breath && !suckTail && s16 === 0) {
           this.choirSustain(t, 2.5, (0.033 + inten * 0.018) * l4 * wall);
         }
 
@@ -1931,7 +1941,7 @@ class MusicDirector {
         // Dm bar — the first chord of a new cycle. In minutes 4–5 the slam
         // shares that same downbeat (suction → slam+theme, one moment).
         // The voice still rotates horn → strings → horn-with-octave.
-        if (bar8 === 4 && s16 === 0 && !breath) {
+        if (themeADownbeat) {
           const strain = MusicDirector.THEME;
           if (l2 <= 0.05) {
             // Minutes 1–2: the soft seed carries the statement (Time model).
