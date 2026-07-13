@@ -9,7 +9,7 @@ public enum DuelEngine {
         return DuelState(
             seed: seed,
             exchange: 0,
-            active: [nil, nil],
+            active: [DuelFighter?.none, DuelFighter?.none],
             benches: [playerOrder, botOrder],
             log: ["Choose your opening move."],
             winner: nil,
