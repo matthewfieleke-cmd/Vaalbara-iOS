@@ -20,11 +20,13 @@
 		47F2C671A61D5BA38E7E8C85 /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD1336AC5C7951F3B8980CEC /* MenuView.swift */; };
 		8A8F20CD974C5C24957C1F41 /* ResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC7AD41496D50EEA4D72EAC /* ResultsView.swift */; };
 		FDB6A945190150569BA45327 /* BattleCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E250170787E56F38331778C /* BattleCanvasView.swift */; };
+		8C93A301B9445677A40533EF /* WebGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B8EFB26DEB5A46BBD4C7FE /* WebGameView.swift */; };
 		4F36E01F5420536FB21F93BF /* GameCenterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E50C7B53425701A27F7172 /* GameCenterService.swift */; };
 		42F6A5FD67DA56A1AA7C997A /* HapticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531A048B8E8B5B5D93ABF071 /* HapticsService.swift */; };
 		3E0F5A81E18B5188B2CF5F5F /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E2600C88825985A52A83D2 /* ProfileStore.swift */; };
 		342FDF3AA9765FD18BF03416 /* VaalbaraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2428AF2E025611911D389F /* VaalbaraApp.swift */; };
 		C3EC2B752EE254499057A134 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 899A14F655C85BCD939FC765 /* Assets.xcassets */; };
+		F1F333D4D50F5E9D9AD441A7 /* WebApp in Resources */ = {isa = PBXBuildFile; fileRef = F26889AEEC22545694922583 /* WebApp */; };
 		AF3C0272DFBD52439B5B5946 /* bear-attack.webp in Resources */ = {isa = PBXBuildFile; fileRef = D98842D9C47F5D929FA16C3A /* bear-attack.webp */; };
 		4EFBA26733945599BA31B2F1 /* bear-down.webp in Resources */ = {isa = PBXBuildFile; fileRef = 15692F205BCD55DAB50F9358 /* bear-down.webp */; };
 		DD978A788CB85EB184C22C80 /* bear-intro.webp in Resources */ = {isa = PBXBuildFile; fileRef = F8EC96B4ED685969A8A69654 /* bear-intro.webp */; };
@@ -140,11 +142,13 @@
 		FD1336AC5C7951F3B8980CEC /* MenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Menu/MenuView.swift"; sourceTree = SOURCE_ROOT; };
 		9AC7AD41496D50EEA4D72EAC /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Features/Results/ResultsView.swift"; sourceTree = SOURCE_ROOT; };
 		3E250170787E56F38331778C /* BattleCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Rendering/BattleCanvasView.swift"; sourceTree = SOURCE_ROOT; };
+		63B8EFB26DEB5A46BBD4C7FE /* WebGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Rendering/WebGameView.swift"; sourceTree = SOURCE_ROOT; };
 		E2E50C7B53425701A27F7172 /* GameCenterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/GameCenterService.swift"; sourceTree = SOURCE_ROOT; };
 		531A048B8E8B5B5D93ABF071 /* HapticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/HapticsService.swift"; sourceTree = SOURCE_ROOT; };
 		89E2600C88825985A52A83D2 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/Services/ProfileStore.swift"; sourceTree = SOURCE_ROOT; };
 		3A2428AF2E025611911D389F /* VaalbaraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Vaalbara/VaalbaraApp.swift"; sourceTree = SOURCE_ROOT; };
 		899A14F655C85BCD939FC765 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Vaalbara/Assets.xcassets"; sourceTree = SOURCE_ROOT; };
+		F26889AEEC22545694922583 /* WebApp */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Vaalbara/Resources/WebApp"; sourceTree = SOURCE_ROOT; };
 		D98842D9C47F5D929FA16C3A /* bear-attack.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-attack.webp"; sourceTree = SOURCE_ROOT; };
 		15692F205BCD55DAB50F9358 /* bear-down.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-down.webp"; sourceTree = SOURCE_ROOT; };
 		F8EC96B4ED685969A8A69654 /* bear-intro.webp */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vaalbara/Resources/Art/anim/bear-intro.webp"; sourceTree = SOURCE_ROOT; };
@@ -290,11 +294,13 @@
 				FD1336AC5C7951F3B8980CEC /* MenuView.swift */,
 				9AC7AD41496D50EEA4D72EAC /* ResultsView.swift */,
 				3E250170787E56F38331778C /* BattleCanvasView.swift */,
+				63B8EFB26DEB5A46BBD4C7FE /* WebGameView.swift */,
 				E2E50C7B53425701A27F7172 /* GameCenterService.swift */,
 				531A048B8E8B5B5D93ABF071 /* HapticsService.swift */,
 				89E2600C88825985A52A83D2 /* ProfileStore.swift */,
 				3A2428AF2E025611911D389F /* VaalbaraApp.swift */,
 				899A14F655C85BCD939FC765 /* Assets.xcassets */,
+				F26889AEEC22545694922583 /* WebApp */,
 				D98842D9C47F5D929FA16C3A /* bear-attack.webp */,
 				15692F205BCD55DAB50F9358 /* bear-down.webp */,
 				F8EC96B4ED685969A8A69654 /* bear-intro.webp */,
@@ -466,6 +472,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C3EC2B752EE254499057A134 /* Assets.xcassets in Resources */,
+				F1F333D4D50F5E9D9AD441A7 /* WebApp in Resources */,
 				AF3C0272DFBD52439B5B5946 /* bear-attack.webp in Resources */,
 				4EFBA26733945599BA31B2F1 /* bear-down.webp in Resources */,
 				DD978A788CB85EB184C22C80 /* bear-intro.webp in Resources */,
@@ -583,6 +590,7 @@
 				47F2C671A61D5BA38E7E8C85 /* MenuView.swift in Sources */,
 				8A8F20CD974C5C24957C1F41 /* ResultsView.swift in Sources */,
 				FDB6A945190150569BA45327 /* BattleCanvasView.swift in Sources */,
+				8C93A301B9445677A40533EF /* WebGameView.swift in Sources */,
 				4F36E01F5420536FB21F93BF /* GameCenterService.swift in Sources */,
 				42F6A5FD67DA56A1AA7C997A /* HapticsService.swift in Sources */,
 				3E0F5A81E18B5188B2CF5F5F /* ProfileStore.swift in Sources */,

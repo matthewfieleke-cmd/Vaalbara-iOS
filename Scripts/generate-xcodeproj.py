@@ -28,6 +28,11 @@ def collect_resource_files() -> list[Path]:
     assets = ROOT / "Vaalbara" / "Assets.xcassets"
     if assets.exists():
         resources.append(assets)
+    web_app = ROOT / "Vaalbara" / "Resources" / "WebApp"
+    if web_app.exists():
+        # Keep the production web bundle as a folder so relative asset URLs
+        # continue to work inside WKWebView.
+        resources.append(web_app)
     art = ROOT / "Vaalbara" / "Resources" / "Art"
     if art.exists():
         resources.extend(p for p in sorted(art.rglob("*")) if p.is_file())
@@ -37,7 +42,9 @@ def collect_resource_files() -> list[Path]:
 def pbx_file_ref(path: Path, id_name: str) -> tuple[str, str]:
     ref_id = uid(f"fileref:{path}")
     rel = path.relative_to(ROOT).as_posix()
-    if path.suffix == ".swift":
+    if path.is_dir() and not path.name.endswith(".xcassets"):
+        line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'
+    elif path.suffix == ".swift":
         line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'
     elif path.suffix == ".plist":
         line = f'\t\t{ref_id} /* {path.name} */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "{rel}"; sourceTree = SOURCE_ROOT; }};'

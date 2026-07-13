@@ -142,6 +142,10 @@ export function getDuelArt(world: 'basalt' | 'oasis'): HTMLImageElement | null {
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    // The iOS wrapper serves bundled art through a WKURLSchemeHandler.
+    // Request CORS approval before assigning src so canvas pixel reads remain
+    // available for background keying and sprite slicing.
+    img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`failed: ${url}`));
     img.src = url;
