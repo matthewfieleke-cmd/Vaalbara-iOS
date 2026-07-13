@@ -2,7 +2,10 @@ import SwiftUI
 
 @main
 struct VaalbaraApp: App {
-    @StateObject private var appState = AppState()
+    @StateObject private var appState = AppState(
+        profileStore: ProfileStore(),
+        audio: ProceduralScoreEngine()
+    )
 
     init() {
         GameCenterService.shared.authenticate()

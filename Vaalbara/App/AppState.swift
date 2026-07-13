@@ -17,8 +17,8 @@ final class AppState: ObservableObject {
     let matchTransport: LocalMatchTransport
 
     init(
-        profileStore: ProfileStore = ProfileStore(),
-        audio: ProceduralScoreEngine = ProceduralScoreEngine(),
+        profileStore: ProfileStore,
+        audio: ProceduralScoreEngine,
         matchTransport: LocalMatchTransport = LocalMatchTransport()
     ) {
         self.profileStore = profileStore

@@ -4,7 +4,6 @@ import Foundation
 import VaalbaraCore
 
 /// Procedural Zimmer-style score on AVAudioEngine — faithful port target for audio.ts (~2,100 lines).
-@MainActor
 public final class ProceduralScoreEngine: ObservableObject {
     public enum Mode: Sendable {
         case menu, battleBasalt, battleOasis, duel, cinematic

@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import VaalbaraCore
 
-@MainActor
+/// Profile persistence for offline guest mode.
 public final class ProfileStore: ObservableObject {
     @Published public private(set) var profile: Profile
 
