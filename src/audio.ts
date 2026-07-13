@@ -79,6 +79,7 @@ class AudioCore {
   musicBus: GainNode | null = null;
   musicComp: DynamicsCompressorNode | null = null;
   sfxBus: GainNode | null = null;
+  finalLimiter: DynamicsCompressorNode | null = null;
   enabled = true;
 
   ensure(): AudioContext | null {
@@ -89,7 +90,17 @@ class AudioCore {
       this.ctx = new AC();
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.7;
-      this.master.connect(this.ctx.destination);
+      // Transparent safety stage after music AND warrior SFX. The score's
+      // glue compressor cannot catch coincident combat transients because
+      // those intentionally bypass it.
+      this.finalLimiter = this.ctx.createDynamicsCompressor();
+      this.finalLimiter.threshold.value = -2;
+      this.finalLimiter.knee.value = 0;
+      this.finalLimiter.ratio.value = 20;
+      this.finalLimiter.attack.value = 0.003;
+      this.finalLimiter.release.value = 0.08;
+      this.master.connect(this.finalLimiter);
+      this.finalLimiter.connect(this.ctx.destination);
       this.musicBus = this.ctx.createGain();
       this.musicBus.gain.value = 0.55;
       // Glue compressor on the score bus: stacked layers cohere instead of
@@ -150,6 +161,64 @@ interface VoiceOpts {
   pan?: number;
 }
 
+/** Linear filter/pan routes can safely be shared by voices with identical
+ *  settings: summing then filtering is mathematically equivalent to filtering
+ *  then summing. This preserves the mix while avoiding thousands of short-
+ *  lived BiquadFilter and StereoPanner nodes. */
+const voiceRouteCache = new WeakMap<GainNode, Map<string, AudioNode>>();
+
+function voiceDestination(
+  ctx: AudioContext,
+  bus: GainNode,
+  filterFreq?: number,
+  filterQ = 1,
+  pan = 0,
+): AudioNode {
+  if (!filterFreq && !pan) return bus;
+  let routes = voiceRouteCache.get(bus);
+  if (!routes) {
+    routes = new Map();
+    voiceRouteCache.set(bus, routes);
+  }
+  // Slowly opening orchestral filters produce continuously changing values.
+  // A 25 Hz bucket is psychoacoustically transparent at these frequencies and
+  // prevents an unbounded cache of almost-identical routes.
+  const routedFilterFreq = filterFreq ? Math.round(filterFreq / 25) * 25 : 0;
+  const key = `${routedFilterFreq}:${filterQ}:${pan}`;
+  const cached = routes.get(key);
+  if (cached) return cached;
+
+  const input = ctx.createGain();
+  let tail: AudioNode = input;
+  if (routedFilterFreq) {
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = routedFilterFreq;
+    filter.Q.value = filterQ;
+    tail.connect(filter);
+    tail = filter;
+  }
+  if (pan && typeof ctx.createStereoPanner === 'function') {
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = Math.max(-1, Math.min(1, pan));
+    tail.connect(panner);
+    tail = panner;
+  }
+  tail.connect(bus);
+  routes.set(key, input);
+  return input;
+}
+
+function disconnectNodes(...nodes: AudioNode[]): void {
+  for (const node of nodes) {
+    try {
+      node.disconnect();
+    } catch {
+      // A source can end while its scene bus is being torn down.
+    }
+  }
+}
+
 function voice(o: VoiceOpts): void {
   const ctx = core.ensure();
   if (!ctx) return;
@@ -169,24 +238,9 @@ function voice(o: VoiceOpts): void {
   g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
 
-  let head: AudioNode = osc;
-  if (o.filterFreq) {
-    const f = ctx.createBiquadFilter();
-    f.type = 'lowpass';
-    f.frequency.value = o.filterFreq;
-    f.Q.value = o.filterQ ?? 1;
-    head.connect(f);
-    head = f;
-  }
-  head.connect(g);
-  if (o.pan && typeof ctx.createStereoPanner === 'function') {
-    const p = ctx.createStereoPanner();
-    p.pan.value = Math.max(-1, Math.min(1, o.pan));
-    g.connect(p);
-    p.connect(bus);
-  } else {
-    g.connect(bus);
-  }
+  osc.connect(g);
+  g.connect(voiceDestination(ctx, bus, o.filterFreq, o.filterQ, o.pan));
+  osc.onended = () => disconnectNodes(osc, g);
   osc.start(t0);
   osc.stop(t0 + o.dur + 0.05);
 }
@@ -233,6 +287,7 @@ function noise(o: NoiseOpts): void {
   src.connect(f);
   f.connect(g);
   g.connect(bus);
+  src.onended = () => disconnectNodes(src, f, g);
   src.start(t0);
   src.stop(t0 + o.dur + 0.05);
 }
@@ -765,6 +820,11 @@ class MusicDirector {
   private reverbGain: GainNode | null = null;
   private nextNoteTime = 0;
   private step = 0;
+  /** Lightweight future melody instructions. AudioNodes are created only on
+   *  the 16th where each note actually begins, never an entire phrase at once. */
+  private pendingMusicEvents: Array<{ step: number; play: (t: number) => void }> = [];
+  /** Grid step currently being rendered; used when a phrase queues notes. */
+  private schedulingStep = 0;
   private schedTimer: ReturnType<typeof setInterval> | null = null;
   private intensity = 0.35;
   /** Smooth target for intensity — act floors + army density blend here. */
@@ -929,6 +989,8 @@ class MusicDirector {
     this.nextNoteTime = ctx.currentTime + 0.08;
     this.gridOrigin = this.nextNoteTime;
     this.step = 0;
+    this.pendingMusicEvents = [];
+    this.schedulingStep = 0;
     // 100 BPM: 16th = MUSIC_16TH_SEC; 8th = MUSIC_TICK_SEC (= one sim tick).
     this.schedTimer = setInterval(() => this.schedule(), 70);
   }
@@ -937,6 +999,7 @@ class MusicDirector {
     this.running = false;
     if (this.schedTimer) clearInterval(this.schedTimer);
     this.schedTimer = null;
+    this.pendingMusicEvents = [];
     this.rideSfxBus(0.9);
     this.rideReverb(0.45);
     const ctx = core.ctx;
@@ -952,6 +1015,9 @@ class MusicDirector {
     if (mode === this.mode) return;
     const prev = this.mode;
     this.mode = mode;
+    // Do not let notes queued by one scene materialise in the next. Previously
+    // these already existed as future AudioNodes and could not be cancelled.
+    this.pendingMusicEvents = [];
     // Punctuate big scene changes — same transition vocabulary as before.
     if (mode === 'transition') {
       // Early double-raze before 4:50: skip climax crest, hand the energy
@@ -1196,11 +1262,18 @@ class MusicDirector {
     lp.Q.value = 1.2;
     lp.connect(out);
     out.connect(this.bus);
+    let remaining = 6;
+    const releaseGraph = (source: OscillatorNode) => {
+      source.disconnect();
+      remaining--;
+      if (remaining === 0) disconnectNodes(lp, out, subG);
+    };
     for (const cents of [-12, -5, 0, 6, 13]) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
       osc.frequency.value = freq * Math.pow(2, cents / 1200);
       osc.connect(lp);
+      osc.onended = () => releaseGraph(osc);
       osc.start(t0);
       osc.stop(t0 + dur + 0.1);
     }
@@ -1214,6 +1287,7 @@ class MusicDirector {
     subG.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     sub.connect(subG);
     subG.connect(this.bus);
+    sub.onended = () => releaseGraph(sub);
     sub.start(t0);
     sub.stop(t0 + dur + 0.1);
   }
@@ -1239,6 +1313,7 @@ class MusicDirector {
       osc.connect(bp);
       bp.connect(g);
       g.connect(this.bus);
+      osc.onended = () => disconnectNodes(osc, bp, g);
       osc.start(t0);
       osc.stop(t0 + dur + 0.3);
     }
@@ -1284,11 +1359,18 @@ class MusicDirector {
     lp.connect(out);
     out.connect(panner);
     panner.connect(this.bus);
+    let remaining = 6;
+    const releaseGraph = (source: OscillatorNode) => {
+      source.disconnect();
+      remaining--;
+      if (remaining === 0) disconnectNodes(lp, out, panner, subG);
+    };
     for (const cents of [-12, -5, 0, 6, 13]) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
       osc.frequency.value = freq * Math.pow(2, cents / 1200);
       osc.connect(lp);
+      osc.onended = () => releaseGraph(osc);
       osc.start(t);
       osc.stop(t + dur + 0.1);
     }
@@ -1301,6 +1383,7 @@ class MusicDirector {
     subG.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     sub.connect(subG);
     subG.connect(this.bus);
+    sub.onended = () => releaseGraph(sub);
     sub.start(t);
     sub.stop(t + dur + 0.1);
     // Short sub "air hit" under the wall.
@@ -1346,15 +1429,30 @@ class MusicDirector {
     if (l4 > 0.03) voice({ type: 'triangle', freq: freqs[freqs.length - 1] * 2, dur, gain: gain * 0.5 * l4, attack: 0.8, bus: this.bus, when: t, pan: 0.3 });
   }
 
+  /** Queue only a tiny JS instruction for future notes. Creating all of a
+   *  two-bar motif's AudioNodes on its downbeat caused large WebKit render
+   *  graph mutations and intermittent device underruns. */
+  private queueMusicEvent(offsetSteps: number, t0: number, play: (t: number) => void): void {
+    if (offsetSteps === 0) {
+      play(t0);
+      return;
+    }
+    this.pendingMusicEvents.push({
+      step: this.schedulingStep + offsetSteps,
+      play,
+    });
+  }
+
   /** The theme as a soft, clean seed — the "piano" of minutes 1–2, kept as
    *  sparkle doubling once the horns take over. */
   private softTheme(t0: number, mult: number, gain: number, notes: Array<[number, number, number]> = MusicDirector.THEME): void {
     if (!this.bus) return;
     const STEP = MUSIC_16TH_SEC;
     for (const [st, freq, durSteps] of notes) {
-      const t = t0 + st * STEP;
-      voice({ type: 'triangle', freq: freq * mult, dur: durSteps * STEP + 0.3, gain, attack: 0.006, bus: this.bus, when: t, pan: 0.12 });
-      voice({ type: 'sine', freq: freq * mult * 2.002, dur: durSteps * STEP * 0.5 + 0.15, gain: gain * 0.35, attack: 0.006, bus: this.bus, when: t, pan: -0.15 });
+      this.queueMusicEvent(st, t0, (t) => {
+        voice({ type: 'triangle', freq: freq * mult, dur: durSteps * STEP + 0.3, gain, attack: 0.006, bus: this.bus, when: t, pan: 0.12 });
+        voice({ type: 'sine', freq: freq * mult * 2.002, dur: durSteps * STEP * 0.5 + 0.15, gain: gain * 0.35, attack: 0.006, bus: this.bus, when: t, pan: -0.15 });
+      });
     }
   }
 
@@ -1364,14 +1462,15 @@ class MusicDirector {
     if (!this.bus) return;
     const STEP = MUSIC_16TH_SEC;
     for (const [st, freq, durSteps] of notes) {
-      const t = t0 + st * STEP;
-      const dur = durSteps * STEP + 0.12;
-      if (kind === 'horn') {
-        this.horn(t, freq * mult, dur, gain);
-      } else {
-        voice({ type: 'sawtooth', freq: freq * mult, dur: dur + 0.08, gain, filterFreq: 1900, filterQ: 1.1, attack: 0.05, bus: this.bus, when: t, pan: -0.12 });
-        voice({ type: 'sawtooth', freq: freq * mult * 1.005, dur: dur + 0.08, gain: gain * 0.6, filterFreq: 1500, attack: 0.06, bus: this.bus, when: t, pan: 0.14 });
-      }
+      this.queueMusicEvent(st, t0, (t) => {
+        const dur = durSteps * STEP + 0.12;
+        if (kind === 'horn') {
+          this.horn(t, freq * mult, dur, gain);
+        } else {
+          voice({ type: 'sawtooth', freq: freq * mult, dur: dur + 0.08, gain, filterFreq: 1900, filterQ: 1.1, attack: 0.05, bus: this.bus, when: t, pan: -0.12 });
+          voice({ type: 'sawtooth', freq: freq * mult * 1.005, dur: dur + 0.08, gain: gain * 0.6, filterFreq: 1500, attack: 0.06, bus: this.bus, when: t, pan: 0.14 });
+        }
+      });
     }
   }
 
@@ -1381,13 +1480,14 @@ class MusicDirector {
     if (!this.bus) return;
     const STEP = MUSIC_16TH_SEC;
     for (const [st, freq, durSteps] of MusicDirector.CELLO_ANSWER) {
-      const t = t0 + st * STEP;
-      const dur = durSteps * STEP + 0.15;
-      voice({ type: 'sawtooth', freq, dur, gain, filterFreq: 480, attack: 0.06, bus: this.bus, when: t, pan: -0.22 });
-      voice({ type: 'sawtooth', freq: freq * 1.005, dur, gain: gain * 0.6, filterFreq: 380, attack: 0.08, bus: this.bus, when: t, pan: 0.18 });
-      if (brass) {
-        voice({ type: 'sawtooth', freq: freq * 0.5, dur, gain: gain * 0.5, filterFreq: 300, attack: 0.1, bus: this.bus, when: t });
-      }
+      this.queueMusicEvent(st, t0, (t) => {
+        const dur = durSteps * STEP + 0.15;
+        voice({ type: 'sawtooth', freq, dur, gain, filterFreq: 480, attack: 0.06, bus: this.bus, when: t, pan: -0.22 });
+        voice({ type: 'sawtooth', freq: freq * 1.005, dur, gain: gain * 0.6, filterFreq: 380, attack: 0.08, bus: this.bus, when: t, pan: 0.18 });
+        if (brass) {
+          voice({ type: 'sawtooth', freq: freq * 0.5, dur, gain: gain * 0.5, filterFreq: 300, attack: 0.1, bus: this.bus, when: t });
+        }
+      });
     }
   }
 
@@ -1409,6 +1509,7 @@ class MusicDirector {
     src.connect(hp);
     hp.connect(g);
     g.connect(this.bus);
+    src.onended = () => disconnectNodes(src, hp, g);
     src.start(t);
     src.stop(t + dur + 0.2);
   }
@@ -1452,19 +1553,18 @@ class MusicDirector {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     shaper.connect(lp);
     lp.connect(g);
-    if (typeof ctx.createStereoPanner === 'function') {
-      const p = ctx.createStereoPanner();
-      p.pan.value = Math.max(-1, Math.min(1, pan));
-      g.connect(p);
-      p.connect(this.bus);
-    } else {
-      g.connect(this.bus);
-    }
+    g.connect(voiceDestination(ctx, this.bus, undefined, 1, pan));
+    let remaining = 4;
     for (const [f, cents] of [[freq, 0], [freq, 6], [freq * 1.5, -5], [freq * 2, 4]] as Array<[number, number]>) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
       osc.frequency.value = f * Math.pow(2, cents / 1200);
       osc.connect(shaper);
+      osc.onended = () => {
+        osc.disconnect();
+        remaining--;
+        if (remaining === 0) disconnectNodes(shaper, lp, g);
+      };
       osc.start(t);
       osc.stop(t + dur + 0.05);
     }
@@ -1560,7 +1660,9 @@ class MusicDirector {
   private playTheme(t0: number, mult = 1, gain = 0.085): void {
     const STEP = MUSIC_16TH_SEC;
     for (const [st, freq, durSteps] of MusicDirector.THEME) {
-      this.horn(t0 + st * STEP, freq * mult, durSteps * STEP + 0.12, gain);
+      this.queueMusicEvent(st, t0, (t) => {
+        this.horn(t, freq * mult, durSteps * STEP + 0.12, gain);
+      });
     }
   }
 
@@ -1569,6 +1671,15 @@ class MusicDirector {
     if (!ctx || !this.running) return;
     this.tickIntensity();
     const STEP = MUSIC_16TH_SEC;
+    // A suspended tab or a long main-thread stall must not replay hundreds of
+    // missed steps in one callback. Jump the transport forward while keeping
+    // it on-grid; future cues retain their musical position.
+    if (this.nextNoteTime < ctx.currentTime - 0.45) {
+      const skipped = Math.floor((ctx.currentTime - this.nextNoteTime) / STEP);
+      this.nextNoteTime += skipped * STEP;
+      this.step += skipped;
+      this.pendingMusicEvents = this.pendingMusicEvents.filter((event) => event.step >= this.step);
+    }
     while (this.nextNoteTime < ctx.currentTime + 0.3) {
       this.playStep(this.step, this.nextNoteTime);
       this.nextNoteTime += STEP;
@@ -1577,6 +1688,16 @@ class MusicDirector {
   }
 
   private playStep(step: number, t: number): void {
+    this.schedulingStep = step;
+    if (this.pendingMusicEvents.length > 0) {
+      const due: Array<{ step: number; play: (when: number) => void }> = [];
+      const future: Array<{ step: number; play: (when: number) => void }> = [];
+      for (const event of this.pendingMusicEvents) {
+        (event.step <= step ? due : future).push(event);
+      }
+      this.pendingMusicEvents = future;
+      for (const event of due) event.play(t);
+    }
     const s16 = step % 16; // position in bar
     const bar = Math.floor(step / 16);
     const inten = this.intensity;
