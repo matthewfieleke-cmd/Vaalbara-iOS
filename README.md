@@ -1,5 +1,29 @@
 # Vaalbara: The Last Oasis
 
+Native **iOS 17+** app (Swift / Xcode) and reference **web** build of the same game.
+
+## iOS (App Store target)
+
+```bash
+./Scripts/setup-ios.sh    # copies art + generates Vaalbara.xcodeproj (requires XcodeGen on Mac)
+open Vaalbara.xcodeproj   # set your Development Team, then build & run
+```
+
+Modular Swift packages:
+
+| Package | Role |
+| --- | --- |
+| `VaalbaraCore` | Types, balance data, duel stats (ported from `src/types.ts` + `src/data.ts`) |
+| `VaalbaraEngine` | Deterministic sim, bot, duel engine (port in progress from `src/engine.ts` + `src/duel.ts`) |
+| `VaalbaraAudio` | AVAudioEngine procedural score (port in progress from `src/audio.ts`) |
+| `VaalbaraNetworking` | `MatchTransport` protocol — v1 offline; Firebase stub for future multiplayer |
+
+v1 ships **offline vs bot** + **Duels**, with Game Center leaderboards/achievements. Bundle ID: `com.vaalbara.thelastoasis`.
+
+---
+
+## Web (reference PWA)
+
 A high-fidelity, mobile-first multiplayer PWA tactics game — real-time arena battles with the resource economy and card cycling of Clash Royale, set on the dying supercontinent of Vaalbara. Painted arenas and frame-animated characters, procedural particles and a fully synthesized Zimmer-style score — zero audio files, offline-capable.
 
 ## Play
