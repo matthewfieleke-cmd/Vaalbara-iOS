@@ -8,15 +8,16 @@ struct VaalbaraApp: App {
         audio: ProceduralScoreEngine()
     )
 
-    init() {
-        GameCenterService.shared.authenticate()
-    }
-
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
                 .preferredColorScheme(.dark)
+                .task {
+                    // Defer Game Center auth until the UI is up; setting the
+                    // authenticate handler during App.init can crash at launch.
+                    GameCenterService.shared.authenticate()
+                }
         }
     }
 }
