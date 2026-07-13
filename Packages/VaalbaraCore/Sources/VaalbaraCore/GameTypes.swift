@@ -453,7 +453,7 @@ public enum MatchOutcome: Sendable {
 // MARK: - Duel mode
 
 public enum DuelIntent: String, Codable, CaseIterable, Sendable {
-    case strike, guard, special
+    case strike, `guard`, special
 }
 
 public struct DuelSpecial: Sendable {
