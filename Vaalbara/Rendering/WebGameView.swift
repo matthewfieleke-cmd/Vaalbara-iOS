@@ -29,6 +29,12 @@ struct WebGameView: UIViewRepresentable {
         webView.backgroundColor = .black
         webView.scrollView.backgroundColor = .black
         webView.scrollView.bounces = false
+        // The page handles safe areas itself (viewport-fit=cover + CSS env()).
+        // Left on .automatic, iOS nudges the content down by the status-bar
+        // inset *after* first paint — a race that page load speed decides, so
+        // warm launches lay out differently from cold ones and the boot →
+        // cinematic handoff visibly shifts. Freeze it.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.navigationDelegate = context.coordinator
 
         guard let indexURL = URL(string: "\(WebBundleSchemeHandler.scheme)://app/index.html") else {

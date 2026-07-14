@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { drawSpecies } from '../vector-art';
 import { getAnim, getPhaseArt } from '../sprites';
 import { music, playUi, unlockAudio } from '../audio';
-import { igniteOrbPhaseStyle } from '../ignite';
 import type { SpeciesId } from '../types';
 
 /**
@@ -121,7 +120,7 @@ const BEATS: Beat[] = [
 
 const TOTAL = 84;
 
-export function Cinematic({ onDone }: { onDone: () => void }) {
+export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
@@ -141,6 +140,7 @@ export function Cinematic({ onDone }: { onDone: () => void }) {
     music.braam(73.4, 2.2, 0.55);
     startRef.current = performance.now();
     setStarted(true);
+    onStarted();
   };
 
   const finish = () => {
@@ -414,15 +414,9 @@ export function Cinematic({ onDone }: { onDone: () => void }) {
       ].filter(Boolean).join(' ')}
     >
       <canvas ref={canvasRef} />
-      {!started && (
-        <button className="tap-to-begin" onClick={begin}>
-          <span className="ignite-orb" style={igniteOrbPhaseStyle()} />
-          <span className="ignite-label tap-label">
-            <b>TAP TO BEGIN</b>
-            <span className="hint">headphones recommended</span>
-          </span>
-        </button>
-      )}
+      {/* Full-screen tap target + reveal scrim. The orb and labels live in
+          App's persistent ignite overlay so they survive this mount. */}
+      {!started && <button className="tap-to-begin" onClick={begin} aria-label="Tap to begin" />}
       {active && (active.title || active.body) ? (
         <div
           className={`cine-text${active.textPlace === 'stage' ? ' on-stage' : ''}`}

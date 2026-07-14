@@ -3,7 +3,6 @@ import type { BotStrength, FactionId, GameState, PlayerId, Profile, Screen, Spec
 import { loadBotStrength, loadProfile, recordResult, saveBotStrength } from './net';
 import type { MatchSession } from './net';
 import { music, playResult, setMuted, unlockAudio } from './audio';
-import { igniteOrbPhaseStyle } from './ignite';
 import { loadSprites } from './sprites';
 import { Cinematic } from './components/Cinematic';
 import { Menu } from './components/Menu';
@@ -25,6 +24,8 @@ export function App() {
   /** Forces a fresh GameScreen mount per match. */
   const [matchNonce, setMatchNonce] = useState(0);
   const [duel, setDuel] = useState<{ faction: FactionId; order: SpeciesId[] } | null>(null);
+  /** True once the player taps Begin — dismisses the persistent ignite orb. */
+  const [cineStarted, setCineStarted] = useState(false);
 
   // Boot: preload the painted character sprites (capped wait — the vector
   // fallback covers anything that isn't ready), then intro or menu.
@@ -90,14 +91,27 @@ export function App() {
         </button>
       )}
 
-      {screen === 'boot' && (
-        <div className="boot">
-          <div className="ignite-orb" style={igniteOrbPhaseStyle()} />
-          <div className="ignite-label">IGNITING VAALBARA</div>
-        </div>
+      {screen === 'cinematic' && (
+        <Cinematic onStarted={() => setCineStarted(true)} onDone={finishIntro} />
       )}
 
-      {screen === 'cinematic' && <Cinematic onDone={finishIntro} />}
+      {/* THE ignite orb — one element that outlives the boot → cinematic
+          swap. Because the DOM node never remounts, its position, size, and
+          breathing phase are continuous by construction; only the labels
+          crossfade beneath it. Rendered after the cinematic so it paints on
+          top without extra stacking rules. */}
+      {(screen === 'boot' || (screen === 'cinematic' && !cineStarted)) && (
+        <div className="ignite-overlay" aria-hidden="true">
+          <div className="ignite-orb" />
+          <div className={`ignite-label boot-label${screen === 'boot' ? '' : ' is-hidden'}`}>
+            IGNITING VAALBARA
+          </div>
+          <div className={`ignite-label tap-label${screen === 'cinematic' ? '' : ' is-hidden'}`}>
+            <b>TAP TO BEGIN</b>
+            <span className="hint">headphones recommended</span>
+          </div>
+        </div>
+      )}
 
       {screen === 'menu' && (
         <Menu
@@ -112,7 +126,10 @@ export function App() {
             music.setMode('menu');
             setScreen('duel-setup');
           }}
-          onReplayIntro={() => setScreen('cinematic')}
+          onReplayIntro={() => {
+            setCineStarted(false);
+            setScreen('cinematic');
+          }}
         />
       )}
 

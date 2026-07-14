@@ -103,15 +103,17 @@ button {
 
 /* --------------------------------- boot ---------------------------------- */
 
-.boot {
-  flex: 1;
-  position: relative;
+/* THE ignite orb — one persistent element that outlives the boot → cinematic
+   swap. Fixed to the visual viewport (never a screen container), so no layout
+   difference between screens can ever move it; and because the node never
+   remounts, the breathing animation is continuous by construction. */
+.ignite-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
 }
 
-/* THE ignite orb — one ember shared by boot and the tap gate. Both screens
-   pin it to the same coordinates and phase-lock the breathing to a global
-   clock (inline negative animation-delay), so the boot → cinematic swap
-   reads as a single continuous ember, never a jump. */
 .ignite-orb {
   position: absolute;
   left: 50%;
@@ -135,9 +137,35 @@ button {
   align-items: center;
   gap: 0.55rem;
   text-align: center;
+  /* Boot copy yields quickly; the tap invitation breathes in after it. */
+  transition: opacity 0.9s ease-out 0.45s;
   letter-spacing: 0.3em;
   color: var(--ink-dim);
   font-size: 0.8rem;
+}
+
+.ignite-label.is-hidden {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.tap-label b {
+  font-size: clamp(0.95rem, 4.2vw, 1.15rem);
+  letter-spacing: 0.32em;
+  font-weight: 900;
+  animation: tap-pulse 1.8s ease-in-out infinite;
+}
+
+.tap-label .hint {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+}
+
+@keyframes tap-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
 @keyframes breathe {
@@ -311,29 +339,6 @@ button {
   0% { opacity: 1; }
   25% { opacity: 1; }
   100% { opacity: 0.6; }
-}
-
-.tap-to-begin .tap-label {
-  animation: cine-fade-in 0.9s ease-out 0.5s both;
-}
-
-.tap-to-begin b {
-  font-size: clamp(0.95rem, 4.2vw, 1.15rem);
-  letter-spacing: 0.32em;
-  font-weight: 900;
-  animation: tap-pulse 1.8s ease-in-out infinite;
-}
-
-.tap-to-begin .hint {
-  font-size: 0.75rem;
-  letter-spacing: 0.16em;
-  color: var(--ink-dim);
-  text-transform: uppercase;
-}
-
-@keyframes tap-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
 }
 
 .skip-btn {
