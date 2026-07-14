@@ -165,21 +165,6 @@ interface VoiceOpts {
   pan?: number;
 }
 
-/**
- * Long-lived hive oscillators. The old bed recreated five voices every
- * eighth note; this rack keeps the same living pulse with a single LFO and
- * smooth gain/pitch automation, eliminating the largest species-node churn.
- */
-interface BeeEnsembleRack {
-  sources: OscillatorNode[];
-  nodes: AudioNode[];
-  baseLevel: GainNode;
-  harmonyLevel: GainNode;
-  baseFilters: BiquadFilterNode[];
-  harmonyFilters: BiquadFilterNode[];
-  harmonyOscillators: [OscillatorNode, OscillatorNode];
-}
-
 /** Linear filter/pan routes can safely be shared by voices with identical
  *  settings: summing then filtering is mathematically equivalent to filtering
  *  then summing. This preserves the mix while avoiding thousands of short-
@@ -901,8 +886,6 @@ class MusicDirector {
   /** Smoothed duplicate-voice gains prevent deployment/death clicks. */
   private beeHarmonyLevel = 0;
   private eagleHarmonyLevel = 0;
-  /** Persistent hive synth; lazily created when the first swarm enters. */
-  private beeRack: BeeEnsembleRack | null = null;
   /** Deployment handoffs make the score's Eagle phrase identifiable. */
   private eagleEntrancesPending = 0;
   /** True while any bee swarm is alive — sustains the hive buzz bed. */
@@ -1089,7 +1072,6 @@ class MusicDirector {
     if (this.schedTimer) clearInterval(this.schedTimer);
     this.schedTimer = null;
     this.pendingMusicEvents = [];
-    this.releaseBeeRack();
     this.rideSfxBus(0.9);
     this.rideReverb(0.45);
     const ctx = core.ctx;
@@ -1163,7 +1145,6 @@ class MusicDirector {
     unitCount: number;
     speciesCounts: Partial<Record<SpeciesId, number>>;
   }): void {
-    const previousBeeCount = this.beeCount;
     const previousEagleCount = this.eagleCount;
     this.beeCount = opts.speciesCounts.bees ?? 0;
     this.eagleCount = opts.speciesCounts.eagle ?? 0;
@@ -1171,7 +1152,6 @@ class MusicDirector {
     if (this.eagleCount > previousEagleCount) {
       this.eagleEntrancesPending = Math.min(2, this.eagleEntrancesPending + this.eagleCount - previousEagleCount);
     }
-    if (previousBeeCount > 0 && this.beeCount === 0) this.fadeBeeRack();
     this.presenceSpecies = new Set(
       Object.entries(opts.speciesCounts)
         .filter(([, count]) => (count ?? 0) > 0)
@@ -1408,165 +1388,23 @@ class MusicDirector {
     });
   }
 
-  /** Build the five-oscillator hive once; subsequent pulses are automation. */
-  private ensureBeeRack(t: number): BeeEnsembleRack | null {
-    if (this.beeRack) return this.beeRack;
-    const ctx = core.ctx;
-    if (!ctx || !this.bus) return null;
-
-    const baseLevel = ctx.createGain();
-    const harmonyLevel = ctx.createGain();
-    const pulse = ctx.createGain();
-    baseLevel.gain.value = 0.0001;
-    harmonyLevel.gain.value = 0.0001;
-    pulse.gain.value = 0.8;
-    baseLevel.connect(pulse);
-    harmonyLevel.connect(pulse);
-    pulse.connect(this.bus);
-
-    // One phase-locked LFO retains the living eighth-note respiration without
-    // constructing and destroying hundreds of short oscillators. The depth is
-    // deep enough to read as wingbeat, not a static drone.
-    const lfo = ctx.createOscillator();
-    const lfoDepth = ctx.createGain();
-    lfo.type = 'sine';
-    lfo.frequency.value = 1 / MUSIC_TICK_SEC;
-    lfoDepth.gain.value = 0.3;
-    lfo.connect(lfoDepth);
-    lfoDepth.connect(pulse.gain);
-
-    const sources: OscillatorNode[] = [lfo];
-    const nodes: AudioNode[] = [baseLevel, harmonyLevel, pulse, lfoDepth];
-    const baseFilters: BiquadFilterNode[] = [];
-    const harmonyFilters: BiquadFilterNode[] = [];
-    const addBranch = (
-      type: OscillatorType,
-      freq: number,
-      weight: number,
-      filterFreq: number,
-      pan: number,
-      destination: GainNode,
-      filters: BiquadFilterNode[],
-    ): OscillatorNode => {
-      const osc = ctx.createOscillator();
-      const mix = ctx.createGain();
-      const filter = ctx.createBiquadFilter();
-      osc.type = type;
-      osc.frequency.value = freq;
-      mix.gain.value = weight;
-      filter.type = 'lowpass';
-      filter.frequency.value = filterFreq;
-      osc.connect(mix);
-      mix.connect(filter);
-      let tail: AudioNode = filter;
-      if (typeof ctx.createStereoPanner === 'function') {
-        const panner = ctx.createStereoPanner();
-        panner.pan.value = pan;
-        filter.connect(panner);
-        tail = panner;
-        nodes.push(panner);
-      }
-      tail.connect(destination);
-      sources.push(osc);
-      nodes.push(mix, filter);
-      filters.push(filter);
-      return osc;
-    };
-
-    addBranch('sawtooth', 220, 1, 1000, -0.28, baseLevel, baseFilters);
-    // ~7 Hz acoustic beat against the root — the wings. A slow wobble drifts
-    // that beat between ~4 and ~10 Hz so the hive never freezes into a tone.
-    const flutter = addBranch('sawtooth', 227, 0.62, 1250, 0.08, baseLevel, baseFilters);
-    addBranch('triangle', 440, 0.26, 1850, -0.06, baseLevel, baseFilters);
-    const wobble = ctx.createOscillator();
-    const wobbleDepth = ctx.createGain();
-    wobble.type = 'sine';
-    wobble.frequency.value = 0.6;
-    wobbleDepth.gain.value = 3.2;
-    wobble.connect(wobbleDepth);
-    wobbleDepth.connect(flutter.frequency);
-    sources.push(wobble);
-    nodes.push(wobbleDepth);
-    const harmonyBody = addBranch('sawtooth', 293.7, 0.78, 1450, 0.28, harmonyLevel, harmonyFilters);
-    // An octave sheen gives the D/C# identity a clear spectral window above
-    // late-phase guitars without adding another rhythmic voice.
-    const harmonySheen = addBranch('triangle', 587.4, 0.44, 2400, 0.14, harmonyLevel, harmonyFilters);
-    for (const source of sources) source.start(t);
-
-    this.beeRack = {
-      sources,
-      nodes,
-      baseLevel,
-      harmonyLevel,
-      baseFilters,
-      harmonyFilters,
-      harmonyOscillators: [harmonyBody, harmonySheen],
-    };
-    return this.beeRack;
-  }
-
-  /** Fade a departed hive without stopping the persistent graph mid-cycle. */
-  private fadeBeeRack(): void {
-    const rack = this.beeRack;
-    const ctx = core.ctx;
-    if (!rack || !ctx) return;
-    // The scheduler may already have queued one look-ahead pulse. Cancel it
-    // first or that future target would silently revive the departed hive.
-    for (const gain of [rack.baseLevel.gain, rack.harmonyLevel.gain]) {
-      const held = Math.max(0.0001, gain.value);
-      gain.cancelScheduledValues(ctx.currentTime);
-      gain.setValueAtTime(held, ctx.currentTime);
-      gain.setTargetAtTime(0.0001, ctx.currentTime, 0.16);
-    }
-  }
-
-  /** Release persistent sources when the soundtrack itself stops. */
-  private releaseBeeRack(): void {
-    const rack = this.beeRack;
-    const ctx = core.ctx;
-    if (!rack || !ctx) return;
-    this.fadeBeeRack();
-    const stopAt = ctx.currentTime + 0.7;
-    for (const source of rack.sources) {
-      try {
-        source.stop(stopAt);
-      } catch {
-        // A WebKit scene teardown can race an already stopped oscillator.
-      }
-    }
-    setTimeout(() => disconnectNodes(...rack.sources, ...rack.nodes), 900);
-    this.beeRack = null;
-  }
-
-  /** Hive bed: a louder A foundation; a second swarm adds D/C# plus sheen. */
+  /** Hive bed: pulsed detuned drones — first swarm hums A; a second adds the
+   *  live chord color. Each 8th retriggers short voices whose attack
+   *  envelopes ARE the buzz (the character the persistent-rack experiment
+   *  lost). Runs one notch above its original level so it reads in the mix. */
   private beeBuzz(t: number, inten: number, bar: number): void {
     if (!this.bus || !this.beePresence) return;
-    const rack = this.ensureBeeRack(t);
-    if (!rack) return;
-    const pos = this.mode === 'basalt'
-      ? MusicDirector.ladderPos(this.basaltElapsed)
-      : Math.min(2, inten * 2);
-    // Sits at the classic hive level on entry, then earns ~+2.3 dB of
-    // relative presence as the late orchestration thickens — audible in the
-    // finale without ever leading the mix.
-    const g = (0.018 + inten * 0.013) * MusicDirector.lerpTab([1, 1.05, 1.12, 1.2, 1.3], pos);
+    const g = 0.02 + inten * 0.016;
+    voice({ type: 'sawtooth', freq: 220, dur: 0.32, gain: g, attack: 0.08, filterFreq: 900, bus: this.bus, when: t, pan: -0.28 });
+    voice({ type: 'sawtooth', freq: 221.3, dur: 0.32, gain: g * 0.72, attack: 0.1, filterFreq: 1100, bus: this.bus, when: t, pan: 0.08 });
+    voice({ type: 'triangle', freq: 440, dur: 0.28, gain: g * 0.28, attack: 0.12, bus: this.bus, when: t, pan: -0.06 });
+
     const chord = ((bar % 4) + 4) % 4;
     const harmonyFreq = this.mode === 'basalt' && chord === 3 ? 277.2 : 293.7;
-    rack.baseLevel.gain.setTargetAtTime(g, t, 0.1);
-    rack.harmonyLevel.gain.setTargetAtTime(g * this.beeHarmonyLevel, t, 0.1);
-    rack.harmonyOscillators[0].frequency.setTargetAtTime(harmonyFreq, t, 0.025);
-    rack.harmonyOscillators[1].frequency.setTargetAtTime(harmonyFreq * 2, t, 0.025);
-    const filterLift = Math.min(4, pos);
-    const baseFilterTargets = [1000 + filterLift * 55, 1250 + filterLift * 75, 1850 + filterLift * 85];
-    const harmonyFilterTargets = [1450 + filterLift * 150, 2400 + filterLift * 180];
-    rack.baseFilters.forEach((filter, i) => {
-      filter.frequency.setTargetAtTime(baseFilterTargets[i], t, 0.16);
-    });
-    rack.harmonyFilters.forEach((filter, i) => {
-      filter.frequency.setTargetAtTime(harmonyFilterTargets[i], t, 0.16);
-    });
-    if (this.beeCount < 2 && this.beeHarmonyLevel < 0.001) {
-      rack.harmonyLevel.gain.setTargetAtTime(0.0001, t, 0.08);
+    const harmonyGain = g * this.beeHarmonyLevel;
+    if (harmonyGain > 0.0002) {
+      voice({ type: 'sawtooth', freq: harmonyFreq, dur: 0.32, gain: harmonyGain * 0.52, attack: 0.1, filterFreq: 1050, bus: this.bus, when: t, pan: 0.28 });
+      voice({ type: 'triangle', freq: harmonyFreq * 1.004, dur: 0.28, gain: harmonyGain * 0.3, attack: 0.12, filterFreq: 1200, bus: this.bus, when: t, pan: 0.14 });
     }
   }
 
