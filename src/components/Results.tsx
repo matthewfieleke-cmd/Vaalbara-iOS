@@ -1,4 +1,5 @@
 import type { GameState, PlayerId, Profile } from '../types';
+import { playUi } from '../audio';
 
 export function Results({
   winner,
@@ -48,10 +49,22 @@ export function Results({
         </span>
       </div>
       <div className="menu-actions" style={{ width: '100%', maxWidth: 340 }}>
-        <button className="btn btn-primary" onClick={onRematch}>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            playUi('tap');
+            onRematch();
+          }}
+        >
           ⚔ Rematch
         </button>
-        <button className="btn btn-ghost" onClick={onMenu}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            playUi('tap');
+            onMenu();
+          }}
+        >
           ◂ Main menu
         </button>
       </div>

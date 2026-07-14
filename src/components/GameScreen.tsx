@@ -8,6 +8,7 @@ import { cardDef } from '../data';
 import { BotBrain, TickDriver, preferDeployLane } from '../engine';
 import { Renderer } from '../render';
 import { handleGameEvents, music, playUi } from '../audio';
+import { playHaptic } from '../haptics';
 import type { MatchSession } from '../net';
 import { SpriteArt } from './SpriteArt';
 import { getDuelArt, loadSprites } from '../sprites';
@@ -141,6 +142,7 @@ export function GameScreen({
     const routeEvents = (events: GameEvent[], state: GameState) => {
       for (const e of events) {
         if (e.type === 'phaseChange' && e.phase === 'transition') {
+          playHaptic('phaseTransition');
           setBanner({
             id: Date.now(),
             title: 'The March to the Oasis',
@@ -148,6 +150,7 @@ export function GameScreen({
             color: '#7dffce',
           });
         } else if (e.type === 'phaseChange' && e.phase === 'oasis') {
+          playHaptic('medium');
           setBanner({
             id: Date.now(),
             title: 'Phase II — Hold the Pond',
@@ -155,6 +158,7 @@ export function GameScreen({
             color: '#4fd8ff',
           });
         } else if (e.type === 'obeliskDown') {
+          playHaptic('heavy');
           const razed = state.obelisks
             .filter((o) => o.owner === e.owner)
             .every((o) => o.hp <= 0);
@@ -169,6 +173,7 @@ export function GameScreen({
             color: e.owner === seat ? '#ff7d6d' : '#ffc94d',
           });
         } else if (e.type === 'pondClaimed') {
+          playHaptic(e.player === seat ? 'success' : 'warning');
           setBanner({
             id: Date.now(),
             title: e.player === seat ? 'The Pond Is Yours!' : 'The Pond Is Lost',
@@ -176,6 +181,7 @@ export function GameScreen({
             color: e.player === seat ? '#7dffce' : '#ff7d6d',
           });
         } else if (e.type === 'blessing') {
+          playHaptic(e.player === seat ? 'success' : 'warning');
           setBanner({
             id: Date.now(),
             title: e.player === seat ? 'Vaalbara Blessing!' : 'Enemy Blessed',
@@ -253,7 +259,7 @@ export function GameScreen({
       driver.submit(seat, { type: 'spell', card, x: gx, y: gy });
       setSelectedCard(null);
       renderer.telegraph.active = false;
-      playUi('tap');
+      playUi('deploy');
       return;
     }
 
@@ -287,7 +293,7 @@ export function GameScreen({
       const dest = pads[wing];
       driver.submit(seat, { type: 'deploy', card, x: dest.x, y: dest.y, dirX: 0, dirY: seat === 0 ? -1 : 1 });
       setSelectedCard(null);
-      playUi('tap');
+      playUi('deploy');
       return;
     }
 
@@ -345,7 +351,7 @@ export function GameScreen({
 
     driver.submit(seat, { type: 'deploy', card, x: drag.fromX, y: drag.fromY, dirX: fx, dirY: fy });
     setSelectedCard(null);
-    playUi('tap');
+    playUi('deploy');
   }, [seat]);
 
   /* -------------------------------- HUD ---------------------------------- */

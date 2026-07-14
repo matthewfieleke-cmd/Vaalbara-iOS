@@ -72,10 +72,22 @@ export function FactionSelect({
         </span>
       </div>
       <div className="menu-actions">
-        <button className="btn btn-primary" onClick={() => onConfirm(picked)}>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            playUi('tap');
+            onConfirm(picked);
+          }}
+        >
           March to the Basalt Fields
         </button>
-        <button className="btn btn-ghost" onClick={onBack}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            playUi('tap');
+            onBack();
+          }}
+        >
           ◂ Back
         </button>
       </div>

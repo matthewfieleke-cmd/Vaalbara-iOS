@@ -63,6 +63,7 @@
 
 import type { GameEvent, SpeciesId } from './types';
 import { TICK_MS } from './types';
+import { playHaptic } from './haptics';
 
 /** One 16th note at 100 BPM — soundtrack scheduler step. */
 export const MUSIC_16TH_SEC = 0.15;
@@ -698,27 +699,41 @@ const GLOBAL_SFX = {
   },
 };
 
-export function playUi(kind: 'tap' | 'drag' | 'error' = 'tap'): void {
-  if (kind === 'tap') GLOBAL_SFX.ui();
-  else if (kind === 'drag') GLOBAL_SFX.deployDrag();
-  else GLOBAL_SFX.error();
+export function playUi(kind: 'tap' | 'drag' | 'deploy' | 'error' = 'tap'): void {
+  if (kind === 'tap') {
+    playHaptic('light');
+    GLOBAL_SFX.ui();
+  } else if (kind === 'drag') {
+    playHaptic('light');
+    GLOBAL_SFX.deployDrag();
+  } else if (kind === 'deploy') {
+    playHaptic('medium');
+    GLOBAL_SFX.ui();
+  } else {
+    playHaptic('warning');
+    GLOBAL_SFX.error();
+  }
 }
 
 export function playResult(win: boolean): void {
+  playHaptic(win ? 'success' : 'warning');
   (win ? GLOBAL_SFX.victory : GLOBAL_SFX.defeat)();
 }
 
 /* Direct species hooks for the Duels mode stage (immediate — not battle-grid). */
 
 export function playSpeciesAttack(sp: SpeciesId): void {
+  playHaptic('medium');
   if (core.enabled) SPECIES_SFX[sp].attack();
 }
 
 export function playSpeciesSpawn(sp: SpeciesId): void {
+  playHaptic('light');
   if (core.enabled) SPECIES_SFX[sp].spawn();
 }
 
 export function playKo(): void {
+  playHaptic('heavy');
   if (core.enabled) GLOBAL_SFX.death();
 }
 

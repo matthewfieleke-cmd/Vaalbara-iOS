@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FactionId } from '../types';
 import { createLocalSession, findMatch } from '../net';
 import type { MatchSession } from '../net';
+import { playUi } from '../audio';
 
 /**
  * Live matchmaking screen. Searches Firebase when keys exist; otherwise (or
@@ -58,6 +59,7 @@ export function Matchmaking({
       <button
         className="btn btn-ghost"
         onClick={() => {
+          playUi('tap');
           settledRef.current = true;
           cancelRef.current?.();
           onSession(createLocalSession(faction));
@@ -65,7 +67,13 @@ export function Matchmaking({
       >
         Play offline now ▸
       </button>
-      <button className="btn btn-ghost" onClick={onCancel}>
+      <button
+        className="btn btn-ghost"
+        onClick={() => {
+          playUi('tap');
+          onCancel();
+        }}
+      >
         ◂ Back
       </button>
     </div>

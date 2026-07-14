@@ -5,6 +5,8 @@ import WebKit
 
 /// Hosts the complete production web game while the native screens are ported.
 struct WebGameView: UIViewRepresentable {
+    private static let hapticHandlerName = "haptics"
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
@@ -16,6 +18,10 @@ struct WebGameView: UIViewRepresentable {
         configuration.setURLSchemeHandler(
             WebBundleSchemeHandler(),
             forURLScheme: WebBundleSchemeHandler.scheme
+        )
+        configuration.userContentController.add(
+            context.coordinator,
+            name: Self.hapticHandlerName
         )
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -39,7 +45,44 @@ struct WebGameView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: hapticHandlerName
+        )
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard
+                message.name == WebGameView.hapticHandlerName,
+                message.frameInfo.isMainFrame,
+                let kind = message.body as? String
+            else {
+                return
+            }
+
+            switch kind {
+            case "light":
+                HapticsService.light()
+            case "medium":
+                HapticsService.medium()
+            case "heavy":
+                HapticsService.heavy()
+            case "success":
+                HapticsService.success()
+            case "warning":
+                HapticsService.warning()
+            case "phaseTransition":
+                HapticsService.phaseTransition()
+            default:
+                break
+            }
+        }
+
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,

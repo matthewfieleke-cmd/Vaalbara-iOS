@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { drawSpecies } from '../vector-art';
 import { getAnim, getPhaseArt } from '../sprites';
-import { music, unlockAudio } from '../audio';
+import { music, playUi, unlockAudio } from '../audio';
 import type { SpeciesId } from '../types';
 
 /**
@@ -133,6 +133,7 @@ export function Cinematic({ onDone }: { onDone: () => void }) {
 
   const begin = () => {
     unlockAudio();
+    playUi('tap');
     music.start();
     music.setMode('intro');
     music.setIntensity(0.55);
@@ -436,7 +437,13 @@ export function Cinematic({ onDone }: { onDone: () => void }) {
         </div>
       ) : null}
       {started && (
-        <button className="skip-btn" onClick={finish}>
+        <button
+          className="skip-btn"
+          onClick={() => {
+            playUi('tap');
+            finish();
+          }}
+        >
           Skip intro ▸
         </button>
       )}

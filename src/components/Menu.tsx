@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Profile } from '../types';
 import { discoverFirebaseKeys } from '../net';
+import { playUi } from '../audio';
 
 const PRIVACY_URL = 'https://matthewfieleke-cmd.github.io/Vaalbara-iOS/privacy.html';
 const SUPPORT_URL = 'https://matthewfieleke-cmd.github.io/Vaalbara-iOS/support.html';
@@ -116,15 +117,15 @@ export function Menu({
       </div>
 
       <div className="menu-actions">
-        <button className="btn btn-primary menu-cta" onClick={onPlay}>
+        <button className="btn btn-primary menu-cta" onClick={() => { playUi('tap'); onPlay(); }}>
           <span className="cta-icon">⚔</span>
           <span className="cta-label">Battle</span>
         </button>
-        <button className="btn btn-duel menu-cta" onClick={onDuel}>
+        <button className="btn btn-duel menu-cta" onClick={() => { playUi('tap'); onDuel(); }}>
           <span className="cta-icon">⚜</span>
           <span className="cta-label">Duels</span>
         </button>
-        <button className="btn btn-ghost" onClick={onReplayIntro}>
+        <button className="btn btn-ghost" onClick={() => { playUi('tap'); onReplayIntro(); }}>
           ▸ Replay intro cinematic
         </button>
       </div>
