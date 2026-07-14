@@ -151,6 +151,9 @@ interface VoiceOpts {
   freq: number;
   /** End frequency for pitch glide. */
   freqEnd?: number;
+  /** Seconds for the glide to settle. Default: the full duration. A short
+   *  settle keeps expressive scoops IN TUNE — the ear hears the held pitch. */
+  glideDur?: number;
   dur: number;
   gain?: number;
   attack?: number;
@@ -245,7 +248,8 @@ function voice(o: VoiceOpts): void {
   osc.type = o.type ?? 'sine';
   osc.frequency.setValueAtTime(o.freq, t0);
   if (o.freqEnd !== undefined) {
-    osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.freqEnd), t0 + o.dur);
+    const glide = Math.min(o.dur, Math.max(0.005, o.glideDur ?? o.dur));
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.freqEnd), t0 + glide);
   }
   const g = ctx.createGain();
   const attack = o.attack ?? 0.008;
@@ -1385,13 +1389,15 @@ class MusicDirector {
     if (entry) this.eagleEntrancesPending--;
   }
 
-  /** Airy downward scoop derived from the Eagle's familiar combat chirp. */
+  /** Airy scoop from the Eagle's chirp. The glide settles within the first
+   *  tenth of the note so the held pitch — not the bend — defines the tone. */
   private eagleCallNote(t: number, freq: number, gain: number, pan: number, entry: boolean): void {
     if (!this.bus) return;
     voice({
       type: 'triangle',
-      freq: freq * (entry ? 1.42 : 1.075),
+      freq: freq * (entry ? 1.26 : 1.04),
       freqEnd: freq,
+      glideDur: entry ? 0.11 : 0.055,
       dur: entry ? 0.58 : 0.5,
       gain,
       attack: 0.035,
@@ -1413,18 +1419,19 @@ class MusicDirector {
     const pulse = ctx.createGain();
     baseLevel.gain.value = 0.0001;
     harmonyLevel.gain.value = 0.0001;
-    pulse.gain.value = 0.88;
+    pulse.gain.value = 0.8;
     baseLevel.connect(pulse);
     harmonyLevel.connect(pulse);
     pulse.connect(this.bus);
 
     // One phase-locked LFO retains the living eighth-note respiration without
-    // constructing and destroying hundreds of short oscillators.
+    // constructing and destroying hundreds of short oscillators. The depth is
+    // deep enough to read as wingbeat, not a static drone.
     const lfo = ctx.createOscillator();
     const lfoDepth = ctx.createGain();
     lfo.type = 'sine';
     lfo.frequency.value = 1 / MUSIC_TICK_SEC;
-    lfoDepth.gain.value = 0.12;
+    lfoDepth.gain.value = 0.3;
     lfo.connect(lfoDepth);
     lfoDepth.connect(pulse.gain);
 
@@ -1467,8 +1474,19 @@ class MusicDirector {
     };
 
     addBranch('sawtooth', 220, 1, 1000, -0.28, baseLevel, baseFilters);
-    addBranch('sawtooth', 221.3, 0.72, 1250, 0.08, baseLevel, baseFilters);
-    addBranch('triangle', 440, 0.28, 1850, -0.06, baseLevel, baseFilters);
+    // ~7 Hz acoustic beat against the root — the wings. A slow wobble drifts
+    // that beat between ~4 and ~10 Hz so the hive never freezes into a tone.
+    const flutter = addBranch('sawtooth', 227, 0.62, 1250, 0.08, baseLevel, baseFilters);
+    addBranch('triangle', 440, 0.26, 1850, -0.06, baseLevel, baseFilters);
+    const wobble = ctx.createOscillator();
+    const wobbleDepth = ctx.createGain();
+    wobble.type = 'sine';
+    wobble.frequency.value = 0.6;
+    wobbleDepth.gain.value = 3.2;
+    wobble.connect(wobbleDepth);
+    wobbleDepth.connect(flutter.frequency);
+    sources.push(wobble);
+    nodes.push(wobbleDepth);
     const harmonyBody = addBranch('sawtooth', 293.7, 0.78, 1450, 0.28, harmonyLevel, harmonyFilters);
     // An octave sheen gives the D/C# identity a clear spectral window above
     // late-phase guitars without adding another rhythmic voice.
@@ -1528,10 +1546,10 @@ class MusicDirector {
     const pos = this.mode === 'basalt'
       ? MusicDirector.ladderPos(this.basaltElapsed)
       : Math.min(2, inten * 2);
-    // About +1.7 dB at entry, growing to +4 dB over the previous final-act
-    // bed. It follows the score bus and also earns a little relative presence
-    // as the orchestration thickens.
-    const g = (0.023 + inten * 0.015) * MusicDirector.lerpTab([1, 1.06, 1.14, 1.24, 1.35], pos);
+    // Sits at the classic hive level on entry, then earns ~+2.3 dB of
+    // relative presence as the late orchestration thickens — audible in the
+    // finale without ever leading the mix.
+    const g = (0.018 + inten * 0.013) * MusicDirector.lerpTab([1, 1.05, 1.12, 1.2, 1.3], pos);
     const chord = ((bar % 4) + 4) % 4;
     const harmonyFreq = this.mode === 'basalt' && chord === 3 ? 277.2 : 293.7;
     rack.baseLevel.gain.setTargetAtTime(g, t, 0.1);

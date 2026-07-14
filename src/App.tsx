@@ -3,6 +3,7 @@ import type { BotStrength, FactionId, GameState, PlayerId, Profile, Screen, Spec
 import { loadBotStrength, loadProfile, recordResult, saveBotStrength } from './net';
 import type { MatchSession } from './net';
 import { music, playResult, setMuted, unlockAudio } from './audio';
+import { igniteOrbPhaseStyle } from './ignite';
 import { loadSprites } from './sprites';
 import { Cinematic } from './components/Cinematic';
 import { Menu } from './components/Menu';
@@ -91,10 +92,8 @@ export function App() {
 
       {screen === 'boot' && (
         <div className="boot">
-          <div className="ember" />
-          <div style={{ letterSpacing: '0.3em', color: 'var(--ink-dim)', fontSize: '0.8rem' }}>
-            IGNITING VAALBARA
-          </div>
+          <div className="ignite-orb" style={igniteOrbPhaseStyle()} />
+          <div className="ignite-label">IGNITING VAALBARA</div>
         </div>
       )}
 

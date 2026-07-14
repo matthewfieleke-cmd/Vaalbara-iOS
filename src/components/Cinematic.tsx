@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { drawSpecies } from '../vector-art';
 import { getAnim, getPhaseArt } from '../sprites';
 import { music, playUi, unlockAudio } from '../audio';
+import { igniteOrbPhaseStyle } from '../ignite';
 import type { SpeciesId } from '../types';
 
 /**
@@ -415,9 +416,11 @@ export function Cinematic({ onDone }: { onDone: () => void }) {
       <canvas ref={canvasRef} />
       {!started && (
         <button className="tap-to-begin" onClick={begin}>
-          <span className="ember-dot" />
-          <b>TAP TO BEGIN</b>
-          <span className="hint">headphones recommended</span>
+          <span className="ignite-orb" style={igniteOrbPhaseStyle()} />
+          <span className="ignite-label tap-label">
+            <b>TAP TO BEGIN</b>
+            <span className="hint">headphones recommended</span>
+          </span>
         </button>
       )}
       {active && (active.title || active.body) ? (
