@@ -1477,8 +1477,14 @@ class MusicDirector {
     const rack = this.beeRack;
     const ctx = core.ctx;
     if (!rack || !ctx) return;
-    rack.baseLevel.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.16);
-    rack.harmonyLevel.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.16);
+    // The scheduler may already have queued one look-ahead pulse. Cancel it
+    // first or that future target would silently revive the departed hive.
+    for (const gain of [rack.baseLevel.gain, rack.harmonyLevel.gain]) {
+      const held = Math.max(0.0001, gain.value);
+      gain.cancelScheduledValues(ctx.currentTime);
+      gain.setValueAtTime(held, ctx.currentTime);
+      gain.setTargetAtTime(0.0001, ctx.currentTime, 0.16);
+    }
   }
 
   /** Release persistent sources when the soundtrack itself stops. */
