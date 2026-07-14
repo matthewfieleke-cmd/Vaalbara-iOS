@@ -831,6 +831,12 @@ class MusicDirector {
   private intensityTarget = 0.35;
   /** Basalt elapsed seconds (0 at Phase 1 start). */
   private basaltElapsed = 0;
+  /** Living ensemble counts; duplicate air units unlock chord voices. */
+  private beeCount = 0;
+  private eagleCount = 0;
+  /** Smoothed duplicate-voice gains prevent deployment/death clicks. */
+  private beeHarmonyLevel = 0;
+  private eagleHarmonyLevel = 0;
   /** True while any bee swarm is alive — sustains the hive buzz bed. */
   private beePresence = false;
   /** Species currently alive — drives soft in-key presence beds. */
@@ -1064,11 +1070,16 @@ class MusicDirector {
     phase: MusicMode;
     basaltElapsedSec: number;
     unitCount: number;
-    beesAlive: boolean;
-    speciesAlive?: SpeciesId[];
+    speciesCounts: Partial<Record<SpeciesId, number>>;
   }): void {
-    this.beePresence = opts.beesAlive;
-    this.presenceSpecies = new Set(opts.speciesAlive ?? []);
+    this.beeCount = opts.speciesCounts.bees ?? 0;
+    this.eagleCount = opts.speciesCounts.eagle ?? 0;
+    this.beePresence = this.beeCount > 0;
+    this.presenceSpecies = new Set(
+      Object.entries(opts.speciesCounts)
+        .filter(([, count]) => (count ?? 0) > 0)
+        .map(([species]) => species as SpeciesId),
+    );
     if (opts.phase === 'basalt') {
       this.basaltElapsed = opts.basaltElapsedSec;
       // Continuous ladder position: every minute is an 8-second SLIDE up
@@ -1154,6 +1165,10 @@ class MusicDirector {
     this.intensity += d * 0.12;
     const vd = this.volumeTarget - this.volumeMul;
     this.volumeMul += vd * 0.1;
+    const beeTarget = this.beeCount >= 2 ? 1 : 0;
+    const eagleTarget = this.eagleCount >= 2 ? 1 : 0;
+    this.beeHarmonyLevel += (beeTarget - this.beeHarmonyLevel) * (beeTarget > this.beeHarmonyLevel ? 0.2 : 0.12);
+    this.eagleHarmonyLevel += (eagleTarget - this.eagleHarmonyLevel) * (eagleTarget > this.eagleHarmonyLevel ? 0.2 : 0.12);
     if (this.bus && core.ctx) {
       // Soft cap near 1.45 so finale crest stays powerful without harsh clip.
       const g = Math.min(1.45, Math.max(0.0001, this.volumeMul));
@@ -1225,7 +1240,7 @@ class MusicDirector {
         // Quiet scale ticks on offbeats — dust, not a lead.
         voice({ type: 'triangle', freq: s16 === 2 ? 293.7 : 349.2, dur: 0.05, gain: g * 0.35, bus: this.bus, when: t });
       } else if (role === 'air' && s16 === 8) {
-        this.shimmer(t, 587.3, 1.4, g * 0.55);
+        this.eaglePresence(t, bar, g);
       } else if (role === 'siege' && s16 === 0 && bar % 2 === 1) {
         voice({ type: 'sine', freq: 98, dur: 1.2, gain: g * 0.5, attack: 0.15, bus: this.bus, when: t, pan: 0.25 });
         voice({ type: 'triangle', freq: 146.8, dur: 1.0, gain: g * 0.28, attack: 0.18, bus: this.bus, when: t });
@@ -1236,13 +1251,51 @@ class MusicDirector {
     }
   }
 
-  /** Hive buzz bed — soft detuned drones while bees are on the field. */
-  private beeBuzz(t: number, inten: number): void {
+  /** Eagle chord tone: one Eagle is the fifth; a second adds the third. */
+  private eaglePresence(t: number, bar: number, gain: number): void {
+    if (!this.bus || this.eagleCount < 1) return;
+    const chord = ((bar % 4) + 4) % 4;
+
+    // Leave the late Basalt suckout and Theme A entrance completely open.
+    if (this.mode === 'basalt') {
+      const phraseBar = ((bar % 8) + 8) % 8;
+      if (phraseBar === 4 || (phraseBar === 3 && this.musicTier >= 3)) return;
+    }
+
+    // Dm–Bb–Gm–A in Basalt; Dm–F–Gm–C in Oasis. Frequencies stay in the
+    // existing shimmer register so this changes harmony, not orchestration.
+    const fifths = this.mode === 'oasis'
+      ? [440, 523.3, 587.3, 392]
+      : [440, 349.2, 587.3, 659.3];
+    const thirds = this.mode === 'oasis'
+      ? [349.2, 440, 466.2, 329.6]
+      : [349.2, 587.3, 466.2, 554.4];
+
+    voice({ type: 'triangle', freq: fifths[chord], dur: 1.4, gain: gain * 0.48, attack: 0.5, bus: this.bus, when: t, pan: -0.28 });
+    voice({ type: 'triangle', freq: fifths[chord] * 1.006, dur: 1.4, gain: gain * 0.32, attack: 0.56, bus: this.bus, when: t, pan: -0.12 });
+
+    const harmonyGain = gain * this.eagleHarmonyLevel;
+    if (harmonyGain > 0.0002) {
+      voice({ type: 'triangle', freq: thirds[chord], dur: 1.4, gain: harmonyGain * 0.36, attack: 0.54, bus: this.bus, when: t, pan: 0.28 });
+      voice({ type: 'triangle', freq: thirds[chord] * 1.005, dur: 1.4, gain: harmonyGain * 0.22, attack: 0.6, bus: this.bus, when: t, pan: 0.12 });
+    }
+  }
+
+  /** Hive bed: first swarm hums A; a second adds the live chord color. */
+  private beeBuzz(t: number, inten: number, bar: number): void {
     if (!this.bus || !this.beePresence) return;
     const g = 0.018 + inten * 0.014;
-    voice({ type: 'sawtooth', freq: 220, dur: 0.32, gain: g, attack: 0.08, filterFreq: 900, bus: this.bus, when: t, pan: -0.25 });
-    voice({ type: 'sawtooth', freq: 233, dur: 0.32, gain: g * 0.85, attack: 0.1, filterFreq: 1100, bus: this.bus, when: t, pan: 0.25 });
-    voice({ type: 'triangle', freq: 440, dur: 0.28, gain: g * 0.35, attack: 0.12, bus: this.bus, when: t });
+    voice({ type: 'sawtooth', freq: 220, dur: 0.32, gain: g, attack: 0.08, filterFreq: 900, bus: this.bus, when: t, pan: -0.28 });
+    voice({ type: 'sawtooth', freq: 221.3, dur: 0.32, gain: g * 0.72, attack: 0.1, filterFreq: 1100, bus: this.bus, when: t, pan: 0.08 });
+    voice({ type: 'triangle', freq: 440, dur: 0.28, gain: g * 0.28, attack: 0.12, bus: this.bus, when: t, pan: -0.06 });
+
+    const chord = ((bar % 4) + 4) % 4;
+    const harmonyFreq = this.mode === 'basalt' && chord === 3 ? 277.2 : 293.7;
+    const harmonyGain = g * this.beeHarmonyLevel;
+    if (harmonyGain > 0.0002) {
+      voice({ type: 'sawtooth', freq: harmonyFreq, dur: 0.32, gain: harmonyGain * 0.52, attack: 0.1, filterFreq: 1050, bus: this.bus, when: t, pan: 0.28 });
+      voice({ type: 'triangle', freq: harmonyFreq * 1.004, dur: 0.28, gain: harmonyGain * 0.3, attack: 0.12, filterFreq: 1200, bus: this.bus, when: t, pan: 0.14 });
+    }
   }
 
   /** The Zimmer hit — public so the cinematic can score its reveals. */
@@ -1705,13 +1758,20 @@ class MusicDirector {
     // Capture the phrase anchor BEFORE anything harmonic plays, so the
     // presence beds and the chord loop share one clock from the first step.
     if (this.mode === 'basalt' && this.phraseOrigin < 0) this.phraseOrigin = bar;
+    const harmonicBar = this.mode === 'basalt' ? bar - this.phraseOrigin : bar;
 
     // Living bee buzz rides under every mode once a swarm is on the field.
-    if (this.beePresence && s16 % 2 === 0) this.beeBuzz(t, inten);
+    if (this.beePresence && s16 % 2 === 0) this.beeBuzz(t, inten, harmonicBar);
     // Species presence beds ride the PHRASE-ANCHORED bar in battle so their
     // figures (the command F–A–D arpeggio, titan/siege color notes) land on
     // the same chord cycle as the score — never a random offset per battle.
-    this.playPresence(t, s16, this.mode === 'basalt' ? bar - this.phraseOrigin : bar);
+    this.playPresence(t, s16, harmonicBar);
+    // Oasis has its own lighter orchestration, but living Eagles still become
+    // part of its Dm–F–Gm–C harmony on the same restrained half-bar pulse.
+    if (this.mode === 'oasis' && this.eagleCount > 0 && s16 === 8) {
+      const g = 0.016 + this.intensity * 0.012;
+      this.eaglePresence(t, harmonicBar, g);
+    }
 
     switch (this.mode) {
       case 'menu': {

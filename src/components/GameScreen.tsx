@@ -17,12 +17,12 @@ function basaltElapsedSec(state: GameState): number {
   return Math.max(0, (state.cfg.phase1Ticks - state.phaseTicksLeft) * (TICK_MS / 1000));
 }
 
-function livingSpecies(state: GameState): SpeciesId[] {
-  const set = new Set<SpeciesId>();
+function livingSpeciesCounts(state: GameState): Partial<Record<SpeciesId, number>> {
+  const counts: Partial<Record<SpeciesId, number>> = {};
   for (const u of state.units) {
-    if (u.hp > 0) set.add(u.species);
+    if (u.hp > 0) counts[u.species] = (counts[u.species] ?? 0) + 1;
   }
-  return [...set];
+  return counts;
 }
 
 interface Banner {
@@ -115,8 +115,7 @@ export function GameScreen({
           phase: state.phase,
           basaltElapsedSec: elapsed,
           unitCount: state.units.filter((u) => u.hp > 0).length,
-          beesAlive: state.units.some((u) => u.hp > 0 && u.species === 'bees'),
-          speciesAlive: livingSpecies(state),
+          speciesCounts: livingSpeciesCounts(state),
         });
         music.setMode(state.phase);
         setUi({ ...state });
