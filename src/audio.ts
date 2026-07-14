@@ -161,6 +161,21 @@ interface VoiceOpts {
   pan?: number;
 }
 
+/**
+ * Long-lived hive oscillators. The old bed recreated five voices every
+ * eighth note; this rack keeps the same living pulse with a single LFO and
+ * smooth gain/pitch automation, eliminating the largest species-node churn.
+ */
+interface BeeEnsembleRack {
+  sources: OscillatorNode[];
+  nodes: AudioNode[];
+  baseLevel: GainNode;
+  harmonyLevel: GainNode;
+  baseFilters: BiquadFilterNode[];
+  harmonyFilters: BiquadFilterNode[];
+  harmonyOscillators: [OscillatorNode, OscillatorNode];
+}
+
 /** Linear filter/pan routes can safely be shared by voices with identical
  *  settings: summing then filtering is mathematically equivalent to filtering
  *  then summing. This preserves the mix while avoiding thousands of short-
@@ -447,16 +462,16 @@ const SPECIES_SFX: Record<SpeciesId, { spawn: SfxFn; attack: SfxFn }> = {
   bees: {
     spawn: (when) => {
       const t = nowOr(when);
-      // Hive swell on entrance — the sustained bed is handled by MusicDirector.
-      voice({ type: 'sawtooth', freq: 210, freqEnd: 240, dur: 0.7, gain: 0.08, attack: 0.2, when: t });
-      voice({ type: 'sawtooth', freq: 216, freqEnd: 246, dur: 0.7, gain: 0.07, attack: 0.22, when: t });
+      // A clearer entrance teaches the ear where the persistent hive joins.
+      voice({ type: 'sawtooth', freq: 210, freqEnd: 240, dur: 0.7, gain: 0.1, attack: 0.2, when: t });
+      voice({ type: 'sawtooth', freq: 216, freqEnd: 246, dur: 0.7, gain: 0.085, attack: 0.22, when: t });
     },
     // Shaker crest + tiny stings: shhhhh — plik-plik
     attack: (when) => {
       const t = nowOr(when);
-      noise({ dur: 0.14, gain: 0.1, filterFreq: 4000, filterEnd: 7000, filterType: 'bandpass', when: t });
-      voice({ type: 'sine', freq: varN(1500), freqEnd: 1100, dur: 0.04, gain: 0.08, when: t + 0.1 });
-      voice({ type: 'sine', freq: varN(1700), freqEnd: 1200, dur: 0.035, gain: 0.07, when: t + 0.14 });
+      noise({ dur: 0.14, gain: 0.11, filterFreq: 4000, filterEnd: 7000, filterType: 'bandpass', when: t });
+      voice({ type: 'sine', freq: varN(1500), freqEnd: 1100, dur: 0.04, gain: 0.09, when: t + 0.1 });
+      voice({ type: 'sine', freq: varN(1700), freqEnd: 1200, dur: 0.035, gain: 0.08, when: t + 0.14 });
     },
   },
   wolves: {
@@ -503,6 +518,23 @@ const SPECIES_SFX: Record<SpeciesId, { spawn: SfxFn; attack: SfxFn }> = {
       noise({ dur: 0.28, gain: 0.14, filterFreq: 2800, filterEnd: 600, when: t + 0.05 });
     },
   },
+};
+
+/** Oscillator/buffer-source cost of each complete species gesture. */
+const SPECIES_SOURCE_COST: Record<SpeciesId, { spawn: number; attack: number }> = {
+  trex: { spawn: 3, attack: 2 },
+  lion: { spawn: 3, attack: 3 },
+  eagle: { spawn: 3, attack: 2 },
+  honeybadger: { spawn: 4, attack: 4 },
+  scorpion: { spawn: 3, attack: 4 },
+  // The four successive bites are one indivisible musical figure.
+  fireants: { spawn: 5, attack: 4 },
+  bear: { spawn: 3, attack: 2 },
+  bighorn: { spawn: 3, attack: 3 },
+  bees: { spawn: 2, attack: 3 },
+  wolves: { spawn: 2, attack: 4 },
+  porcupine: { spawn: 4, attack: 2 },
+  beetles: { spawn: 2, attack: 3 },
 };
 
 /* ------------------------------------------------------------------------ */
@@ -723,73 +755,86 @@ export function handleGameEvents(events: GameEvent[]): void {
     }
   };
   const ordered = events.length > 1 ? [...events].sort((a, b) => rank(a) - rank(b)) : events;
-  let budget = 12;
+  let eventBudget = 12;
+  let sourceBudget = music.combatSourceBudget();
+  const claim = (cost: number): boolean => {
+    if (eventBudget <= 0 || sourceBudget < cost) return false;
+    eventBudget--;
+    sourceBudget -= cost;
+    return true;
+  };
   const attackHeard = new Set<SpeciesId>();
   for (const e of ordered) {
-    if (budget <= 0) break;
+    if (eventBudget <= 0 || sourceBudget <= 0) break;
     switch (e.type) {
       case 'spawn':
         // Entrances fire immediately — a new instrument joining the mix.
+        if (!claim(SPECIES_SOURCE_COST[e.species].spawn)) break;
         SPECIES_SFX[e.species].spawn();
-        budget--;
         break;
       case 'attack': {
-        // One voice per species per tick once budget is tight — keeps the
-        // kit readable instead of a mush of identical hits.
-        if (attackHeard.has(e.species) && budget < 5) break;
+        const cost = SPECIES_SOURCE_COST[e.species].attack;
+        // When the source ceiling is close, retain one complete gesture per
+        // species rather than stacking identical graphs. Fire Ant gestures
+        // are never truncated: all four bites play or the whole gesture waits.
+        if (attackHeard.has(e.species) && sourceBudget < Math.max(8, cost * 2)) break;
+        if (!claim(cost)) break;
         attackHeard.add(e.species);
         SPECIES_SFX[e.species].attack(quantizeAttackWhen());
-        budget--;
         break;
       }
       case 'death':
+        if (!claim(1)) break;
         GLOBAL_SFX.death();
-        budget--;
         break;
       case 'spellCast':
-        if (e.spell === 'sulfur') GLOBAL_SFX.sulfur();
-        else if (e.spell === 'thicket') GLOBAL_SFX.thicket();
-        budget--;
+        if (e.spell === 'sulfur') {
+          if (!claim(1)) break;
+          GLOBAL_SFX.sulfur();
+        } else if (e.spell === 'thicket') {
+          if (!claim(2)) break;
+          GLOBAL_SFX.thicket();
+        }
         break;
       case 'lavaTelegraph':
+        if (!claim(2)) break;
         GLOBAL_SFX.lavaTelegraph();
-        budget--;
         break;
       case 'lavaStrike':
+        if (!claim(3)) break;
         GLOBAL_SFX.lavaStrike();
-        budget--;
         break;
       case 'lotusBurst':
+        if (!claim(2)) break;
         GLOBAL_SFX.lotusBurst();
-        budget--;
         break;
       case 'shoot':
+        if (!claim(SPECIES_SOURCE_COST.beetles.attack)) break;
         SPECIES_SFX.beetles.attack(quantizeAttackWhen());
-        budget--;
         break;
       case 'splash':
+        if (!claim(2)) break;
         GLOBAL_SFX.splash();
-        budget--;
         break;
       case 'heal':
+        if (!claim(2)) break;
         GLOBAL_SFX.heal();
-        budget--;
         break;
       case 'blessing':
+        if (!claim(7)) break;
         GLOBAL_SFX.blessing();
-        budget--;
         break;
       case 'obeliskHit':
+        if (!claim(2)) break;
         GLOBAL_SFX.obeliskHit();
-        budget--;
         break;
       case 'obeliskDown':
+        if (!claim(6)) break;
         GLOBAL_SFX.obeliskDown();
-        budget--;
         break;
       case 'pondClaimed':
+        if (!claim(7)) break;
         GLOBAL_SFX.pondClaimed();
-        budget--;
         break;
       default:
         break;
@@ -837,6 +882,10 @@ class MusicDirector {
   /** Smoothed duplicate-voice gains prevent deployment/death clicks. */
   private beeHarmonyLevel = 0;
   private eagleHarmonyLevel = 0;
+  /** Persistent hive synth; lazily created when the first swarm enters. */
+  private beeRack: BeeEnsembleRack | null = null;
+  /** Deployment handoffs make the score's Eagle phrase identifiable. */
+  private eagleEntrancesPending = 0;
   /** True while any bee swarm is alive — sustains the hive buzz bed. */
   private beePresence = false;
   /** Species currently alive — drives soft in-key presence beds. */
@@ -876,6 +925,21 @@ class MusicDirector {
   /** Soundtrack grid origin in AudioContext seconds (0 if not started). */
   gridOriginTime(): number {
     return this.gridOrigin;
+  }
+
+  /**
+   * Maximum complete combat-source gestures admitted per simulation tick.
+   * Dense late orchestration leaves less render headroom, while the budget
+   * remains high enough for five full Fire Ant bite figures if nothing else
+   * competes. This is source-aware; no gesture is ever partially rendered.
+   */
+  combatSourceBudget(): number {
+    if (this.mode === 'basalt') {
+      if (this.musicTier >= 3) return 20;
+      if (this.musicTier >= 2) return 22;
+      return 26;
+    }
+    return this.mode === 'oasis' ? 24 : 22;
   }
 
   /**
@@ -1006,6 +1070,7 @@ class MusicDirector {
     if (this.schedTimer) clearInterval(this.schedTimer);
     this.schedTimer = null;
     this.pendingMusicEvents = [];
+    this.releaseBeeRack();
     this.rideSfxBus(0.9);
     this.rideReverb(0.45);
     const ctx = core.ctx;
@@ -1049,6 +1114,13 @@ class MusicDirector {
       this.allowClimax = true;
       this.basaltElapsed = 0;
       this.armyHeat = 0;
+      this.beeCount = 0;
+      this.eagleCount = 0;
+      this.beePresence = false;
+      this.beeHarmonyLevel = 0;
+      this.eagleHarmonyLevel = 0;
+      this.eagleEntrancesPending = 0;
+      this.presenceSpecies.clear();
       this.phraseOrigin = -1;
       this.intensityTarget = 0.5;
       this.volumeTarget = 1.06;
@@ -1072,9 +1144,15 @@ class MusicDirector {
     unitCount: number;
     speciesCounts: Partial<Record<SpeciesId, number>>;
   }): void {
+    const previousBeeCount = this.beeCount;
+    const previousEagleCount = this.eagleCount;
     this.beeCount = opts.speciesCounts.bees ?? 0;
     this.eagleCount = opts.speciesCounts.eagle ?? 0;
     this.beePresence = this.beeCount > 0;
+    if (this.eagleCount > previousEagleCount) {
+      this.eagleEntrancesPending = Math.min(2, this.eagleEntrancesPending + this.eagleCount - previousEagleCount);
+    }
+    if (previousBeeCount > 0 && this.beeCount === 0) this.fadeBeeRack();
     this.presenceSpecies = new Set(
       Object.entries(opts.speciesCounts)
         .filter(([, count]) => (count ?? 0) > 0)
@@ -1251,7 +1329,12 @@ class MusicDirector {
     }
   }
 
-  /** Eagle chord tone: one Eagle is the fifth; a second adds the third. */
+  /**
+   * A recognizable two-note Eagle call, voiced as an actual phrase rather
+   * than a slow background pad. The first Eagle carries the upper chord call;
+   * a second adds a lower third/root line. A newly deployed Eagle gets one
+   * wider opening scoop, handing its familiar attack chirp into the score.
+   */
   private eaglePresence(t: number, bar: number, gain: number): void {
     if (!this.bus || this.eagleCount < 1) return;
     const chord = ((bar % 4) + 4) % 4;
@@ -1261,40 +1344,190 @@ class MusicDirector {
       const phraseBar = ((bar % 8) + 8) % 8;
       if (phraseBar === 4 || (phraseBar === 3 && this.musicTier >= 3)) return;
     }
+    if (this.mode === 'oasis' && ((bar % 8) + 8) % 8 === 4) return;
 
-    // Dm–Bb–Gm–A in Basalt; Dm–F–Gm–C in Oasis. Frequencies stay in the
-    // existing shimmer register so this changes harmony, not orchestration.
-    const fifths = this.mode === 'oasis'
-      ? [440, 523.3, 587.3, 392]
-      : [440, 349.2, 587.3, 659.3];
-    const thirds = this.mode === 'oasis'
-      ? [349.2, 440, 466.2, 329.6]
-      : [349.2, 587.3, 466.2, 554.4];
+    // Basalt: Dm–Bb–Gm–A. Oasis: Dm–F–G–Em. Each pair descends through
+    // chord tones like a soaring bird call, while adjacent bars voice-lead
+    // instead of making the old register-crossing jumps.
+    const leadCalls: Array<[number, number]> = this.mode === 'oasis'
+      ? [[880, 698.5], [880, 698.5], [987.8, 784], [987.8, 784]]
+      : [[880, 698.5], [698.5, 587.3], [784, 587.3], [659.3, 554.4]];
+    const harmonyCalls: Array<[number, number]> = this.mode === 'oasis'
+      ? [[698.5, 587.3], [698.5, 523.3], [784, 587.3], [784, 659.3]]
+      : [[698.5, 587.3], [587.3, 466.2], [587.3, 466.2], [554.4, 440]];
+    const entry = this.eagleEntrancesPending > 0;
+    const entryLift = entry ? 1.22 : 1;
+    const [leadA, leadB] = leadCalls[chord];
+    this.eagleCallNote(t, leadA, gain * 0.92 * entryLift, -0.22, entry);
+    this.eagleCallNote(t + 0.62, leadB, gain * 0.78 * entryLift, -0.14, false);
 
-    voice({ type: 'triangle', freq: fifths[chord], dur: 1.4, gain: gain * 0.48, attack: 0.5, bus: this.bus, when: t, pan: -0.28 });
-    voice({ type: 'triangle', freq: fifths[chord] * 1.006, dur: 1.4, gain: gain * 0.32, attack: 0.56, bus: this.bus, when: t, pan: -0.12 });
-
-    const harmonyGain = gain * this.eagleHarmonyLevel;
+    const harmonyGain = gain * this.eagleHarmonyLevel * entryLift;
     if (harmonyGain > 0.0002) {
-      voice({ type: 'triangle', freq: thirds[chord], dur: 1.4, gain: harmonyGain * 0.36, attack: 0.54, bus: this.bus, when: t, pan: 0.28 });
-      voice({ type: 'triangle', freq: thirds[chord] * 1.005, dur: 1.4, gain: harmonyGain * 0.22, attack: 0.6, bus: this.bus, when: t, pan: 0.12 });
+      const [harmonyA, harmonyB] = harmonyCalls[chord];
+      this.eagleCallNote(t + 0.035, harmonyA, harmonyGain * 0.72, 0.22, entry);
+      this.eagleCallNote(t + 0.655, harmonyB, harmonyGain * 0.62, 0.14, false);
     }
+    if (entry) this.eagleEntrancesPending--;
   }
 
-  /** Hive bed: first swarm hums A; a second adds the live chord color. */
+  /** Airy downward scoop derived from the Eagle's familiar combat chirp. */
+  private eagleCallNote(t: number, freq: number, gain: number, pan: number, entry: boolean): void {
+    if (!this.bus) return;
+    voice({
+      type: 'triangle',
+      freq: freq * (entry ? 1.42 : 1.075),
+      freqEnd: freq,
+      dur: entry ? 0.58 : 0.5,
+      gain,
+      attack: 0.035,
+      filterFreq: 2600,
+      bus: this.bus,
+      when: t,
+      pan,
+    });
+  }
+
+  /** Build the five-oscillator hive once; subsequent pulses are automation. */
+  private ensureBeeRack(t: number): BeeEnsembleRack | null {
+    if (this.beeRack) return this.beeRack;
+    const ctx = core.ctx;
+    if (!ctx || !this.bus) return null;
+
+    const baseLevel = ctx.createGain();
+    const harmonyLevel = ctx.createGain();
+    const pulse = ctx.createGain();
+    baseLevel.gain.value = 0.0001;
+    harmonyLevel.gain.value = 0.0001;
+    pulse.gain.value = 0.88;
+    baseLevel.connect(pulse);
+    harmonyLevel.connect(pulse);
+    pulse.connect(this.bus);
+
+    // One phase-locked LFO retains the living eighth-note respiration without
+    // constructing and destroying hundreds of short oscillators.
+    const lfo = ctx.createOscillator();
+    const lfoDepth = ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 1 / MUSIC_TICK_SEC;
+    lfoDepth.gain.value = 0.12;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(pulse.gain);
+
+    const sources: OscillatorNode[] = [lfo];
+    const nodes: AudioNode[] = [baseLevel, harmonyLevel, pulse, lfoDepth];
+    const baseFilters: BiquadFilterNode[] = [];
+    const harmonyFilters: BiquadFilterNode[] = [];
+    const addBranch = (
+      type: OscillatorType,
+      freq: number,
+      weight: number,
+      filterFreq: number,
+      pan: number,
+      destination: GainNode,
+      filters: BiquadFilterNode[],
+    ): OscillatorNode => {
+      const osc = ctx.createOscillator();
+      const mix = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      osc.type = type;
+      osc.frequency.value = freq;
+      mix.gain.value = weight;
+      filter.type = 'lowpass';
+      filter.frequency.value = filterFreq;
+      osc.connect(mix);
+      mix.connect(filter);
+      let tail: AudioNode = filter;
+      if (typeof ctx.createStereoPanner === 'function') {
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = pan;
+        filter.connect(panner);
+        tail = panner;
+        nodes.push(panner);
+      }
+      tail.connect(destination);
+      sources.push(osc);
+      nodes.push(mix, filter);
+      filters.push(filter);
+      return osc;
+    };
+
+    addBranch('sawtooth', 220, 1, 1000, -0.28, baseLevel, baseFilters);
+    addBranch('sawtooth', 221.3, 0.72, 1250, 0.08, baseLevel, baseFilters);
+    addBranch('triangle', 440, 0.28, 1850, -0.06, baseLevel, baseFilters);
+    const harmonyBody = addBranch('sawtooth', 293.7, 0.78, 1450, 0.28, harmonyLevel, harmonyFilters);
+    // An octave sheen gives the D/C# identity a clear spectral window above
+    // late-phase guitars without adding another rhythmic voice.
+    const harmonySheen = addBranch('triangle', 587.4, 0.44, 2400, 0.14, harmonyLevel, harmonyFilters);
+    for (const source of sources) source.start(t);
+
+    this.beeRack = {
+      sources,
+      nodes,
+      baseLevel,
+      harmonyLevel,
+      baseFilters,
+      harmonyFilters,
+      harmonyOscillators: [harmonyBody, harmonySheen],
+    };
+    return this.beeRack;
+  }
+
+  /** Fade a departed hive without stopping the persistent graph mid-cycle. */
+  private fadeBeeRack(): void {
+    const rack = this.beeRack;
+    const ctx = core.ctx;
+    if (!rack || !ctx) return;
+    rack.baseLevel.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.16);
+    rack.harmonyLevel.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.16);
+  }
+
+  /** Release persistent sources when the soundtrack itself stops. */
+  private releaseBeeRack(): void {
+    const rack = this.beeRack;
+    const ctx = core.ctx;
+    if (!rack || !ctx) return;
+    this.fadeBeeRack();
+    const stopAt = ctx.currentTime + 0.7;
+    for (const source of rack.sources) {
+      try {
+        source.stop(stopAt);
+      } catch {
+        // A WebKit scene teardown can race an already stopped oscillator.
+      }
+    }
+    setTimeout(() => disconnectNodes(...rack.sources, ...rack.nodes), 900);
+    this.beeRack = null;
+  }
+
+  /** Hive bed: a louder A foundation; a second swarm adds D/C# plus sheen. */
   private beeBuzz(t: number, inten: number, bar: number): void {
     if (!this.bus || !this.beePresence) return;
-    const g = 0.018 + inten * 0.014;
-    voice({ type: 'sawtooth', freq: 220, dur: 0.32, gain: g, attack: 0.08, filterFreq: 900, bus: this.bus, when: t, pan: -0.28 });
-    voice({ type: 'sawtooth', freq: 221.3, dur: 0.32, gain: g * 0.72, attack: 0.1, filterFreq: 1100, bus: this.bus, when: t, pan: 0.08 });
-    voice({ type: 'triangle', freq: 440, dur: 0.28, gain: g * 0.28, attack: 0.12, bus: this.bus, when: t, pan: -0.06 });
-
+    const rack = this.ensureBeeRack(t);
+    if (!rack) return;
+    const pos = this.mode === 'basalt'
+      ? MusicDirector.ladderPos(this.basaltElapsed)
+      : Math.min(2, inten * 2);
+    // About +1.7 dB at entry, growing to +4 dB over the previous final-act
+    // bed. It follows the score bus and also earns a little relative presence
+    // as the orchestration thickens.
+    const g = (0.023 + inten * 0.015) * MusicDirector.lerpTab([1, 1.06, 1.14, 1.24, 1.35], pos);
     const chord = ((bar % 4) + 4) % 4;
     const harmonyFreq = this.mode === 'basalt' && chord === 3 ? 277.2 : 293.7;
-    const harmonyGain = g * this.beeHarmonyLevel;
-    if (harmonyGain > 0.0002) {
-      voice({ type: 'sawtooth', freq: harmonyFreq, dur: 0.32, gain: harmonyGain * 0.52, attack: 0.1, filterFreq: 1050, bus: this.bus, when: t, pan: 0.28 });
-      voice({ type: 'triangle', freq: harmonyFreq * 1.004, dur: 0.28, gain: harmonyGain * 0.3, attack: 0.12, filterFreq: 1200, bus: this.bus, when: t, pan: 0.14 });
+    rack.baseLevel.gain.setTargetAtTime(g, t, 0.1);
+    rack.harmonyLevel.gain.setTargetAtTime(g * this.beeHarmonyLevel, t, 0.1);
+    rack.harmonyOscillators[0].frequency.setTargetAtTime(harmonyFreq, t, 0.025);
+    rack.harmonyOscillators[1].frequency.setTargetAtTime(harmonyFreq * 2, t, 0.025);
+    const filterLift = Math.min(4, pos);
+    const baseFilterTargets = [1000 + filterLift * 55, 1250 + filterLift * 75, 1850 + filterLift * 85];
+    const harmonyFilterTargets = [1450 + filterLift * 150, 2400 + filterLift * 180];
+    rack.baseFilters.forEach((filter, i) => {
+      filter.frequency.setTargetAtTime(baseFilterTargets[i], t, 0.16);
+    });
+    rack.harmonyFilters.forEach((filter, i) => {
+      filter.frequency.setTargetAtTime(harmonyFilterTargets[i], t, 0.16);
+    });
+    if (this.beeCount < 2 && this.beeHarmonyLevel < 0.001) {
+      rack.harmonyLevel.gain.setTargetAtTime(0.0001, t, 0.08);
     }
   }
 
