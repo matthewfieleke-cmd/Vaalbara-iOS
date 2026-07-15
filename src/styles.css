@@ -548,8 +548,8 @@ button {
 }
 
 @keyframes cta-breathe {
-  0%, 100% { transform: scale(1); filter: brightness(1); }
-  50% { transform: scale(1.016); filter: brightness(1.08); }
+  0%, 100% { transform: scale(1); filter: brightness(0.97); }
+  50% { transform: scale(1.04); filter: brightness(1.18); }
 }
 
 .menu-cta .cta-icon {
