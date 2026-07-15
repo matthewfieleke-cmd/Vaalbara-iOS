@@ -53,7 +53,9 @@ const teachBtn = page.locator('.btn-teach');
 if ((await teachBtn.count()) !== 1) fail('Teach me button not found on menu');
 console.log('menu: Teach me button present');
 
-await teachBtn.click();
+// force: the CTA breathes (infinite scale animation), which Playwright's
+// stability heuristic would otherwise wait on forever.
+await teachBtn.click({ force: true });
 await page.waitForSelector('.edu-hero h1', { timeout: 5000 });
 const title = await page.textContent('.edu-hero h1');
 if (title.trim() !== 'Intro to Music Theory') fail(`hub title: ${title}`);

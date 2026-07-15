@@ -1465,7 +1465,10 @@ class MusicDirector {
     if (!ctx || !core.musicBus) return null;
     if (!this.bus) {
       this.bus = ctx.createGain();
-      this.bus.gain.value = 1;
+      // Classroom trim: the demos stack score-level hits without the battle's
+      // intensity riding, so a couple of dB of headroom keeps the biggest
+      // stacks (the slam) off the output limiter's knee — no crackle.
+      this.bus.gain.value = 0.8;
       this.bus.connect(core.musicBus);
       if (!this.reverb) {
         this.reverb = ctx.createConvolver();
@@ -1520,7 +1523,11 @@ class MusicDirector {
   private theoryPump(): void {
     const ctx = core.ctx;
     if (!ctx) return;
-    const horizon = ctx.currentTime + 0.28;
+    // Wide look-ahead: classroom playback shares the main thread with canvas
+    // and notation animations, and a janked frame must not starve the audio
+    // graph of its notes. Cancellation stays instant regardless — stopping
+    // retires the whole demo bus, scheduled nodes and all.
+    const horizon = ctx.currentTime + 0.6;
     while (this.theoryQueue.length && this.theoryOrigin + this.theoryQueue[0].at <= horizon) {
       const event = this.theoryQueue.shift();
       if (event) this.theoryCall(event.call, this.theoryOrigin + event.at);

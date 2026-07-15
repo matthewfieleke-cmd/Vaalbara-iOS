@@ -16,7 +16,7 @@ await page.click('.skip-btn');
 await page.waitForSelector('.menu-actions');
 await page.screenshot({ path: '/tmp/edu-shots/1-menu.png' });
 
-await page.click('.btn-teach');
+await page.click('.btn-teach', { force: true });
 await page.waitForSelector('.edu-hero h1');
 await page.screenshot({ path: '/tmp/edu-shots/2-hub.png' });
 

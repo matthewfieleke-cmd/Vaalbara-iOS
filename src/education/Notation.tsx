@@ -82,6 +82,18 @@ const DUR_STEPS: Record<NoteDur, number> = { w: 16, h: 8, q: 4, e: 2, s: 1 };
 
 const LINE = 9;
 
+/** The key-signature flat, drawn with explicit paths so its loop is centered
+ *  EXACTLY on the given staff line — text glyph baselines shift per platform
+ *  (iOS rendered the ♭ a space high), vector coordinates cannot. */
+function KeySigFlat({ x, y }: { x: number; y: number }) {
+  return (
+    <g className="staff-keysig-flat">
+      <line x1={x} y1={y - 15} x2={x} y2={y + 5.5} />
+      <path d={`M ${x} ${y - 4.5} C ${x + 7.5} ${y - 7.5}, ${x + 9} ${y + 0.5}, ${x} ${y + 5.5} Z`} />
+    </g>
+  );
+}
+
 interface Glyph {
   cx: number;
   pos: number;
@@ -203,7 +215,7 @@ export function Staff({ notes, keySig, timeSig, labels, demoId, noteTimes, propo
         <line key={i} x1={x} y1={top} x2={x} y2={baseline} className="staff-bar" />
       ))}
       <text x={8} y={baseline - 2} className="staff-clef">𝄞</text>
-      {keySig && <text x={38} y={top + 2 * LINE + 4.5} className="staff-accidental keysig">♭</text>}
+      {keySig && <KeySigFlat x={39} y={top + 2 * LINE} />}
       {timeSig && (
         <g className="staff-timesig">
           <text x={keySig ? 62 : 40} y={top + LINE + 4}>4</text>
