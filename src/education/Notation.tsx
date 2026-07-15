@@ -223,8 +223,8 @@ function PyramidRow({ y, count, dur, label, beamGroup }: {
   y: number; count: number; dur: NoteDur; label: string; beamGroup: number;
 }) {
   const width = 330;
-  const left = 118;
-  const span = width - left - 16;
+  const left = 128;
+  const span = width - left - 14;
   const glyphs = Array.from({ length: count }, (_, i) => left + (count === 1 ? span / 2 : (i * span) / (count - 1) + 0));
   const hollow = dur === 'w' || dur === 'h';
   const beams: Array<[number, number]> = [];
@@ -263,7 +263,7 @@ export function NoteValuePyramid() {
       <PyramidRow y={86} count={2} dur="h" label="half — 2 beats" beamGroup={1} />
       <PyramidRow y={134} count={4} dur="q" label="quarter — 1 beat" beamGroup={1} />
       <PyramidRow y={182} count={8} dur="e" label="eighth — ½ beat" beamGroup={2} />
-      <PyramidRow y={230} count={16} dur="s" label="sixteenth — ¼ beat" beamGroup={4} />
+      <PyramidRow y={230} count={16} dur="s" label="16th — ¼ beat" beamGroup={4} />
     </svg>
   );
 }

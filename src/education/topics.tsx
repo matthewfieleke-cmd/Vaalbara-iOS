@@ -250,8 +250,8 @@ function MelodyBody(): ReactElement {
         Melody is the line you leave humming — pitches in rhythm, one after another. Composers build
         melodies from a <b>motif</b>: a short, recognizable idea that gets repeated, varied and
         developed. A complete musical sentence made of motifs is a <b>phrase</b>, and the melody's
-        rise and fall across a phrase is its <b>contour</b>. Great themes balance <b>repetition</b>
-        (so you learn them) with <b>variation</b> (so they stay alive).
+        rise and fall across a phrase is its <b>contour</b>. Great themes balance{' '}
+        <b>repetition</b> (so you learn them) with <b>variation</b> (so they stay alive).
       </p>
       <p>
         Vaalbara has one central melody — <b>Theme A</b>, the rising horn line that binds the intro,
@@ -457,8 +457,9 @@ function RhythmBody(): ReactElement {
       <h3 className="edu-h3">Note values: dividing the beat</h3>
       <p>
         Note values are simple arithmetic. A <b>whole note</b> fills a 4/4 measure; two
-        <b> half notes</b> split it; four <b>quarter notes</b> mark the beats; <b>eighth notes</b>
-        halve each beat ("1 &amp; 2 &amp;…"); <b>sixteenth notes</b> quarter it ("1-e-&amp;-a").
+        <b> half notes</b> split it; four <b>quarter notes</b> mark the beats;{' '}
+        <b>eighth notes</b> halve each beat ("1 &amp; 2 &amp;…"); <b>sixteenth notes</b> quarter
+        it ("1-e-&amp;-a").
         Each row below lasts exactly as long as every other row:
       </p>
       <NoteValuePyramid />
