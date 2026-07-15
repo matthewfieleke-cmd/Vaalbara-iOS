@@ -81,11 +81,21 @@ function useSpeciesAnimation(canvasRef: React.RefObject<HTMLCanvasElement | null
     const start = performance.now();
     const flying = species === 'eagle' || species === 'bees';
 
-    const frame = () => {
+    // Cache the canvas size: a getBoundingClientRect per animation frame is a
+    // layout read that can jank the main thread while audio is scheduling.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let W = 1;
+    let H = 1;
+    const measure = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const W = Math.max(1, Math.round(rect.width * dpr));
-      const H = Math.max(1, Math.round(rect.height * dpr));
+      W = Math.max(1, Math.round(rect.width * dpr));
+      H = Math.max(1, Math.round(rect.height * dpr));
+    };
+    measure();
+    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    resizeObserver?.observe(canvas);
+
+    const frame = () => {
       if (canvas.width !== W || canvas.height !== H) {
         canvas.width = W;
         canvas.height = H;
@@ -129,7 +139,10 @@ function useSpeciesAnimation(canvasRef: React.RefObject<HTMLCanvasElement | null
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      resizeObserver?.disconnect();
+    };
   }, [canvasRef, species]);
 }
 

@@ -520,8 +520,8 @@ button {
   text-underline-offset: 0.2rem;
 }
 
-/* Matched-size hero CTAs (Battle / Duels): still, premium surfaces — depth
-   from layered light (top highlight, bottom shade, tinted edge), not motion. */
+/* Matched-size hero CTAs (Battle / Duels / Teach me): premium surfaces with
+   depth from layered light (top highlight, bottom shade, tinted edge). */
 .menu-cta {
   display: flex;
   align-items: center;
@@ -529,6 +529,27 @@ button {
   gap: 0.65rem;
   min-height: 3.5rem;
   border-radius: 16px;
+}
+
+/* A quiet life sign on the Home Screen only: each CTA breathes on its OWN
+   period (3.6 / 4.4 / 5.2 s) from its own start point, so the three drift in
+   and out of phase organically — never a synchronized or scheduled flash. */
+.menu .menu-actions .menu-cta {
+  animation: cta-breathe ease-in-out infinite;
+}
+
+.menu .menu-actions .menu-cta:nth-of-type(1) { animation-duration: 3.6s; }
+.menu .menu-actions .menu-cta:nth-of-type(2) { animation-duration: 4.4s; animation-delay: -1.7s; }
+.menu .menu-actions .menu-cta:nth-of-type(3) { animation-duration: 5.2s; animation-delay: -3.1s; }
+
+/* Pressing must feel mechanical and immediate — the breath yields to it. */
+.menu .menu-actions .menu-cta:active {
+  animation: none;
+}
+
+@keyframes cta-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.016); filter: brightness(1.08); }
 }
 
 .menu-cta .cta-icon {
@@ -2445,7 +2466,8 @@ button {
 .staff-bar { stroke: #4a3c2e; stroke-width: 1.5; }
 .staff-clef { font-size: 44px; fill: #2c2216; }
 .staff-accidental { font-size: 17px; font-weight: 700; fill: #2c2216; }
-.staff-accidental.keysig { font-size: 20px; fill: #7d5407; }
+.staff-keysig-flat line { stroke: #7d5407; stroke-width: 1.9; stroke-linecap: round; }
+.staff-keysig-flat path { fill: #7d5407; }
 .staff-timesig text { font-size: 19px; font-weight: 900; fill: #2c2216; text-anchor: start; }
 .staff-head { fill: #2c2216; }
 .staff-head.hollow { fill: none; stroke: #2c2216; stroke-width: 1.9; }

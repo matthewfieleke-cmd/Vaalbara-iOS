@@ -216,8 +216,14 @@ function phraseArrival(): TheoryDemo {
   ostinatoBar(events, 0, 2, 0.55);
   chordFloor(events, BAR, 3, { taiko: true });
   ostinatoBar(events, BAR, 3, 0.55);
+  // The score's own answering-phrase articulation (playAnswer): a crisp
+  // 0.06 s attack. The slow bed-cello swell made the melody drag the beat.
   for (const [st, freq, durSteps] of scoreTables.celloAnswer) {
-    events.push(ev(st * S, { kind: 'cello', freq, dur: durSteps * S + 0.15, gain: 0.075 }));
+    const dur = durSteps * S + 0.15;
+    events.push(
+      ev(st * S, { kind: 'voice', opts: { type: 'sawtooth', freq, dur, gain: 0.075, filterFreq: 480, attack: 0.06, pan: -0.22 } }),
+      ev(st * S, { kind: 'voice', opts: { type: 'sawtooth', freq: freq * 1.005, dur, gain: 0.045, filterFreq: 380, attack: 0.08, pan: 0.18 } }),
+    );
   }
   events.push(ev(BAR + 8 * S, { kind: 'swell', dur: 1.15, gain: 0.028 }));
   // …and Theme A ARRIVES on the Dm downbeat of the new cycle.
@@ -300,7 +306,7 @@ function beeHive(): TheoryDemo {
       { at: 0, text: 'One swarm hums a DRONE on the note A. A is the fifth of D minor — and it belongs to every chord in our loop.' },
       { at: 4.9, text: 'The chords change underneath, but the hum holds still. Feel the gentle tension over B♭ and G minor, the release over Dm and A.' },
       { at: 9.6, text: 'A second swarm joins on D — now the hive is singing the key\'s home note above its drone.' },
-      { at: 14.5, text: 'And on the A chord, the harmony bends up to C♯ — the LEADING TONE — pulling the whole loop home to D.' },
+      { at: 14.5, text: 'On the A chord the second swarm slips down a half step, D to C♯ — the LEADING TONE — which then pulls the whole loop home to D.' },
     ],
   };
 }

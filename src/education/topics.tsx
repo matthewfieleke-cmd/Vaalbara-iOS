@@ -384,11 +384,11 @@ function HarmonyBody(): ReactElement {
         hint="Tap to hear the hive hold its drone on A while the chords move — then a second swarm adds the chord tones."
       />
       <p>
-        Everything you just heard is general technique, not game trickery: the Eagles demonstrate
-        <b> chord tones and voice leading</b>; the Bees demonstrate the <b>drone</b>, plus the
-        leading tone C♯ appearing exactly where the harmony demands it. Composers from Bach to film
-        scores harmonize melodies in thirds and sixths and anchor storms over pedal points — you now
-        know why it works.
+        None of this is special to Vaalbara — it's the same craft you'll find across centuries of
+        music. The Eagles demonstrate <b>chord tones and voice leading</b>; the Bees demonstrate
+        the <b>drone</b>, with C♯ arriving on the A chord right where the leading tone belongs.
+        Composers from Bach to today's film scores harmonize melodies in thirds and sixths and
+        anchor storms over pedal points — and now you know why it works.
       </p>
     </>
   );
