@@ -146,7 +146,7 @@ export function setMuted(muted: boolean): void {
 /* Reusable synth voices                                                      */
 /* ------------------------------------------------------------------------ */
 
-interface VoiceOpts {
+export interface VoiceOpts {
   type?: OscillatorType;
   freq: number;
   /** End frequency for pitch glide. */
@@ -260,7 +260,7 @@ function getNoise(ctx: AudioContext): AudioBuffer {
   return noiseBuffer;
 }
 
-interface NoiseOpts {
+export interface NoiseOpts {
   dur: number;
   gain?: number;
   filterFreq?: number;
@@ -268,6 +268,45 @@ interface NoiseOpts {
   filterEnd?: number;
   bus?: GainNode | null;
   when?: number;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Theory classroom bridge                                                    */
+/*                                                                            */
+/* The "Intro to Music Theory" screen teaches with the ACTUAL score: every    */
+/* listening example is a timeline of TheoryEvents rendered live by the same  */
+/* private synth voices (horn, legato strings, rock kit, eagle call, hive     */
+/* pulse…) that play the battle soundtrack. The classroom composes lessons    */
+/* in src/education/; MusicDirector executes them via playTheoryDemo().       */
+/* ------------------------------------------------------------------------ */
+
+export type TheoryCall =
+  | { kind: 'voice'; opts: Omit<VoiceOpts, 'bus' | 'when'> }
+  | { kind: 'noise'; opts: Omit<NoiseOpts, 'bus' | 'when'> }
+  | { kind: 'kick'; vel?: number }
+  | { kind: 'snare'; vel?: number }
+  | { kind: 'hat'; vel?: number }
+  | { kind: 'tom'; freq?: number; vel?: number }
+  | { kind: 'crash'; gain?: number }
+  | { kind: 'taiko'; big?: boolean; vel?: number }
+  | { kind: 'stringNote'; freq: number; vel: number; dur?: number; filterHz?: number }
+  | { kind: 'legato'; freqs: number[]; dur: number; gain: number; filterHz?: number; pos?: number }
+  | { kind: 'pad'; freqs: number[]; dur: number; gain?: number }
+  | { kind: 'cello'; freq: number; dur: number; gain?: number }
+  | { kind: 'lowBrass'; freq: number; dur: number; gain?: number }
+  | { kind: 'horn'; freq: number; dur: number; gain?: number }
+  | { kind: 'harp'; freq: number; gain?: number; pan?: number }
+  | { kind: 'powerChord'; freq: number; dur: number; gain: number; pan?: number }
+  | { kind: 'braam'; freq: number; dur: number; gain: number; pan?: number }
+  | { kind: 'stab'; root: number; vel?: number }
+  | { kind: 'swell'; dur: number; gain: number }
+  | { kind: 'eagle'; freq: number; gain: number; pan?: number; entry?: boolean }
+  | { kind: 'bee'; gain: number; harmony?: number; harmonyFreq?: number };
+
+export interface TheoryEvent {
+  /** Offset from demo start, in seconds. */
+  at: number;
+  call: TheoryCall;
 }
 
 function noise(o: NoiseOpts): void {
@@ -965,7 +1004,7 @@ class MusicDirector {
   }
 
   /* D natural minor. Frequencies for the ostinato register (D3-based). */
-  private static OSTINATO: number[][] = [
+  static readonly OSTINATO: number[][] = [
     // Four 1-bar cells (16 sixteenths each), Dm -> Bb -> Gm -> A.
     [146.8, 146.8, 220, 146.8, 174.6, 146.8, 220, 174.6, 146.8, 146.8, 220, 146.8, 174.6, 220, 174.6, 146.8],
     [116.5, 116.5, 174.6, 116.5, 146.8, 116.5, 174.6, 146.8, 116.5, 116.5, 174.6, 116.5, 146.8, 174.6, 146.8, 116.5],
@@ -973,11 +1012,11 @@ class MusicDirector {
     [110, 110, 164.8, 110, 138.6, 110, 164.8, 138.6, 110, 110, 164.8, 110, 138.6, 164.8, 138.6, 110],
   ];
 
-  private static BASS = [36.7, 29.1, 24.5, 27.5]; // D1 Bb0 G0 A0
+  static readonly BASS = [36.7, 29.1, 24.5, 27.5]; // D1 Bb0 G0 A0
   /** Cello bed roots, one octave above the sub bass (D2 Bb1 G1 A1). */
-  private static CELLO = [73.4, 58.3, 49, 55];
+  static readonly CELLO = [73.4, 58.3, 49, 55];
   /** Oasis: D dorian, hopeful. Pad chords + soaring line. */
-  private static OASIS_PADS: number[][] = [
+  static readonly OASIS_PADS: number[][] = [
     [146.8, 220, 293.7, 440], // Dm add9
     [174.6, 261.6, 349.2, 523.3], // F
     [196, 293.7, 392, 587.3], // G
@@ -989,18 +1028,18 @@ class MusicDirector {
    * Sustained harmony, LOCKED to the ostinato cycle (bar % 4 = Dm Bb Gm A).
    * Rich voicings of the same progression — never fights the ostinato.
    */
-  private static BED_CHORDS: number[][] = [
+  static readonly BED_CHORDS: number[][] = [
     [146.8, 164.8, 220, 293.7],       // Dm add2
     [116.5, 174.6, 233.1, 293.7],     // Bb (D on top — common tone)
     [98, 146.8, 233.1, 293.7],        // Gm (Bb + D — common tones)
     [110, 138.6, 164.8, 220],         // A (C# leading tone pulls home to Dm)
   ];
   /** Asus4 for the cadence bar — D suspends, then resolves to C# (4→3). */
-  private static A_SUS4: number[] = [110, 146.8, 164.8, 220];
+  static readonly A_SUS4: number[] = [110, 146.8, 164.8, 220];
 
   /** Cello answer to the theme — bars 3–4 of each cycle (Gm → A): G–F–E
    *  descent landing on the fifth of A. [16th-step, freq, dur-steps]. */
-  private static CELLO_ANSWER: Array<[number, number, number]> = [
+  static readonly CELLO_ANSWER: Array<[number, number, number]> = [
     [0, 196, 6],      // G3
     [6, 174.6, 2],    // F3
     [8, 164.8, 6],    // E3 — leading into the A bar
@@ -1010,7 +1049,7 @@ class MusicDirector {
 
   /** The Vaalbara motif — a rising D-minor horn theme threaded through the
    *  intro, the menu and both battle phases. [16th-step, freq, dur-steps]. */
-  private static THEME: Array<[number, number, number]> = [
+  static readonly THEME: Array<[number, number, number]> = [
     [0, 293.66, 4],   // D4
     [4, 349.23, 4],   // F4
     [8, 329.63, 2],   // E4
@@ -1024,7 +1063,7 @@ class MusicDirector {
 
   /** Second strain — a descending RESPONSE to the theme. Alternates with the
    *  A-strain so the motif never plays the same way twice in a row. */
-  private static THEME_B: Array<[number, number, number]> = [
+  static readonly THEME_B: Array<[number, number, number]> = [
     [0, 440, 4],      // A4 — start on the reach
     [4, 392, 2],      // G4
     [6, 349.23, 2],   // F4
@@ -1037,7 +1076,7 @@ class MusicDirector {
   ];
 
   /** Opening gesture only (through the A4 reach) — the verse whisper. */
-  private static THEME_FRAG: Array<[number, number, number]> = [
+  static readonly THEME_FRAG: Array<[number, number, number]> = [
     [0, 293.66, 4], [4, 349.23, 4], [8, 329.63, 2], [10, 293.66, 2], [12, 440, 8],
   ];
 
@@ -1395,16 +1434,128 @@ class MusicDirector {
   private beeBuzz(t: number, inten: number, bar: number): void {
     if (!this.bus || !this.beePresence) return;
     const g = 0.02 + inten * 0.016;
+    const chord = ((bar % 4) + 4) % 4;
+    const harmonyFreq = this.mode === 'basalt' && chord === 3 ? 277.2 : 293.7;
+    this.beePulse(t, g, this.beeHarmonyLevel, harmonyFreq);
+  }
+
+  /** One hive pulse — shared by the battle bed and the classroom demos. */
+  private beePulse(t: number, g: number, harmonyLevel: number, harmonyFreq: number): void {
+    if (!this.bus) return;
     voice({ type: 'sawtooth', freq: 220, dur: 0.32, gain: g, attack: 0.08, filterFreq: 900, bus: this.bus, when: t, pan: -0.28 });
     voice({ type: 'sawtooth', freq: 221.3, dur: 0.32, gain: g * 0.72, attack: 0.1, filterFreq: 1100, bus: this.bus, when: t, pan: 0.08 });
     voice({ type: 'triangle', freq: 440, dur: 0.28, gain: g * 0.28, attack: 0.12, bus: this.bus, when: t, pan: -0.06 });
-
-    const chord = ((bar % 4) + 4) % 4;
-    const harmonyFreq = this.mode === 'basalt' && chord === 3 ? 277.2 : 293.7;
-    const harmonyGain = g * this.beeHarmonyLevel;
+    const harmonyGain = g * harmonyLevel;
     if (harmonyGain > 0.0002) {
       voice({ type: 'sawtooth', freq: harmonyFreq, dur: 0.32, gain: harmonyGain * 0.52, attack: 0.1, filterFreq: 1050, bus: this.bus, when: t, pan: 0.28 });
       voice({ type: 'triangle', freq: harmonyFreq * 1.004, dur: 0.28, gain: harmonyGain * 0.3, attack: 0.12, filterFreq: 1200, bus: this.bus, when: t, pan: 0.14 });
+    }
+  }
+
+  /* ---------------------- Theory classroom playback ---------------------- */
+
+  private theoryQueue: TheoryEvent[] = [];
+  private theoryTimer: ReturnType<typeof setInterval> | null = null;
+  private theoryOrigin = 0;
+
+  /** A live bus for classroom demos while the score itself is idle. */
+  private theoryEnsure(): AudioContext | null {
+    if (this.running) return null;
+    const ctx = core.ensure();
+    if (!ctx || !core.musicBus) return null;
+    if (!this.bus) {
+      this.bus = ctx.createGain();
+      this.bus.gain.value = 1;
+      this.bus.connect(core.musicBus);
+      if (!this.reverb) {
+        this.reverb = ctx.createConvolver();
+        this.reverb.buffer = makeImpulse(ctx, 3.6, 2.4);
+        this.reverbGain = ctx.createGain();
+        this.reverbGain.gain.value = 0.45;
+        this.reverb.connect(this.reverbGain);
+        this.reverbGain.connect(core.musicBus);
+      }
+      this.bus.connect(this.reverb);
+    }
+    return ctx;
+  }
+
+  /**
+   * Play one classroom listening example. Events are scheduled just-in-time
+   * (small look-ahead) so a new tap can cancel everything still unheard.
+   * Returns the AudioContext time of the demo's first beat, or null when
+   * audio is unavailable (muted / no context).
+   */
+  playTheoryDemo(events: TheoryEvent[]): number | null {
+    this.stopTheoryDemo();
+    const ctx = this.theoryEnsure();
+    if (!ctx || !this.bus) return null;
+    this.theoryOrigin = ctx.currentTime + 0.12;
+    this.theoryQueue = [...events].sort((a, b) => a.at - b.at);
+    this.theoryTimer = setInterval(() => this.theoryPump(), 60);
+    this.theoryPump();
+    return this.theoryOrigin;
+  }
+
+  /** Cancel the unheard remainder of the current demo and duck its tails. */
+  stopTheoryDemo(): void {
+    if (this.theoryTimer) {
+      clearInterval(this.theoryTimer);
+      this.theoryTimer = null;
+    }
+    this.theoryQueue = [];
+    if (this.running) return;
+    const ctx = core.ctx;
+    if (ctx && this.bus) {
+      // Retire the whole demo bus: already-scheduled AudioNodes die with it,
+      // so a long pad can never bleed into the next example. A fresh bus is
+      // built lazily by the next demo.
+      const bus = this.bus;
+      this.bus = null;
+      bus.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.055);
+      setTimeout(() => disconnectNodes(bus), 700);
+    }
+  }
+
+  private theoryPump(): void {
+    const ctx = core.ctx;
+    if (!ctx) return;
+    const horizon = ctx.currentTime + 0.28;
+    while (this.theoryQueue.length && this.theoryOrigin + this.theoryQueue[0].at <= horizon) {
+      const event = this.theoryQueue.shift();
+      if (event) this.theoryCall(event.call, this.theoryOrigin + event.at);
+    }
+    if (!this.theoryQueue.length && this.theoryTimer) {
+      clearInterval(this.theoryTimer);
+      this.theoryTimer = null;
+    }
+  }
+
+  /** Dispatch one classroom event through the score's own instruments. */
+  private theoryCall(call: TheoryCall, t: number): void {
+    if (!this.bus) return;
+    switch (call.kind) {
+      case 'voice': voice({ ...call.opts, bus: this.bus, when: t }); break;
+      case 'noise': noise({ ...call.opts, bus: this.bus, when: t }); break;
+      case 'kick': this.rockKick(t, call.vel ?? 1); break;
+      case 'snare': this.snare(t, call.vel ?? 1); break;
+      case 'hat': this.hat(t, call.vel ?? 1); break;
+      case 'tom': this.tom(t, call.freq ?? 110, call.vel ?? 1); break;
+      case 'crash': this.crash(t, call.gain ?? 0.09); break;
+      case 'taiko': this.taiko(t, call.big ?? true, call.vel ?? 1); break;
+      case 'stringNote': this.stringNote(t, call.freq, call.vel, call.dur ?? 0.14, call.filterHz ?? 1500); break;
+      case 'legato': this.legatoStrings(t, call.freqs, call.dur, call.gain, call.filterHz ?? 900, call.pos ?? 1); break;
+      case 'pad': this.padChord(t, call.freqs, call.dur, call.gain ?? 0.05); break;
+      case 'cello': this.cello(t, call.freq, call.dur, call.gain ?? 0.1); break;
+      case 'lowBrass': this.lowBrass(t, call.freq, call.dur, call.gain ?? 0.07); break;
+      case 'horn': this.horn(t, call.freq, call.dur, call.gain ?? 0.085); break;
+      case 'harp': this.harp(t, call.freq, call.gain ?? 0.055, call.pan ?? 0.2); break;
+      case 'powerChord': this.powerChord(t, call.freq, call.dur, call.gain, call.pan ?? 0); break;
+      case 'braam': this.braamAt(t, call.freq, call.dur, call.gain, call.pan ?? 0); break;
+      case 'stab': this.ensembleStab(t, call.root, call.vel ?? 1); break;
+      case 'swell': this.cymbalSwell(t, call.dur, call.gain); break;
+      case 'eagle': this.eagleCallNote(t, call.freq, call.gain, call.pan ?? 0, call.entry ?? false); break;
+      case 'bee': this.beePulse(t, call.gain, call.harmony ?? 0, call.harmonyFreq ?? 293.7); break;
     }
   }
 
@@ -2366,6 +2517,21 @@ function makeImpulse(ctx: AudioContext, seconds: number, decay: number): AudioBu
 }
 
 export const music = new MusicDirector();
+
+/** Score data the classroom teaches from — the same tables the engine plays.
+ *  Basalt loop: Dm → B♭ → Gm → A (i–VI–iv–V in D minor). */
+export const scoreTables = {
+  bedChords: MusicDirector.BED_CHORDS,
+  aSus4: MusicDirector.A_SUS4,
+  bass: MusicDirector.BASS,
+  cello: MusicDirector.CELLO,
+  ostinato: MusicDirector.OSTINATO,
+  themeA: MusicDirector.THEME,
+  themeB: MusicDirector.THEME_B,
+  themeFrag: MusicDirector.THEME_FRAG,
+  celloAnswer: MusicDirector.CELLO_ANSWER,
+  oasisPads: MusicDirector.OASIS_PADS,
+} as const;
 
 /** Map game phases onto music modes (used by the game screen). */
 export function musicModeForPhase(phase: 'basalt' | 'transition' | 'oasis' | 'ended'): MusicMode {

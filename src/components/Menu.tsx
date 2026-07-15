@@ -11,11 +11,13 @@ export function Menu({
   profile,
   onPlay,
   onDuel,
+  onTeach,
   onReplayIntro,
 }: {
   profile: Profile;
   onPlay: () => void;
   onDuel: () => void;
+  onTeach: () => void;
   onReplayIntro: () => void;
 }) {
   const bgRef = useRef<HTMLCanvasElement>(null);
@@ -124,6 +126,10 @@ export function Menu({
         <button className="btn btn-duel menu-cta" onClick={() => { playUi('tap'); onDuel(); }}>
           <span className="cta-icon">⚜</span>
           <span className="cta-label">Duels</span>
+        </button>
+        <button className="btn btn-teach menu-cta" onClick={() => { playUi('tap'); onTeach(); }}>
+          <span className="cta-icon">♪</span>
+          <span className="cta-label">Teach me</span>
         </button>
         <button className="btn btn-ghost" onClick={() => { playUi('tap'); onReplayIntro(); }}>
           ▸ Replay intro cinematic
