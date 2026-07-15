@@ -5,6 +5,7 @@ import type { MatchSession } from './net';
 import { music, playResult, setMuted, unlockAudio } from './audio';
 import { loadSprites } from './sprites';
 import { Cinematic } from './components/Cinematic';
+import { Education } from './education/Education';
 import { Menu } from './components/Menu';
 import { FactionSelect } from './components/FactionSelect';
 import { Matchmaking } from './components/Matchmaking';
@@ -126,9 +127,24 @@ export function App() {
             music.setMode('menu');
             setScreen('duel-setup');
           }}
+          onTeach={() => {
+            // The classroom takes over audio: menu music yields to examples.
+            music.stop();
+            setScreen('education');
+          }}
           onReplayIntro={() => {
             setCineStarted(false);
             setScreen('cinematic');
+          }}
+        />
+      )}
+
+      {screen === 'education' && (
+        <Education
+          onBack={() => {
+            music.start();
+            music.setMode('menu');
+            setScreen('menu');
           }}
         />
       )}

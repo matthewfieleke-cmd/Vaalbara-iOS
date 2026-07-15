@@ -366,7 +366,8 @@ export type Screen =
   | 'game'
   | 'results'
   | 'duel-setup'
-  | 'duel';
+  | 'duel'
+  | 'education';
 
 export interface Profile {
   name: string;
