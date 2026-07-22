@@ -87,14 +87,29 @@ soundtrack,rhythm,harmony,chords,melody,drums,educational,learn,orchestra,offlin
 
 ---
 
-## What’s New (for first release / 1.0)
+## What’s New
+
+### 1.1.0 (Build 2)
+
+```
+Introducing the Conservatory of Vaalbara.
+
+• Teach me on the Home Screen opens Intro to Music Theory
+• Six chapters: key, chords, melody, harmony, rhythm, percussion
+• Live listening examples from the game’s own score
+• Animated Eagle, Bee, and Fire Ant cards with guided narration
+• Theme A on a real staff — notes light up as they play
+• Five check-your-understanding questions per chapter
+• Headphones recommended
+```
+
+### 1.0.0 (Build 1)
 
 ```
 Welcome to Vaalbara.
 
 • Full offline Battle and Duels
 • Living orchestral soundtrack — warriors join the score
-• Intro to Music Theory Conservatory — six chapters, live listening examples, quizzes
 • Headphones recommended
 ```
 
