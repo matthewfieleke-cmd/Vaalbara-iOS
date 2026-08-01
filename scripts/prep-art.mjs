@@ -371,10 +371,15 @@ for (const [src, out, w] of duelBackdrops) if (wanted(out)) await convertBackdro
 for (const [src, out, w] of fortresses) if (wanted(out)) await convertFortress(src, out, w);
 /* 1280 costs the ordinary sheets nothing — they are authored at 1206-1536 and
  * a battlefield unit is only a few dozen pixels tall. The duel strike sheet is
- * the exception: it is eight registered poses at 1024px each, and a duel
- * fighter is painted ~690 device px tall on a 13" iPad, so the default cap threw
- * away 6x of the master and left the tail as a smear. */
-const SHEET_WIDTH = { 'scorpion-duel-attack.png': 8192 };
+ * the exception: a duel fighter is painted several hundred device px tall, so
+ * the default cap threw away most of the master and left the tail as a smear.
+ *
+ * 6144 puts the tallest pose 1.3x under its drawn size on a 13" iPad and
+ * comfortably over it on a phone — sharper than any other animation in the
+ * game, which run 2.8x. The master is 8192 and would land exactly 1:1, but the
+ * last third of a pixel costs another 8 MB of decoded texture for a difference
+ * nobody can see on painted art. */
+const SHEET_WIDTH = { 'scorpion-duel-attack.png': 6144 };
 
 for (const f of animSheets) {
   const out = `public/art/anim/${f.replace('.png', '.webp')}`;
