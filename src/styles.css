@@ -2751,14 +2751,20 @@ button {
 
   /* These screens were laid out to fill a phone: a title band at the top and
      actions pinned to the bottom with margin-top:auto. Give them 1366px of
-     height and that becomes a canyon, so the whole column centres instead. */
+     height and that becomes a canyon, so the whole column centres instead.
+     `safe` matters — plain centring in a scroll container pushes overflow off
+     the top where it can't be scrolled back, and browsers that don't know the
+     keyword drop the declaration and keep today's top-aligned layout.
+     Deliberately not .duel-setup: its roster is taller than any tablet. */
   .menu,
-  .faction-select,
-  .duel-setup {
-    justify-content: center;
+  .faction-select {
+    justify-content: safe center;
   }
 
-  .menu-actions {
+  /* Both of these pin themselves to the bottom with margin-top:auto, which
+     eats the free space justify-content would otherwise centre. */
+  .menu-actions,
+  .bot-strength {
     margin-top: 0;
   }
 
@@ -3058,10 +3064,20 @@ button {
   }
 
   /* Banners are centred on the board, not on the whole screen — the rail
-     would otherwise push them off the arena. */
+     would otherwise push them off the arena — and held inside it, since
+     .game-screen clips anything that runs past the board edge. */
   .banner,
   .toast {
     left: calc((100% - var(--rail-w)) / 2);
+    max-width: calc(100% - var(--rail-w) - 2.6rem);
+  }
+
+  .banner h2 {
+    font-size: 2rem;
+  }
+
+  .banner p {
+    font-size: 1rem;
   }
 
   /* Keep the sound toggle over the board so it never lands on the rail's
