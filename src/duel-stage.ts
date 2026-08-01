@@ -22,6 +22,49 @@ export type { DuelWorld };
  *  perfectly in sync. */
 const SCORPION_STRIKE_DUR = 0.55;
 const SCORPION_CONTACT_FRAC = 4 / 5;
+/** How far the stinger buries past the defender's near edge at full extension,
+ *  as a fraction of stage width. Stopping exactly at the edge reads as a near
+ *  miss; a little overlap reads as a hit. */
+const STRIKE_BITE = 0.022;
+
+/** Forward-most opaque point of a sprite, measured from its own anchor in
+ *  sprite pixels. For a striking scorpion that is the stinger — the part that
+ *  has to arrive at the foe, and the place the hit should spark. */
+function spriteTip(s: Sprite): { dx: number; dy: number } | null {
+  const cv = s.canvas;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  if (!cx) return null;
+  const { data } = cx.getImageData(0, 0, cv.width, cv.height);
+  const solid = (x: number, y: number): boolean => data[(y * cv.width + x) * 4 + 3] > 24;
+  let maxX = -1;
+  for (let x = cv.width - 1; x >= 0 && maxX < 0; x--) {
+    for (let y = 0; y < cv.height; y++) if (solid(x, y)) { maxX = x; break; }
+  }
+  if (maxX < 0) return null;
+  // Average the rows across the leading sliver so one stray pixel of glow
+  // can't decide where the tip is.
+  const x0 = Math.max(0, maxX - Math.round(cv.width * 0.02));
+  let sy = 0;
+  let n = 0;
+  for (let x = x0; x <= maxX; x++) {
+    for (let y = 0; y < cv.height; y++) if (solid(x, y)) { sy += y; n++; }
+  }
+  return { dx: maxX - s.anchorX, dy: (n ? sy / n : cv.height / 2) - s.anchorY };
+}
+
+const TIP_CACHE = new Map<string, { dx: number; dy: number } | null>();
+/** Cached tip of one attack pose. Misses are not cached — sprites stream in
+ *  after the stage exists, and an early call must not poison the entry. */
+function attackTip(species: SpeciesId, idx: number): { dx: number; dy: number } | null {
+  const key = `${species}:${idx}`;
+  const hit = TIP_CACHE.get(key);
+  if (hit !== undefined) return hit;
+  const s = getAnim(species)?.attack?.[idx];
+  if (!s) return null;
+  const tip = spriteTip(s);
+  TIP_CACHE.set(key, tip);
+  return tip;
+}
 
 /** Relative draw height per species (fraction of stage height). */
 const DUEL_SCALE: Partial<Record<SpeciesId, number>> = {
@@ -376,8 +419,15 @@ export class DuelStage {
       D.tint = 1;
       D.tintHue = 0;
       const dp = this.fighterPx(D);
-      this.sparks(dp.x, dp.y - this.H * 0.12, ev.special ? 34 : 14, A.hue);
-      this.ring(dp.x, dp.y - this.H * 0.12, A.hue);
+      // Spark where the blow actually lands. For a tail strike that is the
+      // stinger, out at the end of its reach — bursting from the middle of the
+      // defender is what made the hit look like it had missed and gone off
+      // somewhere else.
+      const tipPx = A.species === 'scorpion' ? this.strikeTipPx(A) : null;
+      const hx = tipPx ? tipPx.x : dp.x;
+      const hy = tipPx ? tipPx.y : dp.y - this.H * 0.12;
+      this.sparks(hx, hy, ev.special ? 34 : 14, A.hue);
+      this.ring(hx, hy, A.hue);
       if (ev.special) {
         // The big-hit language: shockwave, radial rays, camera slam.
         this.particles.push({
@@ -577,6 +627,50 @@ export class DuelStage {
     return this.H * 0.26 * (DUEL_SCALE[species] ?? 0.9) * this.fitScale;
   }
 
+  /** Index of the pose that lands the blow: full extension, one before the
+   *  authored reset frame. */
+  private contactFrame(species: SpeciesId): number {
+    return Math.max(0, (getAnim(species)?.attack?.length ?? 0) - 2);
+  }
+
+  /** Stage-pixel distance from a champion's anchor out to the tip of its
+   *  contact pose, along the direction it faces. */
+  private strikeReach(f: FighterVis): number {
+    const idx = this.contactFrame(f.species);
+    const s = getAnim(f.species)?.attack?.[idx];
+    const tip = attackTip(f.species, idx);
+    if (!s || !tip) return 0;
+    return Math.max(0, tip.dx) * (this.fighterH(f.species) / s.h);
+  }
+
+  /** Where the tip of the contact pose lands on stage, for sparking the hit
+   *  on the stinger rather than in the middle of the defender. */
+  private strikeTipPx(f: FighterVis): { x: number; y: number } | null {
+    const idx = this.contactFrame(f.species);
+    const s = getAnim(f.species)?.attack?.[idx];
+    const tip = attackTip(f.species, idx);
+    if (!s || !tip) return null;
+    const p = this.fighterPx(f);
+    const h = this.fighterH(f.species);
+    const scale = h / s.h;
+    return { x: p.x + f.face * tip.dx * scale, y: p.y + h * 0.06 + tip.dy * scale };
+  }
+
+  /** How far a tail striker must travel for its stinger to arrive at the foe.
+   *  This used to be a flat 28% of the gap, on the stated theory that the
+   *  painted tail covered the rest of the distance. It did not — at full
+   *  extension the old stinger gained four pixels on the pincers — so the blow
+   *  landed in open air. Deriving it from the pose actually being drawn keeps
+   *  it honest if the art or the pairing changes. */
+  private strikeClose(A: FighterVis, D: FighterVis, gap: number): number {
+    const want = gap
+      - this.baseHalfW(D.species) * this.fitScale
+      - this.strikeReach(A)
+      + this.W * STRIKE_BITE;
+    // Never end up standing inside the foe if a pairing leaves no room.
+    return Math.max(0, Math.min(want, gap - this.W * 0.05));
+  }
+
   /** Idle-stance half-width for a species at fit 1, from its run frames
    *  (anchors sit at the sprite's horizontal center). Attack lunges are
    *  transient contact moments and deliberately don't count. */
@@ -656,6 +750,8 @@ export class DuelStage {
         // Timeline offsets: special moves get a slow-motion charge-up
         // prologue — the whole stage bends around the gathering power.
         const scorpionTail = A.species === 'scorpion';
+        // Distance the tail striker closes so its stinger reaches the foe.
+        const strikeClose = scorpionTail ? this.strikeClose(A, D, gap) : 0;
         const pre = ev.special ? (scorpionTail ? 1.35 : 1.05) : 0;
         const wEnd = pre + (scorpionTail ? 0.50 : 0.32);
         const strikeDur = scorpionTail ? SCORPION_STRIKE_DUR : 0.26;
@@ -771,10 +867,9 @@ export class DuelStage {
             // hit-freeze; otherwise the 100ms contact pose can fall between
             // display frames and read as if the tail never struck.
             A.animT = Math.min(t - wEnd, strikeDur * SCORPION_CONTACT_FRAC);
-            // Close only part of the gap; the painted rear-mounted tail does
-            // the remaining reach and makes contact while the body stays
-            // facing forward.
-            A.x = A.face * gap * 0.28 * easeIn(ph(t, wEnd, contactAt));
+            // Close exactly the distance the drawn reach does not cover, so
+            // the stinger arrives at the foe with the body still square on.
+            A.x = A.face * strikeClose * easeIn(ph(t, wEnd, contactAt));
             this.fire(step, 'impact', contactAt, () => this.clashImpact(step, A, D));
           } else {
             // Dash across the arena (specials streak with afterimages).
@@ -795,7 +890,7 @@ export class DuelStage {
           }
           const k = easeOut(ph(t, dEnd + 0.18, step.dur));
           A.x = scorpionTail
-            ? A.face * gap * 0.28 * (1 - k)
+            ? A.face * strikeClose * (1 - k)
             : A.face * (gap - this.W * 0.13) * (1 - k);
           if (scorpionTail) {
             // Spring-back: rewind the SAME painted frames so the tail
@@ -1253,7 +1348,9 @@ export class DuelStage {
     }
   }
 
-  private pickFrames(f: FighterVis): { a: Sprite; b: Sprite | null; mix: number } | null {
+  private pickFrames(
+    f: FighterVis,
+  ): { a: Sprite; b: Sprite | null; mix: number; ghosts?: Sprite[]; smear?: number } | null {
     const anim = getAnim(f.species);
     if (!anim || anim.run.length === 0) {
       const p = getSprite(f.species);
@@ -1292,10 +1389,22 @@ export class DuelStage {
         const frac = k - i;
         const mix = frac * frac * (3 - 2 * frac);
         const j = Math.min(sweep, i + 1);
+        // Now that the whole set shares one ground line, ghosting the poses
+        // just behind the current one smears the TAIL and nothing else: the
+        // bodies land exactly on top of each other. That is what makes a whip
+        // this fast read as motion instead of a strobe. It fades out at both
+        // ends of the sweep so the coil and the held contact pose stay clean.
+        const smear = clamp01(Math.min(k, sweep - k) / 1.2);
+        const ghosts: Sprite[] = [];
+        if (smear > 0.02) {
+          for (let g = 1; g <= 2; g++) if (i - g >= 0) ghosts.push(anim.attack[i - g]);
+        }
         return {
           a: anim.attack[Math.min(i, sweep)],
           b: j > i && mix > 0.02 ? anim.attack[j] : null,
           mix,
+          ghosts,
+          smear,
         };
       }
       const idx = at < 0.35 ? 0 : at < 0.7 ? 1 : 2;
@@ -1426,6 +1535,12 @@ export class DuelStage {
       }
       ctx.restore();
     };
+    // Motion smear first, so the live pose reads on top of its own wake.
+    if (frames.ghosts && frames.smear) {
+      for (let g = 0; g < frames.ghosts.length; g++) {
+        drawOne(frames.ghosts[g], (g === 0 ? 0.3 : 0.15) * frames.smear);
+      }
+    }
     drawOne(frames.a, 1);
     if (frames.b && frames.mix > 0.02) drawOne(frames.b, frames.mix);
 

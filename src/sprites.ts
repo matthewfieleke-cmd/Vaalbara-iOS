@@ -461,10 +461,25 @@ function cropTo(cv: HTMLCanvasElement, b: { minX: number; minY: number; maxX: nu
   return out;
 }
 
-function autoCrop(cv: HTMLCanvasElement): HTMLCanvasElement {
-  const b = contentBounds(cv);
-  return b ? cropTo(cv, b) : cv;
+/** A frame from a film strip: the keyed, cropped image plus where that crop
+ *  sat inside its panel. The offset is what lets a whole set share one ground
+ *  line — without it, all a frame knows is its own bounding box, which moves
+ *  whenever the pose changes shape. */
+interface Panel {
+  canvas: HTMLCanvasElement;
+  ox: number;
+  oy: number;
 }
+
+function autoCrop(cv: HTMLCanvasElement): Panel {
+  const b = contentBounds(cv);
+  if (!b) return { canvas: cv, ox: 0, oy: 0 };
+  return { canvas: cropTo(cv, b), ox: Math.max(0, b.minX - 2), oy: Math.max(0, b.minY - 2) };
+}
+
+/** Crop for callers that place the image themselves and have no panel to be
+ *  positioned within — portraits and card art. */
+const autoCropped = (cv: HTMLCanvasElement): HTMLCanvasElement => autoCrop(cv).canvas;
 
 function sliceCanvas(cv: HTMLCanvasElement, x0: number, x1: number): HTMLCanvasElement {
   const out = document.createElement('canvas');
@@ -478,7 +493,7 @@ function sliceCanvas(cv: HTMLCanvasElement, x0: number, x1: number): HTMLCanvasE
  * Split a film strip into panels. Prefers magenta separator columns; falls
  * back to N equal slices. Returns keyed, cropped frames.
  */
-function splitStrip(img: HTMLImageElement, expected: number, bleed = 0): HTMLCanvasElement[] {
+function splitStrip(img: HTMLImageElement, expected: number, bleed = 0): Panel[] {
   const fullW = img.naturalWidth;
   const fullH = img.naturalHeight;
   const full = document.createElement('canvas');
@@ -647,9 +662,9 @@ function rightBandCenterY(cv: HTMLCanvasElement): number {
 
 /** Mean opaque-pixel area of a frame set — a pose-invariant proxy for the
  *  animal's drawn scale (a rearing pose is taller but covers ~the same ink). */
-function meanContentArea(frames: HTMLCanvasElement[]): number {
+function meanContentArea(frames: Panel[]): number {
   let total = 0;
-  for (const f of frames) {
+  for (const { canvas: f } of frames) {
     const data = f.getContext('2d', { willReadFrequently: true })!
       .getImageData(0, 0, f.width, f.height).data;
     let n = 0;
@@ -659,18 +674,46 @@ function meanContentArea(frames: HTMLCanvasElement[]): number {
   return Math.max(1, total / frames.length);
 }
 
+function median(xs: number[]): number {
+  const s = xs.slice().sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Alpha-weighted centre of the frame's lowest band, in PANEL coordinates.
+ *  For a ground animal that band is legs, which is the one part of the drawing
+ *  that holds still while the rest of it animates. */
+function footCentreX(p: Panel, bandH: number): number {
+  const cv = p.canvas;
+  const data = cv.getContext('2d', { willReadFrequently: true })!
+    .getImageData(0, 0, cv.width, cv.height).data;
+  const y0 = Math.max(0, Math.floor(cv.height - bandH));
+  let sx = 0;
+  let sw = 0;
+  for (let y = y0; y < cv.height; y++) {
+    for (let x = 0; x < cv.width; x++) {
+      const a = data[(y * cv.width + x) * 4 + 3];
+      if (a > 16) {
+        sx += x * a;
+        sw += a;
+      }
+    }
+  }
+  return p.ox + (sw > 0 ? sx / sw : cv.width / 2);
+}
+
 /** Normalise frames of a set: shared scale, bottom-centre ground anchor.
  *  `logicalH` overrides the set's own height so DIFFERENT sets of one
  *  species (run vs attack sheets, drawn at different sheet scales) render
  *  the animal at one consistent size — no more size-popping on attack. */
 function toFrameSprites(
-  frames: HTMLCanvasElement[],
+  frames: Panel[],
   groundLift = 0.03,
   logicalH?: number,
   facing: 1 | -1 = 1,
 ): Sprite[] {
-  const maxH = Math.max(...frames.map((f) => f.height));
-  return frames.map((f) => ({
+  const maxH = Math.max(...frames.map((f) => f.canvas.height));
+  return frames.map(({ canvas: f }) => ({
     canvas: f,
     w: f.width,
     // A shared logical height keeps scale steady across the cycle even when
@@ -679,6 +722,42 @@ function toFrameSprites(
     nativeFacing: facing,
     anchorX: f.width / 2,
     anchorY: f.height * (1 - groundLift),
+  }));
+}
+
+/** Like toFrameSprites, but the whole set is planted on ONE ground row and ONE
+ *  centre line measured in panel space, instead of each pose hanging off its
+ *  own crop box.
+ *
+ *  A crop box is not a fixed point on the animal: throwing a tail forward
+ *  widens it, raising one lifts its bottom edge. Anchoring to it therefore
+ *  moves the body every time the pose changes shape, which is the opposite of
+ *  what an animation of a planted animal should do — and when two such frames
+ *  are crossfaded you see both bodies at once, a body-width apart. Panel space
+ *  doesn't move, so the animal stays put and only the pose changes. */
+function toGroundedSprites(
+  frames: Panel[],
+  groundLift = 0.03,
+  logicalH?: number,
+  facing: 1 | -1 = 1,
+): Sprite[] {
+  const maxH = Math.max(...frames.map((f) => f.canvas.height));
+  const h = logicalH ?? maxH;
+  // Median rather than max on both axes: one bad frame — a separator rule that
+  // survived keying, a pose drawn low — must not drag the whole set off its
+  // ground line.
+  const ground = median(frames.map((f) => f.oy + f.canvas.height));
+  const band = median(frames.map((f) => f.canvas.height)) * 0.25;
+  const centre = median(frames.map((f) => footCentreX(f, band)));
+  return frames.map((f) => ({
+    canvas: f.canvas,
+    w: f.canvas.width,
+    h,
+    nativeFacing: facing,
+    anchorX: centre - f.ox,
+    // The lift is a fraction of the DRAWN height, so a pose that happens to
+    // crop tall is not also lifted further off the floor than its neighbours.
+    anchorY: ground - f.oy - groundLift * h,
   }));
 }
 
@@ -709,12 +788,12 @@ export function loadSprites(baseUrl = './art/'): Promise<void> {
         const meta = PORTRAIT_META[sp];
         try {
           const img = await loadImage(baseUrl + meta.file);
-          const keyed = autoCrop(keyBackground(toCanvas(img)));
+          const keyed = autoCropped(keyBackground(toCanvas(img)));
           if (meta.split === 'wolves') {
             const mid = Math.round(keyed.width / 2);
             SPRITES.set(sp, [
-              toSprite(autoCrop(sliceCanvas(keyed, 0, mid)), meta, 1),
-              toSprite(autoCrop(sliceCanvas(keyed, mid, keyed.width)), meta, -1),
+              toSprite(autoCropped(sliceCanvas(keyed, 0, mid)), meta, 1),
+              toSprite(autoCropped(sliceCanvas(keyed, mid, keyed.width)), meta, -1),
             ]);
           } else {
             SPRITES.set(sp, [toSprite(keyed, meta, meta.nativeFacing)]);
@@ -743,9 +822,9 @@ export function loadSprites(baseUrl = './art/'): Promise<void> {
           // sets are area-matched against it so the animal never changes
           // size when it switches animation.
           const runFrames = splitStrip(runImg, 4);
-          const runH = Math.max(...runFrames.map((f) => f.height));
+          const runH = Math.max(...runFrames.map((f) => f.canvas.height));
           const runArea = meanContentArea(runFrames);
-          const crossH = (frames: HTMLCanvasElement[]): number =>
+          const crossH = (frames: Panel[]): number =>
             runH * Math.sqrt(meanContentArea(frames) / runArea);
           const atkSource = duelAtkImg ?? atkImg;
           const atkCount = duelAtkImg ? 8 : 3;
@@ -753,11 +832,13 @@ export function loadSprites(baseUrl = './art/'): Promise<void> {
           const atkFacing: 1 | -1 = duelAtkImg ? 1 : (files.attackFacing ?? 1);
           const set: AnimSet = {
             run: toFrameSprites(runFrames),
-            attack: toFrameSprites(atkFrames, 0.03, crossH(atkFrames), atkFacing),
+            // Grounded: attack poses are one motion of a planted animal, and
+            // the scorpion's are crossfaded, so they must share a ground line.
+            attack: toGroundedSprites(atkFrames, 0.03, crossH(atkFrames), atkFacing),
           };
           if (swatImg) {
             const swatFrames = splitStrip(swatImg, 3);
-            set.swat = toFrameSprites(swatFrames, 0.03, crossH(swatFrames));
+            set.swat = toGroundedSprites(swatFrames, 0.03, crossH(swatFrames));
           }
           if (upImg) {
             const upFrames = splitStrip(upImg, 4);
