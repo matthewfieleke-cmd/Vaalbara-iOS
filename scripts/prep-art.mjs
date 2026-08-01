@@ -50,7 +50,13 @@ const fortresses = [
 ];
 
 // Animation sheets: kept at full width so each frame stays ~300px.
-const animSheets = fs.readdirSync('art-src/anim').filter((f) => f.endsWith('.png'));
+// An optional argument narrows the run to matching outputs, so a single
+// re-authored sheet can be re-exported without churning every other asset.
+const only = process.argv[2] ?? null;
+const wanted = (out) => !only || out.includes(only);
+const animSheets = fs
+  .readdirSync('art-src/anim')
+  .filter((f) => f.endsWith('.png') && wanted(f));
 
 let total = 0;
 async function convert(src, out, maxW) {
@@ -359,14 +365,21 @@ async function convertFortress(src, out, maxW) {
   console.log(`${out}  keyed  ${kb} KB`);
 }
 
-for (const [src, out, w] of portraits) await convert(src, out, w);
-for (const [src, out, w] of arenas) await convert(src, out, w);
-for (const [src, out, w] of duelBackdrops) await convertBackdrop(src, out, w);
-for (const [src, out, w] of fortresses) await convertFortress(src, out, w);
+for (const [src, out, w] of portraits) if (wanted(out)) await convert(src, out, w);
+for (const [src, out, w] of arenas) if (wanted(out)) await convert(src, out, w);
+for (const [src, out, w] of duelBackdrops) if (wanted(out)) await convertBackdrop(src, out, w);
+for (const [src, out, w] of fortresses) if (wanted(out)) await convertFortress(src, out, w);
+/* 1280 costs the ordinary sheets nothing — they are authored at 1206-1536 and
+ * a battlefield unit is only a few dozen pixels tall. The duel strike sheet is
+ * the exception: it is eight registered poses at 1024px each, and a duel
+ * fighter is painted ~690 device px tall on a 13" iPad, so the default cap threw
+ * away 6x of the master and left the tail as a smear. */
+const SHEET_WIDTH = { 'scorpion-duel-attack.png': 8192 };
+
 for (const f of animSheets) {
   const out = `public/art/anim/${f.replace('.png', '.webp')}`;
   if (f.includes('-intro')) await convertGridSheet(`art-src/anim/${f}`, out, 2400);
-  else await convertSheet(`art-src/anim/${f}`, out, 1280);
+  else await convertSheet(`art-src/anim/${f}`, out, SHEET_WIDTH[f] ?? 1280);
 }
 
 /* iOS Home Screen + PWA icons from the dedicated app icon painting. */
