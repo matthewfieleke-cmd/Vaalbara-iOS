@@ -818,17 +818,35 @@ button {
 
 /* --------------------------------- game ----------------------------------- */
 
+/* Phone layout: HUD band, battlefield, hand dock, stacked top to bottom.
+ *  Declared as a grid rather than a column flex so the tablet breakpoint can
+ *  re-home the very same three children into a board + side rail without any
+ *  DOM restructuring (and therefore without remounting the canvas). */
 .game-screen {
   flex: 1;
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'hud'
+    'board'
+    'hand';
   overflow: hidden;
 }
 
+/* The warband readout is a tablet affordance; a phone shows the whole board
+   at once and has no width to spare for it. */
+.warband {
+  display: none;
+  grid-area: roster;
+}
+
 .game-canvas-wrap {
-  flex: 1;
+  grid-area: board;
   position: relative;
+  min-width: 0;
+  min-height: 0;
   touch-action: none;
 }
 
@@ -840,7 +858,7 @@ button {
 /* Top HUD — in flow ABOVE the canvas (never overlaying the arena, so the
    enemy fortress towers and gate openings always stay fully visible). */
 .hud-top {
-  flex: none;
+  grid-area: hud;
   padding: calc(0.45rem + var(--safe-top)) 0.7rem 0.4rem;
   display: flex;
   flex-direction: column;
@@ -1057,6 +1075,7 @@ button {
 
 /* Bottom hand dock */
 .hand-dock {
+  grid-area: hand;
   position: relative;
   z-index: 5;
   padding: 0.45rem 0.6rem calc(0.6rem + var(--safe-bottom));
@@ -2690,3 +2709,334 @@ button {
 .edu-next:active { transform: scale(0.98); filter: brightness(1.08); }
 .next-kicker { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.3em; text-transform: uppercase; opacity: 0.75; }
 .next-title { font-size: 1.02rem; font-weight: 900; letter-spacing: 0.06em; }
+
+/* ==========================================================================
+   TABLET — iPad and anything else with real room to spare.
+
+   Phones get a single tall column because a thumb has to reach everything.
+   A tablet is held in two hands and has width to burn, so the battlefield
+   claims the full height of the display and the HUD and hand move into a
+   rail down the side. Same markup, same canvas, different grid.
+   ========================================================================== */
+
+@media (min-width: 700px) {
+  :root {
+    --rail-w: clamp(268px, 27vw, 372px);
+  }
+
+  /* Menu-style screens stay in a readable column; only the two screens that
+     are really a viewport onto the world get the whole display. */
+  .app.app-game,
+  .app.app-duel {
+    max-width: none;
+  }
+
+  .app.app-menu,
+  .app.app-faction,
+  .app.app-matchmaking,
+  .app.app-results,
+  .app.app-duel-setup {
+    max-width: 640px;
+  }
+
+  .app.app-education {
+    max-width: 720px;
+  }
+
+  /* ------------------------------ battlefield ---------------------------- */
+
+  .game-screen {
+    grid-template-columns: minmax(0, 1fr) var(--rail-w);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'board hud'
+      'board roster'
+      'board hand';
+  }
+
+  /* One continuous panel behind all three rail rows, so the cluster reads as
+     a single instrument panel rather than floating slabs. */
+  .game-screen::after {
+    content: '';
+    grid-area: hud / hud / hand / hand;
+    border-left: 1px solid rgba(255, 255, 255, 0.09);
+    background:
+      linear-gradient(180deg, rgba(24, 14, 34, 0.86), rgba(10, 6, 16, 0.94)),
+      radial-gradient(120% 60% at 100% 0%, rgba(79, 216, 255, 0.09), transparent 70%);
+    backdrop-filter: blur(14px);
+    pointer-events: none;
+  }
+
+  .hud-top,
+  .warband,
+  .hand-dock {
+    position: relative;
+    z-index: 1;
+    background: none;
+  }
+
+  /* ------------------------------- warband ------------------------------- */
+
+  .warband {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 0.5rem;
+    padding: 0.7rem 1.05rem 0.3rem;
+  }
+
+  .warband-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-bottom: 0.42rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  }
+
+  .warband-title {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .warband-foe {
+    font-size: 0.66rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #ff9a8a;
+  }
+
+  .warband-empty {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--ink-dim);
+    opacity: 0.75;
+  }
+
+  .warband-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow-y: auto;
+    min-height: 0;
+    scrollbar-width: none;
+  }
+
+  .warband-list::-webkit-scrollbar { display: none; }
+
+  .warband-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    animation: warband-in 0.28s ease both;
+  }
+
+  @keyframes warband-in {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .warband-art {
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 34px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: radial-gradient(
+      120% 120% at 50% 30%,
+      hsl(var(--chip-hue) 60% 26%),
+      hsl(var(--chip-hue) 50% 11%)
+    );
+  }
+
+  .roster-chip {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .warband-count {
+    position: absolute;
+    right: 1px;
+    bottom: 0;
+    font-size: 0.58rem;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 1px 3px #000, 0 0 6px #000;
+  }
+
+  .warband-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+
+  .warband-name {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .warband-hp {
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.55);
+    overflow: hidden;
+  }
+
+  .warband-hp .fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.25s linear;
+  }
+
+  /* A tiny vertical field map: the dot rides up as that species pushes into
+     enemy ground. */
+  .warband-lead {
+    flex: none;
+    width: 10px;
+    height: 30px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .lead-track {
+    position: relative;
+    width: 2px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, rgba(255, 122, 106, 0.5), rgba(79, 216, 255, 0.35));
+  }
+
+  .lead-dot {
+    position: absolute;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    margin-left: -3.5px;
+    margin-bottom: -3.5px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 7px rgba(255, 255, 255, 0.8);
+    transition: bottom 0.3s linear;
+  }
+
+  .hud-top {
+    padding: calc(1rem + var(--safe-top)) 1.05rem 0.5rem;
+    gap: 0.6rem;
+  }
+
+  /* Width is the scarce resource in a rail, so the phase pill and clock
+     stack instead of fighting each other on one line. */
+  .hud-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .phase-pill {
+    align-self: flex-start;
+    font-size: 0.78rem;
+    padding: 0.34rem 1rem;
+  }
+
+  .timer {
+    font-size: 2.1rem;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+
+  .objective-bars {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.42rem;
+  }
+
+  .ob-vs {
+    align-self: center;
+    font-size: 0.78rem;
+  }
+
+  .objective-pill {
+    align-self: stretch;
+    text-align: center;
+    font-size: 0.68rem;
+    white-space: normal;
+    line-height: 1.45;
+    padding: 0.4rem 0.7rem;
+  }
+
+  /* ------------------------------- hand rail ----------------------------- */
+
+  .hand-dock {
+    padding: 0.5rem 1.05rem calc(1.1rem + var(--safe-bottom));
+    justify-content: flex-end;
+    gap: 0.8rem;
+  }
+
+  .aqua-cells {
+    height: 16px;
+  }
+
+  .aqua-count {
+    font-size: 1.15rem;
+  }
+
+  .army-count {
+    font-size: 0.86rem;
+  }
+
+  /* Two columns of large cards beats four slivers: the art is the whole
+     point of the card and a rail is tall, not wide. */
+  .hand {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.7rem;
+  }
+
+  .card {
+    border-radius: 17px;
+    padding: 0.55rem 0.45rem 0.48rem;
+    gap: 0.22rem;
+  }
+
+  .card .name {
+    font-size: 0.74rem;
+  }
+
+  .card .cost {
+    top: 5px;
+    left: 5px;
+    width: 26px;
+    height: 26px;
+    font-size: 0.9rem;
+  }
+
+  /* Banners are centred on the board, not on the whole screen — the rail
+     would otherwise push them off the arena. */
+  .banner,
+  .toast {
+    left: calc((100% - var(--rail-w)) / 2);
+  }
+
+  /* Keep the sound toggle over the board so it never lands on the rail's
+     phase pill. */
+  .app.app-game .mute-btn {
+    right: calc(var(--rail-w) + 0.9rem);
+  }
+}

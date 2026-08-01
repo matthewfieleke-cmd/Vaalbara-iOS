@@ -21,9 +21,22 @@ const portraits = [
   ['art-src/Beetle.png', 'public/art/beetles.webp', 640],
 ];
 
+/* Battlefield floors. Exported at the master's native width: a 13" iPad
+ * paints the 9x15 board at ~1370x2290 device px, so anything less than the
+ * full master is visibly resampled there. */
 const arenas = [
-  ['art-src/arena1.png', 'public/art/arena1.webp', 820],
-  ['art-src/arena2.png', 'public/art/arena2.webp', 820],
+  ['art-src/arena1.png', 'public/art/arena1.webp', 1206],
+  ['art-src/arena2.png', 'public/art/arena2.webp', 1206],
+];
+
+/* Duel backdrops. Painted portrait to match the stage they fill — the old
+ * landscape masters had to be cover-cropped to their middle third and blown
+ * up 2.7x on a large tablet. Pre-scaled past the master's native width with
+ * Lanczos so the browser's bilinear draw starts near 1:1 instead of doing
+ * the whole enlargement itself. */
+const duelBackdrops = [
+  ['art-src/duel-basalt.png', 'public/art/duel-basalt.webp', 1536],
+  ['art-src/duel-oasis.png', 'public/art/duel-oasis.webp', 1536],
 ];
 
 // Fortress paintings: white background keyed to alpha, trimmed to content.
@@ -48,6 +61,22 @@ async function convert(src, out, maxW) {
   const kb = Math.round(fs.statSync(out).size / 1024);
   total += kb;
   console.log(`${out}  ${width}px  ${kb} KB`);
+}
+
+/* Backdrops are the one class of art we deliberately enlarge past its master.
+ * A tablet paints the duel stage at ~2730 device px tall, so the enlargement
+ * happens either way; doing it here with Lanczos plus a whisper of unsharp
+ * keeps far more acutance than the browser's bilinear draw, which is what
+ * made distant cliffs read as mush. */
+async function convertBackdrop(src, out, targetW) {
+  await sharp(src)
+    .resize({ width: targetW, kernel: 'lanczos3' })
+    .sharpen({ sigma: 0.7, m1: 0.4, m2: 0.6 })
+    .webp({ quality: 86 })
+    .toFile(out);
+  const kb = Math.round(fs.statSync(out).size / 1024);
+  total += kb;
+  console.log(`${out}  ${targetW}px  ${kb} KB`);
 }
 
 /* Some generated sheets carry solid black letterbox bars at the top/bottom
@@ -332,6 +361,7 @@ async function convertFortress(src, out, maxW) {
 
 for (const [src, out, w] of portraits) await convert(src, out, w);
 for (const [src, out, w] of arenas) await convert(src, out, w);
+for (const [src, out, w] of duelBackdrops) await convertBackdrop(src, out, w);
 for (const [src, out, w] of fortresses) await convertFortress(src, out, w);
 for (const f of animSheets) {
   const out = `public/art/anim/${f.replace('.png', '.webp')}`;

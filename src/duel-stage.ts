@@ -11,8 +11,10 @@ import type { SpeciesId } from './types';
 import type { DuelEvent, DuelSide } from './duel';
 import { getAnim, getDuelArt, getSprite } from './sprites';
 import type { Sprite } from './sprites';
+import { FLOW_REGIONS } from './duel-flow-regions';
+import type { DuelWorld, FlowRegionDef } from './duel-flow-regions';
 
-export type DuelWorld = 'basalt' | 'oasis';
+export type { DuelWorld };
 
 /** Scorpion tail-strike timing: total sweep duration and the fraction of it
  *  at which the stinger reaches full extension (= the contact beat). Shared
@@ -86,43 +88,6 @@ interface Particle {
  * behind feathered edges. Everything outside the regions stays pixel-
  * identical to the original painting.
  * ------------------------------------------------------------------------ */
-
-interface FlowRegionDef {
-  /** Region in normalized image coordinates. */
-  x: number; y: number; w: number; h: number;
-  /** 'fall': material pours downward. 'ripple': surface shimmers in place. */
-  kind: 'fall' | 'ripple';
-  /** Loop speed (cycles/s for falls, wave speed for ripples). */
-  speed: number;
-  /** Ripple horizontal displacement, as a fraction of region width. */
-  amp?: number;
-}
-
-const FLOW_REGIONS: Record<DuelWorld, FlowRegionDef[]> = {
-  basalt: [
-    // Middle-distance lava cascades, left to right.
-    { x: 0.255, y: 0.42, w: 0.095, h: 0.27, kind: 'fall', speed: 0.30 },
-    { x: 0.445, y: 0.385, w: 0.115, h: 0.30, kind: 'fall', speed: 0.34 },
-    { x: 0.575, y: 0.39, w: 0.095, h: 0.25, kind: 'fall', speed: 0.30 },
-    { x: 0.715, y: 0.39, w: 0.085, h: 0.23, kind: 'fall', speed: 0.27 },
-    // Molten pool at the base of the central cascade — slow lateral churn.
-    { x: 0.365, y: 0.625, w: 0.28, h: 0.065, kind: 'ripple', speed: 0.5, amp: 0.005 },
-  ],
-  oasis: [
-    // The tall thin falls under the left tree line.
-    { x: 0.272, y: 0.19, w: 0.05, h: 0.37, kind: 'fall', speed: 0.5 },
-    // Left main cascade into the pond.
-    { x: 0.295, y: 0.405, w: 0.105, h: 0.165, kind: 'fall', speed: 0.55 },
-    // Center falls beneath the temple.
-    { x: 0.465, y: 0.295, w: 0.065, h: 0.265, kind: 'fall', speed: 0.5 },
-    { x: 0.515, y: 0.445, w: 0.095, h: 0.125, kind: 'fall', speed: 0.55 },
-    // Right cascades.
-    { x: 0.67, y: 0.425, w: 0.065, h: 0.145, kind: 'fall', speed: 0.5 },
-    { x: 0.745, y: 0.265, w: 0.055, h: 0.165, kind: 'fall', speed: 0.42 },
-    // The pond surface — a subtle refractive shimmer.
-    { x: 0.285, y: 0.548, w: 0.505, h: 0.068, kind: 'ripple', speed: 0.8, amp: 0.006 },
-  ],
-};
 
 interface FlowRegion {
   def: FlowRegionDef;
@@ -481,15 +446,21 @@ export class DuelStage {
         const b = px[i * 4 + 2];
         let s = 0;
         if (basalt) {
-          // Molten: hot orange/yellow, red well above blue, decently bright.
-          s = clamp01((r - b - 30) / 90) * clamp01((r - 120) / 80);
+          // Molten CORE only. A looser red-over-blue test also keys the
+          // glowing fissures webbing the surrounding basalt, and sliding
+          // that mask downward drags the cliff face with it — the rock
+          // appeared to flow. The brightness floor leaves the cracks behind.
+          s = clamp01((r - b - 40) / 80) * clamp01((r - 150) / 70);
         } else {
-          // Water: foam is bright WITH real blue content (sunlit foliage is
-          // bright too, but starved of blue) — or open turquoise water.
+          // Water reads three ways depending on depth and sun: pale falling
+          // whitewater, bright blue-lifted foam, and open turquoise. Keying
+          // only foam left most of each cascade frozen in place.
           const mn = Math.min(r, g, b);
+          const lum = (r + g + b) / 3;
+          const whitewater = clamp01((lum - 100) / 70) * clamp01((b - r + 30) / 50);
           const foam = clamp01((mn - 120) / 60) * clamp01((b - 135) / 55);
-          const turquoise = clamp01((Math.min(g, b) - 105) / 70) * clamp01((g * 0.88 - r) / 40);
-          s = Math.max(foam, turquoise);
+          const turquoise = clamp01((Math.min(g, b) - 100) / 70) * clamp01((g * 0.9 - r) / 45);
+          s = Math.max(whitewater, Math.max(foam, turquoise));
         }
         mask.data[i * 4 + 3] = Math.round(255 * s);
       }

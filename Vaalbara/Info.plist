@@ -36,6 +36,14 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- The battlefield is a 9x15 portrait world; landscape would letterbox it
+	     to a sliver. UIRequiresFullScreen lets an iPad app stay portrait-only
+	     by opting out of Slide Over and Split View. -->
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
 	<key>UIRequiresFullScreen</key>
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
