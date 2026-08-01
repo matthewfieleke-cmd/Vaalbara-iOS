@@ -2730,8 +2730,12 @@ button {
     --rail-w: clamp(268px, 27vw, 372px);
   }
 
-  /* Menu-style screens stay in a readable column; only the two screens that
-     are really a viewport onto the world get the whole display. */
+  /* Menu-style screens stay in a readable column; the screens that are really
+     a viewport onto the world get the whole display. The opening cinematic is
+     the first thing a tablet owner ever sees — boxing it into a phone-width
+     column with bars either side is not the first impression to make. */
+  .app.app-boot,
+  .app.app-cinematic,
   .app.app-game,
   .app.app-duel {
     max-width: none;
