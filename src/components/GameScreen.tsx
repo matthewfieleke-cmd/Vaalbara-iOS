@@ -633,6 +633,7 @@ export function GameScreen({
       </div>
 
       <div className="hand-dock">
+        <span className="hand-label">Your Hand</span>
         <div className="aqua-bar">
           <div className="aqua-cells">
             {Array.from({ length: 10 }, (_, i) => (

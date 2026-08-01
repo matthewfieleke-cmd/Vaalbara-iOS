@@ -57,12 +57,28 @@ for (const vp of VIEWPORTS) {
   await page.waitForTimeout(3200);
   await shot('03-battle');
 
-  // Let some aqua bank so a card is affordable and can be shown selected.
-  await page.waitForTimeout(4000);
-  const cards = page.locator('.hand .card:not(.unaffordable)');
-  if (await cards.count()) await cards.first().click({ force: true });
-  await page.waitForTimeout(600);
-  await shot('04-battle-card-armed');
+  // Bank aqua, then actually deploy a few waves so the rail's warband
+  // readout has something in it when the shot is taken.
+  const board = await page.locator('.game-canvas-wrap').boundingBox();
+  const gates = [
+    { x: board.x + board.width * 0.32, y: board.y + board.height * 0.9 },
+    { x: board.x + board.width * 0.68, y: board.y + board.height * 0.9 },
+  ];
+  for (let wave = 0; wave < 6; wave++) {
+    await page.waitForTimeout(4200);
+    const affordable = page.locator('.hand .card:not(.unaffordable)');
+    if (!(await affordable.count())) continue;
+    await affordable.first().click({ force: true });
+    await page.waitForTimeout(250);
+    const g = gates[wave % 2];
+    await page.mouse.move(g.x, g.y);
+    await page.mouse.down();
+    await page.mouse.move(g.x, g.y - 4, { steps: 3 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+  }
+  await page.waitForTimeout(2500);
+  await shot('04-battle-live');
 
   await toMenu();
   await page.click('text=Duels', { force: true });
