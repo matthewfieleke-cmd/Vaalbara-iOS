@@ -26,6 +26,9 @@ const SCORPION_CONTACT_FRAC = 4 / 5;
  *  as a fraction of stage width. Stopping exactly at the edge reads as a near
  *  miss; a little overlap reads as a hit. */
 const STRIKE_BITE = 0.022;
+/** Nose-up tilt at full extension, radians. Pivots on the ground anchor, so it
+ *  lifts the far end of an extended tail much more than it lifts the body. */
+const SCORPION_REAR = 0.13;
 
 /** Forward-most opaque point of a sprite, measured from its own anchor in
  *  sprite pixels. For a striking scorpion that is the stinger — the part that
@@ -663,12 +666,17 @@ export class DuelStage {
    *  landed in open air. Deriving it from the pose actually being drawn keeps
    *  it honest if the art or the pairing changes. */
   private strikeClose(A: FighterVis, D: FighterVis, gap: number): number {
-    const want = gap
-      - this.baseHalfW(D.species) * this.fitScale
-      - this.strikeReach(A)
-      + this.W * STRIKE_BITE;
+    // Distance at which the drawn stinger just touches the defender's edge.
+    const touch = gap - this.baseHalfW(D.species) * this.fitScale - this.strikeReach(A);
+    // Bracket it: far enough in to read as contact, never so far that the tail
+    // is buried out through the far side of the animal.
+    const lo = touch + this.W * STRIKE_BITE;
+    const hi = touch + this.W * 0.06;
+    // Then commit as much body weight forward as the bracket allows. A blow
+    // where only the tail travels reads as a poke, however far it reaches.
+    const close = Math.min(Math.max(gap * 0.3, lo), hi);
     // Never end up standing inside the foe if a pairing leaves no room.
-    return Math.max(0, Math.min(want, gap - this.W * 0.05));
+    return Math.max(0, Math.min(close, gap - this.W * 0.05));
   }
 
   /** Idle-stance half-width for a species at fit 1, from its run frames
@@ -870,6 +878,10 @@ export class DuelStage {
             // Close exactly the distance the drawn reach does not cover, so
             // the stinger arrives at the foe with the body still square on.
             A.x = A.face * strikeClose * easeIn(ph(t, wEnd, contactAt));
+            // Rear up into the blow. A scorpion lifts its front to strike, and
+            // the tilt swings the extended tail up off the dirt to meet a tall
+            // opponent's body rather than its hooves.
+            A.rot = -A.face * SCORPION_REAR * easeIn(ph(t, wEnd, contactAt));
             this.fire(step, 'impact', contactAt, () => this.clashImpact(step, A, D));
           } else {
             // Dash across the arena (specials streak with afterimages).
@@ -893,6 +905,7 @@ export class DuelStage {
             ? A.face * strikeClose * (1 - k)
             : A.face * (gap - this.W * 0.13) * (1 - k);
           if (scorpionTail) {
+            A.rot = -A.face * SCORPION_REAR * (1 - easeOut(ph(t, dEnd, dEnd + 0.3)));
             // Spring-back: rewind the SAME painted frames so the tail
             // recoils along its strike path, then settle into the idle coil.
             const rewind = Math.max(
