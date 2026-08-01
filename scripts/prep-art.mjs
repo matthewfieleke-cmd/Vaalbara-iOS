@@ -50,7 +50,13 @@ const fortresses = [
 ];
 
 // Animation sheets: kept at full width so each frame stays ~300px.
-const animSheets = fs.readdirSync('art-src/anim').filter((f) => f.endsWith('.png'));
+// An optional argument narrows the run to matching outputs, so a single
+// re-authored sheet can be re-exported without churning every other asset.
+const only = process.argv[2] ?? null;
+const wanted = (out) => !only || out.includes(only);
+const animSheets = fs
+  .readdirSync('art-src/anim')
+  .filter((f) => f.endsWith('.png') && wanted(f));
 
 let total = 0;
 async function convert(src, out, maxW) {
@@ -359,14 +365,26 @@ async function convertFortress(src, out, maxW) {
   console.log(`${out}  keyed  ${kb} KB`);
 }
 
-for (const [src, out, w] of portraits) await convert(src, out, w);
-for (const [src, out, w] of arenas) await convert(src, out, w);
-for (const [src, out, w] of duelBackdrops) await convertBackdrop(src, out, w);
-for (const [src, out, w] of fortresses) await convertFortress(src, out, w);
+for (const [src, out, w] of portraits) if (wanted(out)) await convert(src, out, w);
+for (const [src, out, w] of arenas) if (wanted(out)) await convert(src, out, w);
+for (const [src, out, w] of duelBackdrops) if (wanted(out)) await convertBackdrop(src, out, w);
+for (const [src, out, w] of fortresses) if (wanted(out)) await convertFortress(src, out, w);
+/* 1280 costs the ordinary sheets nothing — they are authored at 1206-1536 and
+ * a battlefield unit is only a few dozen pixels tall. The duel strike sheet is
+ * the exception: a duel fighter is painted several hundred device px tall, so
+ * the default cap threw away most of the master and left the tail as a smear.
+ *
+ * 6144 puts the tallest pose 1.3x under its drawn size on a 13" iPad and
+ * comfortably over it on a phone — sharper than any other animation in the
+ * game, which run 2.8x. The master is 8192 and would land exactly 1:1, but the
+ * last third of a pixel costs another 8 MB of decoded texture for a difference
+ * nobody can see on painted art. */
+const SHEET_WIDTH = { 'scorpion-duel-attack.png': 6144 };
+
 for (const f of animSheets) {
   const out = `public/art/anim/${f.replace('.png', '.webp')}`;
   if (f.includes('-intro')) await convertGridSheet(`art-src/anim/${f}`, out, 2400);
-  else await convertSheet(`art-src/anim/${f}`, out, 1280);
+  else await convertSheet(`art-src/anim/${f}`, out, SHEET_WIDTH[f] ?? 1280);
 }
 
 /* iOS Home Screen + PWA icons from the dedicated app icon painting. */
