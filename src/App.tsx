@@ -85,7 +85,10 @@ export function App() {
   };
 
   return (
-    <div className="app">
+    // The screen name rides on the shell so the tablet stylesheet can let the
+    // battlefield and duel stage span the full display while the menu-style
+    // screens stay in a readable centred column.
+    <div className={`app app-${screen}`}>
       {screen !== 'boot' && screen !== 'cinematic' && (
         <button className="mute-btn" onClick={toggleMute} aria-label="Toggle sound">
           {muted ? '🔇' : '🔊'}

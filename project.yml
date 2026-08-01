@@ -19,7 +19,9 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    TARGETED_DEVICE_FAMILY: "1"
+    # 1,2 = iPhone and iPad. Universal: one binary, one listing, the layout
+    # adapts at runtime (see the tablet breakpoint in src/styles.css).
+    TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: false
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic

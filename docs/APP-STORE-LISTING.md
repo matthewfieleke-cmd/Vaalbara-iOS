@@ -119,6 +119,12 @@ Welcome to Vaalbara.
 
 Use 6.7" iPhone screenshots first (required). Caption text is what you overlay on the image or put in App Preview title lines — keep each line short.
 
+The app is now universal, so App Store Connect also requires a
+**13" iPad** set (2064x2752 portrait). Capture the same six beats — the tablet
+build is worth showing on its own merits, because the battlefield runs the full
+height of the display with the HUD, live warband and card hand in a side rail.
+Shoot them portrait; the app is portrait-only on iPad too.
+
 | # | Capture | Overlay caption |
 | --- | --- | --- |
 | 1 | Conservatory hub (“Intro to Music Theory” + six chapters) | **Learn music theory inside the game** |
@@ -155,6 +161,8 @@ Vaalbara is a paid, offline strategy game with an embedded music-theory classroo
 • Audio is procedural (Web Audio in WKWebView); headphones recommended
 • “Teach me” on the Home Screen opens Intro to Music Theory
 • Battle and Duels are playable vs local bot
+• Universal build; portrait-only on both iPhone and iPad. The battlefield is a
+  fixed 9x15 portrait world, so landscape would letterbox it to a sliver.
 
 Thank you!
 ```

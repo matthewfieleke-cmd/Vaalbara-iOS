@@ -4,14 +4,14 @@ import {
   armyCap, fortPads, inDeployBand,
 } from '../types';
 import type { BotStrength, CardId, GameEvent, GameState, PlayerId, SpeciesId } from '../types';
-import { cardDef } from '../data';
+import { cardDef, speciesDef } from '../data';
 import { BotBrain, TickDriver, preferDeployLane } from '../engine';
 import { Renderer } from '../render';
 import { handleGameEvents, music, playUi } from '../audio';
 import { playHaptic } from '../haptics';
 import type { MatchSession } from '../net';
 import { SpriteArt } from './SpriteArt';
-import { getDuelArt, loadSprites } from '../sprites';
+import { getAnim, getDuelArt, getSprite, loadSprites } from '../sprites';
 
 function basaltElapsedSec(state: GameState): number {
   if (state.phase !== 'basalt') return 0;
@@ -31,6 +31,81 @@ interface Banner {
   title: string;
   body: string;
   color: string;
+}
+
+interface WarbandEntry {
+  species: SpeciesId;
+  count: number;
+  hp: number;
+  maxHp: number;
+  /** Deepest advance into enemy ground for this species, 0 (home) to 1. */
+  lead: number;
+}
+
+/** Live army readout for the tablet rail: one row per species you still have
+ *  standing, ordered by whoever is furthest up the field. Grouped rather than
+ *  listed per unit because swarms deploy three at a time. */
+function warbandOf(state: GameState | null, seat: PlayerId): WarbandEntry[] {
+  if (!state) return [];
+  const bySpecies = new Map<SpeciesId, WarbandEntry>();
+  for (const u of state.units) {
+    if (u.owner !== seat || u.hp <= 0) continue;
+    let e = bySpecies.get(u.species);
+    if (!e) {
+      e = { species: u.species, count: 0, hp: 0, maxHp: 0, lead: 0 };
+      bySpecies.set(u.species, e);
+    }
+    e.count += 1;
+    e.hp += u.hp;
+    e.maxHp += u.maxHp;
+    e.lead = Math.max(e.lead, seat === 0 ? 1 - u.y / WORLD_H : u.y / WORLD_H);
+  }
+  return [...bySpecies.values()].sort((a, b) => b.lead - a.lead);
+}
+
+/** Green through amber to red as a unit is worn down. */
+function hpColor(frac: number): string {
+  const hue = 8 + Math.max(0, Math.min(1, frac)) * 122;
+  return `linear-gradient(180deg, hsl(${hue} 90% 66%), hsl(${hue} 85% 44%))`;
+}
+
+/** Static one-frame sprite chip. Deliberately not `SpriteArt`: the roster can
+ *  show half a dozen of these at once and they must not each run a loop. */
+function RosterChip({ species }: { species: SpeciesId }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let disposed = false;
+    const paint = () => {
+      const canvas = ref.current;
+      if (disposed || !canvas) return;
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      if (!ctx || rect.width === 0) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const anim = getAnim(species);
+      const frame = anim?.run?.[0] ?? getSprite(species);
+      if (!frame) return;
+      const scale = Math.min((w * 0.94) / frame.canvas.width, (h * 0.94) / frame.canvas.height);
+      ctx.drawImage(
+        frame.canvas,
+        (w - frame.canvas.width * scale) / 2,
+        (h - frame.canvas.height * scale) / 2,
+        frame.canvas.width * scale,
+        frame.canvas.height * scale,
+      );
+    };
+    paint();
+    void loadSprites().then(() => requestAnimationFrame(paint));
+    return () => {
+      disposed = true;
+    };
+  }, [species]);
+  return <canvas ref={ref} className="roster-chip" />;
 }
 
 export function GameScreen({
@@ -405,6 +480,12 @@ export function GameScreen({
     };
   }, [ui, seat]);
 
+  const warband = useMemo(() => warbandOf(ui, seat), [ui, seat]);
+  const enemyCount = useMemo(
+    () => (ui ? ui.units.filter((u) => u.owner !== seat && u.hp > 0).length : 0),
+    [ui, seat],
+  );
+
   // Pulse the gate pads while a unit card is armed in Phase 1.
   useEffect(() => {
     const r = rendererRef.current;
@@ -507,7 +588,52 @@ export function GameScreen({
         <canvas ref={canvasRef} />
       </div>
 
+      {/* Rail-only: a live readout of what you still have on the field. The
+          phone has no room for it and doesn't need it — the whole board is
+          a thumb's width away. */}
+      <div className="warband">
+        <div className="warband-head">
+          <span className="warband-title">Your Warband</span>
+          <span className="warband-foe">{enemyCount} enemy</span>
+        </div>
+        {warband.length === 0 ? (
+          <p className="warband-empty">Nothing deployed. Tap a gate to send your first warrior.</p>
+        ) : (
+          <ul className="warband-list">
+            {warband.map((w) => {
+              const def = speciesDef(w.species);
+              const frac = w.maxHp > 0 ? Math.max(0, w.hp / w.maxHp) : 0;
+              return (
+                <li key={w.species} className="warband-row">
+                  <div className="warband-art" style={{ ['--chip-hue' as string]: def.hue }}>
+                    <RosterChip species={w.species} />
+                    {w.count > 1 && <span className="warband-count">×{w.count}</span>}
+                  </div>
+                  <div className="warband-info">
+                    <span className="warband-name">{def.name}</span>
+                    <div className="warband-hp">
+                      <div
+                        className="fill"
+                        style={{ width: `${frac * 100}%`, background: hpColor(frac) }}
+                      />
+                    </div>
+                  </div>
+                  {/* How far this species has pushed, so you can read the
+                      front line without looking away from the rail. */}
+                  <div className="warband-lead" aria-hidden="true">
+                    <div className="lead-track">
+                      <div className="lead-dot" style={{ bottom: `${w.lead * 100}%` }} />
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       <div className="hand-dock">
+        <span className="hand-label">Your Hand</span>
         <div className="aqua-bar">
           <div className="aqua-cells">
             {Array.from({ length: 10 }, (_, i) => (
@@ -582,11 +708,13 @@ function LavaRainArt({ hue }: { hue: number }) {
     let flowStrip: HTMLCanvasElement | null = null;
 
     const buildFlow = (art: HTMLImageElement) => {
-      // Hot lava band from the duel painting (lower-mid cascades / pool).
-      const sx = Math.floor(art.naturalWidth * 0.28);
+      // Hot lava band from the duel painting: the cascade shelf and the pool
+      // it drains into. Tracks FLOW_REGIONS in duel-stage.ts — if the basalt
+      // backdrop is repainted, re-walk both.
+      const sx = Math.floor(art.naturalWidth * 0.21);
       const sy = Math.floor(art.naturalHeight * 0.42);
-      const sw = Math.floor(art.naturalWidth * 0.44);
-      const sh = Math.floor(art.naturalHeight * 0.38);
+      const sw = Math.floor(art.naturalWidth * 0.55);
+      const sh = Math.floor(art.naturalHeight * 0.23);
       const cv = document.createElement('canvas');
       cv.width = sw;
       cv.height = sh;
@@ -598,7 +726,7 @@ function LavaRainArt({ hue }: { hue: number }) {
       for (let i = 0; i < sw * sh; i++) {
         const r = d[i * 4];
         const b = d[i * 4 + 2];
-        const hot = Math.max(0, Math.min(1, (r - b - 30) / 90)) * Math.max(0, Math.min(1, (r - 120) / 80));
+        const hot = Math.max(0, Math.min(1, (r - b - 40) / 80)) * Math.max(0, Math.min(1, (r - 150) / 70));
         d[i * 4 + 3] = Math.round(d[i * 4 + 3] * hot);
       }
       c.putImageData(px, 0, 0);

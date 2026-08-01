@@ -349,7 +349,7 @@ def main() -> None:
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
-\t\t\t\tTARGETED_DEVICE_FAMILY = 1;
+\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";
 \t\t\t}};
 \t\t\tname = Debug;
 \t\t}};
@@ -372,7 +372,7 @@ def main() -> None:
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
-\t\t\t\tTARGETED_DEVICE_FAMILY = 1;
+\t\t\t\tTARGETED_DEVICE_FAMILY = "1,2";
 \t\t\t}};
 \t\t\tname = Release;
 \t\t}};

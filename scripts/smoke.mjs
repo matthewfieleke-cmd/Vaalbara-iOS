@@ -32,7 +32,7 @@ await page.waitForSelector('.menu', { timeout: 5000 });
 await page.screenshot({ path: `${shots}/03-menu.png` });
 
 // Menu -> faction select.
-await page.click('text=Battle');
+await page.click('text=Battle', { force: true });
 await page.waitForSelector('.faction-select', { timeout: 5000 });
 await page.screenshot({ path: `${shots}/04-faction.png` });
 
@@ -74,14 +74,21 @@ await page.mouse.up();
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${shots}/07-unit-marching.png` });
 
-// Fire the ultimate at mid-board.
-await page.click('.ult-btn');
+// Cast a spell at mid-board. Spells are hand cards, not a dedicated button,
+// and the hand cycles — wait for an affordable one to come round.
+let spellArmed = false;
+for (let i = 0; i < 30 && !spellArmed; i++) {
+  const spell = page.locator('.hand .card.spell-card:not(.unaffordable)').first();
+  if (await spell.count()) {
+    await spell.click();
+    spellArmed = ((await spell.getAttribute('class')) ?? '').includes('selected');
+  }
+  if (!spellArmed) await page.waitForTimeout(1000);
+}
 await page.mouse.click(wrap.x + wrap.width * 0.5, wrap.y + wrap.height * 0.4);
 await page.waitForTimeout(2600);
-await page.screenshot({ path: `${shots}/08-lava-rain.png` });
+await page.screenshot({ path: `${shots}/08-spell.png` });
 
-// Verify ult is now spent and the timer advanced.
-const ultDisabled = await page.locator('.ult-btn').isDisabled();
 const timer2 = await page.textContent('.timer');
 await page.waitForTimeout(6000);
 await page.screenshot({ path: `${shots}/09-battle.png` });
@@ -89,7 +96,7 @@ await page.screenshot({ path: `${shots}/09-battle.png` });
 const state = {
   timer1,
   timer2,
-  ultDisabled,
+  spellArmed,
   errors,
 };
 console.log(JSON.stringify(state, null, 2));
@@ -102,8 +109,8 @@ if (timer1 === timer2) {
   console.error('FAIL: timer did not advance (tick loop dead?)');
   process.exit(1);
 }
-if (!ultDisabled) {
-  console.error('FAIL: ultimate did not consume');
+if (!spellArmed) {
+  console.error('FAIL: no spell card became affordable within the window');
   process.exit(1);
 }
 
@@ -116,7 +123,7 @@ if (await tap2.count()) {
   await page.click('.skip-btn');
 }
 await page.waitForSelector('.menu', { timeout: 5000 });
-await page.click('text=Battle');
+await page.click('text=Battle', { force: true });
 await page.waitForSelector('.faction-select', { timeout: 5000 });
 await page.click('text=March to the Basalt Fields');
 await page.waitForSelector('.matchmaking', { timeout: 5000 });

@@ -250,7 +250,14 @@ export class Renderer {
     this.canvas.height = Math.round(cssH * this.dpr);
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
-    this.unit = Math.min(cssW / (WORLD_W + 0.5), cssH / (WORLD_H + 1.6));
+    // The generous gutters are thumb clearance: on a phone the hand sits under
+    // the board and fingers overshoot its edges. A tablet plays two-handed with
+    // the hand off to the side, so that slack is pure wasted arena — matches
+    // the 700px tablet breakpoint in the stylesheet.
+    const roomy = window.innerWidth >= 700;
+    const marginX = roomy ? 0.12 : 0.5;
+    const marginY = roomy ? 0.5 : 1.6;
+    this.unit = Math.min(cssW / (WORLD_W + marginX), cssH / (WORLD_H + marginY));
     this.ox = (cssW - WORLD_W * this.unit) / 2;
     // Keep the painted world vertically centered in the available battlefield
     // rectangle. The previous +0.35-unit bias left excess space above the
