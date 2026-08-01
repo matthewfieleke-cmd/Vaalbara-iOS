@@ -1,18 +1,22 @@
-/* Films the scorpion's tail strike in a duel and lays the frames out as a
- * contact sheet, so the sweep can be judged pose by pose instead of by
- * catching it live.
+/* Films a champion's combat poses in a duel, frame by frame, so a sweep that
+ * is over in half a second can be judged pose by pose instead of by catching
+ * it live. Written for the scorpion's tail strike; takes any champion so the
+ * other species' attack and swat sets can be checked the same way.
  *
  * Grabs the duel canvas every animation frame into an in-page buffer (drawn
  * down small first, which is what keeps it cheap enough not to disturb the
  * timing it is measuring), then picks the busiest run of frames afterwards.
  *
- *   node scripts/scorpion-strike-shots.mjs [baseUrl] [outDir]
+ *   node scripts/scorpion-strike-shots.mjs [baseUrl] [champion] [faction]
  */
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
-const BASE = process.argv[2] ?? 'http://localhost:4321';
-const OUT = process.argv[3] ?? 'screenshots/scorpion';
+const BASE = process.argv[2] ?? 'http://localhost:4310';
+/** Champion to lead with, so any species' combat poses can be filmed. */
+const LEAD = (process.argv[3] ?? 'scorpion').toLowerCase();
+const FACTION = process.argv[4] ?? null;
+const OUT = `screenshots/${LEAD}`;
 fs.mkdirSync(OUT, { recursive: true });
 
 const DEVICES = [
@@ -43,14 +47,21 @@ for (const d of DEVICES) {
   await page.waitForSelector('.duel-setup', { timeout: 6000 });
   await page.waitForTimeout(700);
 
+  if (FACTION) {
+    const fb = page.locator(`.duel-fbtn.${FACTION}`);
+    if (await fb.count()) {
+      await fb.click({ force: true });
+      await page.waitForTimeout(500);
+    }
+  }
   // The setup asks for a full running order, and the first name picked leads
-  // the duel — so take the scorpion first, then fill the rest without
+  // the duel — so take the lead champion first, then fill the rest without
   // re-clicking it, which would toggle it back out and leave the order short.
   const cards = page.locator('.duel-roster .duel-card');
   const n = await cards.count();
   let scorpIdx = -1;
   for (let i = 0; i < n; i++) {
-    if (((await cards.nth(i).innerText()) || '').toLowerCase().includes('scorpion')) scorpIdx = i;
+    if (((await cards.nth(i).innerText()) || '').toLowerCase().includes(LEAD)) scorpIdx = i;
   }
   if (scorpIdx >= 0) await cards.nth(scorpIdx).click({ force: true });
   for (let i = 0; i < n; i++) {
