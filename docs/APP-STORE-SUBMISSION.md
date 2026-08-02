@@ -5,7 +5,7 @@
 - App name: **Vaalbara**
 - Bundle ID: `com.vaalbara.thelastoasis`
 - Version: `1.2.0`
-- Build: `1`
+- Build: `3`
 - Devices: iPhone
 - Minimum OS: iOS 17
 - Developer: Vaalbara Games
