@@ -89,7 +89,7 @@ soundtrack,rhythm,harmony,chords,melody,drums,educational,learn,orchestra,offlin
 
 ## What’s New
 
-### 1.1.1 (Build 65)
+### 1.2.0 (Build 1)
 
 ### 1.1.0 (Build 2)
 
