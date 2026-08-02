@@ -5,3 +5,5 @@ dist/
 .env.*
 .DS_Store
 screenshots/
+
+app-store-screenshots/ipad-13/_*.png
