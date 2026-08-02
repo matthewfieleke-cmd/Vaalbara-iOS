@@ -1483,21 +1483,28 @@ button {
   z-index: 2;
 }
 
+/* Fixed box, not stretch. SpriteArt sizes its canvas bitmap from the
+ * element's laid-out rect; on older WebKit (iPad), a stretch + height:100%
+ * canvas that then sets canvas.height feeds that bitmap back into layout and
+ * the card grows forever. Absolute-fill the canvas inside a sized frame. */
 .duel-card-art {
+  position: relative;
   width: 4.6rem;
+  height: 5.8rem;
   flex: 0 0 auto;
+  align-self: center;
   border-radius: 12px;
   overflow: hidden;
-  align-self: stretch;
-  min-height: 5.4rem;
 }
 
 .duel-card.compact .duel-card-art {
   width: 3.6rem;
-  min-height: 4.2rem;
+  height: 4.4rem;
 }
 
 .duel-card-art canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -1656,17 +1663,24 @@ button {
 }
 
 .duel-hp-track {
+  position: relative;
   height: 0.52rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
 
+/* scaleX from the left, not animating `width`. Width transitions on a
+ * rounded pill leave a 1px compositor ghost at the old edge on older iOS —
+ * the "line that sits at the previous HP" after a hit. Transform does not. */
 .duel-hp-fill {
   height: 100%;
+  width: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #37e08b, #7dff9c);
-  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.3, 1);
+  transform-origin: left center;
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
+  will-change: transform;
 }
 
 .duel-hp-fill.low {
@@ -1675,7 +1689,7 @@ button {
 }
 
 @keyframes hp-pulse {
-  50% { filter: brightness(1.45); }
+  50% { opacity: 0.72; }
 }
 
 .duel-hud-row {
@@ -1703,9 +1717,11 @@ button {
 
 .duel-fury-fill {
   height: 100%;
+  width: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #6a4dff, #b18cff);
-  transition: width 0.35s ease;
+  transform-origin: left center;
+  transition: transform 0.28s ease;
 }
 
 .duel-fury.full {
