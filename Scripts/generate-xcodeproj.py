@@ -36,9 +36,12 @@ def collect_resource_files() -> list[Path]:
     privacy_manifest = ROOT / "Vaalbara" / "PrivacyInfo.xcprivacy"
     if privacy_manifest.exists():
         resources.append(privacy_manifest)
+    # Folder reference, same as WebApp: keeps anim/arena paths intact and
+    # avoids flattening every .webp into the app root (which collides with
+    # anything else that happens to share a basename).
     art = ROOT / "Vaalbara" / "Resources" / "Art"
     if art.exists():
-        resources.extend(p for p in sorted(art.rglob("*")) if p.is_file())
+        resources.append(art)
     return resources
 
 
