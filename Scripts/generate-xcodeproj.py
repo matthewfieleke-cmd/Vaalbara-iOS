@@ -158,6 +158,12 @@ def main() -> None:
 
     swift_children = "\n".join(f"\t\t\t\t{uid(f'fileref:{sf}')} /* {sf.name} */," for sf in swift_files)
     resource_children = "\n".join(f"\t\t\t\t{uid(f'fileref:{rf}')} /* {rf.name} */," for rf in resource_files)
+    # Built outside the big f-string: Python < 3.12 rejects backslash escapes
+    # (including \") inside an f-string expression part.
+    package_refs_list = "\n".join(
+        f'\t\t\t\t{uid(f"pkgref:{n}")} /* XCLocalSwiftPackageReference "{n}" */,'
+        for n, _ in packages
+    )
 
     pbx = f'''// !$*UTF8*$!
 {{
@@ -265,7 +271,7 @@ def main() -> None:
 \t\t\t);
 \t\t\tmainGroup = {main_group};
 \t\t\tpackageReferences = (
-{chr(10).join(f"\t\t\t\t{uid(f'pkgref:{n}')} /* XCLocalSwiftPackageReference \"{n}\" */," for n, _ in packages)}
+{package_refs_list}
 \t\t\t);
 \t\t\tproductRefGroup = {products_group} /* Products */;
 \t\t\tprojectDirPath = "";
