@@ -65,7 +65,12 @@ export function SpriteArt({
         return;
       }
       lastPaint = now;
-      const rect = canvas.getBoundingClientRect();
+      // Size from the host frame, not from the canvas itself. Setting
+      // canvas.width/height can change the element's laid-out size on older
+      // WebKit when the canvas is participating in flow layout; reading the
+      // parent (which owns the fixed box) breaks that feedback loop.
+      const host = canvas.parentElement ?? canvas;
+      const rect = host.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.max(1, Math.round(rect.width * dpr));
       const h = Math.max(1, Math.round(rect.height * dpr));

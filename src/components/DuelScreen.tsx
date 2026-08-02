@@ -56,13 +56,13 @@ function HudPanel({
       <div className="duel-hp-track">
         <div
           className={`duel-hp-fill ${low ? 'low' : ''}`}
-          style={{ width: `${pct}%` }}
+          style={{ transform: `scaleX(${pct / 100})` }}
         />
       </div>
       <div className="duel-hud-row">
         <span className="duel-hp-num">{Math.max(0, Math.round(hp))} / {d.maxHp}</span>
         <div className={`duel-fury ${meter >= 100 ? 'full' : ''}`}>
-          <div className="duel-fury-fill" style={{ width: `${meter}%` }} />
+          <div className="duel-fury-fill" style={{ transform: `scaleX(${Math.max(0, Math.min(100, meter)) / 100})` }} />
         </div>
       </div>
       <div className="duel-chips">
