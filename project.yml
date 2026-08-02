@@ -31,13 +31,24 @@ targets:
     type: application
     platform: iOS
     sources:
+      # Resources are listed below once. Including them under sources as well
+      # makes XcodeGen emit every art file twice in Copy Bundle Resources,
+      # which surfaces as ~95 "Multiple commands produce" build errors.
       - path: Vaalbara
+        excludes:
+          - Resources/**
+          - Assets.xcassets
+          - PrivacyInfo.xcprivacy
+          - Info.plist
+          - "*.entitlements"
     resources:
       - path: Vaalbara/Assets.xcassets
       - path: Vaalbara/Resources/Art
         optional: true
+        type: folder
       - path: Vaalbara/Resources/WebApp
         optional: true
+        type: folder
       - path: Vaalbara/PrivacyInfo.xcprivacy
     dependencies:
       - package: VaalbaraCore

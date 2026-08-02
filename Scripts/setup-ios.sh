@@ -16,17 +16,12 @@ else
   echo "Note: public/art not found — art may already be under Vaalbara/Resources/Art."
 fi
 
-if [[ ! -d "$ROOT/Vaalbara.xcodeproj" ]]; then
-  echo "==> Generating Vaalbara.xcodeproj..."
-  python3 "$ROOT/Scripts/generate-xcodeproj.py"
-else
-  echo "==> Vaalbara.xcodeproj already present."
-fi
-
-if command -v xcodegen >/dev/null 2>&1; then
-  echo "==> XcodeGen detected — regenerating project.yml project (optional)..."
-  (cd "$ROOT" && xcodegen generate)
-fi
+# Always regenerate from the Python scaffold. An optional xcodegen pass used
+# to rewrite the project from project.yml with Resources also pulled in via
+# sources — that doubled every art file in Copy Bundle Resources and produced
+# ~95 "Multiple commands produce" errors in Xcode.
+echo "==> Generating Vaalbara.xcodeproj..."
+python3 "$ROOT/Scripts/generate-xcodeproj.py"
 
 echo ""
 echo "Done. Next steps:"
