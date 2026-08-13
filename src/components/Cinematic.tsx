@@ -90,20 +90,9 @@ function drawGroundGlow(
   ctx.restore();
 }
 
-function focusOf(
-  lay: ArenaLayout | null,
-  world: 'basalt' | 'oasis',
-  W: number,
-  H: number,
-): { x: number; y: number } {
-  if (!lay) return { x: W / 2, y: H * 0.52 };
-  const f = STAGE_FOCUS[world];
-  return { x: lay.ox + f.x * lay.iw, y: lay.oy + f.y * lay.ih };
-}
-
-/** Shift a cover-fit layout so its stage focus lands on a shared screen point.
- *  During a world crossfade both paintings then share one camera, so the pond
- *  / rivers don't pop vertically when the crop changes. */
+/** Pin a cover-fit layout so rivers / pond sit on a fixed screen point.
+ *  Both worlds lock to the SAME point, so a world crossfade is opacity-only
+ *  — no vertical camera move at T-Rex, Oasis, or Bear. */
 function lockToStage(
   lay: ArenaLayout | null,
   world: 'basalt' | 'oasis',
@@ -140,21 +129,13 @@ interface ArenaLayout {
   ih: number;
 }
 
-/** Cover-fit the arena painting the same way the backdrop is drawn. */
-function arenaLayout(
-  img: HTMLImageElement,
-  W: number,
-  H: number,
-  ambient: number,
-  dir: number,
-  driftAmt: number,
-): ArenaLayout {
+/** Cover-fit the arena painting. Extra scale is margin so lockToStage can
+ *  pin rivers / pond without exposing edges — the camera itself does not move. */
+function arenaLayout(img: HTMLImageElement, W: number, H: number): ArenaLayout {
   const scale = Math.max((W * 1.12) / img.naturalWidth, (H * 1.18) / img.naturalHeight);
   const iw = img.naturalWidth * scale;
   const ih = img.naturalHeight * scale;
-  const margin = Math.max(0, (ih - H) / 2);
-  const drift = Math.sin(ambient * 0.11 * dir + dir * 2.1) * margin * driftAmt;
-  return { ox: (W - iw) / 2, oy: (H - ih) / 2 + drift, iw, ih };
+  return { ox: (W - iw) / 2, oy: (H - ih) / 2, iw, ih };
 }
 
 function heroBeats(at: number, world: 'basalt' | 'oasis', heroes: Beat['hero'][]): Beat[] {
@@ -248,8 +229,7 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     let raf = 0;
-    let worldBlend = 0; // 0 = basalt, 1 = oasis
-    let driftAmt = 0.28; // eased; story cards drift more than champion beats
+    let worldBlend = 0; // 0 = basalt, 1 = oasis — opacity only, not camera
     let lastNow = performance.now();
 
     const frame = () => {
@@ -287,23 +267,15 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, W, H);
 
-      // The arena paintings drift slowly as the cinematic backdrop —
-      // crossfading between worlds as the story moves. COVER-fit: scale to
-      // whichever axis is binding (plus drift margin) so the painting always
-      // fills the whole screen on any aspect ratio.
-      // Drift amount and the camera lock both ease — snapping either one
-      // produced a vertical jump at T-Rex, the Oasis cut, and Bear.
+      // COVER-fit both paintings, then pin rivers / pond to one unchanging
+      // screen point. World changes are a crossfade. The camera does not pan.
       const showingHero = !!(t >= 0 && active.hero);
-      const driftTarget = showingHero ? 0.12 : 0.28;
-      driftAmt += (driftTarget - driftAmt) * Math.min(1, dt * 3.2);
+      const stageX = W * 0.5;
+      const stageY = H * 0.52;
       const basaltImg = getPhaseArt('basalt');
       const oasisImg = getPhaseArt('oasis');
-      const basaltRaw = basaltImg ? arenaLayout(basaltImg, W, H, ambient, 1, driftAmt) : null;
-      const oasisRaw = oasisImg ? arenaLayout(oasisImg, W, H, ambient, -1, driftAmt) : null;
-      const bFocus = focusOf(basaltRaw, 'basalt', W, H);
-      const oFocus = focusOf(oasisRaw, 'oasis', W, H);
-      const stageX = bFocus.x + (oFocus.x - bFocus.x) * worldBlend;
-      const stageY = bFocus.y + (oFocus.y - bFocus.y) * worldBlend;
+      const basaltRaw = basaltImg ? arenaLayout(basaltImg, W, H) : null;
+      const oasisRaw = oasisImg ? arenaLayout(oasisImg, W, H) : null;
       const basaltLay = lockToStage(basaltRaw, 'basalt', stageX, stageY);
       const oasisLay = lockToStage(oasisRaw, 'oasis', stageX, stageY);
       const drawArena = (img: HTMLImageElement | null, lay: ArenaLayout | null, alpha: number) => {
@@ -358,13 +330,12 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
           beatT / FADE,                      // fade in
           (beatDur - beatT) / FADE,          // fade out
         ));
-        const rise = (1 - Math.min(1, beatT / FADE)) * H * 0.01;
         // Slight optical bias: right-facing walkers read left-heavy otherwise.
         const cx = stageX + W * 0.015;
         // stageY is the desired visual centre of the warrior in the painting.
         // Bees' painted mass sits low in the cluster — lift so the swarm reads
         // level with walkers in the pond.
-        const centerY = stageY + rise - (hero.species === 'bees' ? H * 0.035 : 0);
+        const centerY = stageY - (hero.species === 'bees' ? H * 0.035 : 0);
         ctx.save();
         ctx.globalAlpha = heroAlpha;
         if (anim) {
