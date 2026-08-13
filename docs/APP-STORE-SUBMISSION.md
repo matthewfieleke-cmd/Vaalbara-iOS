@@ -4,17 +4,16 @@
 
 - App name: **Vaalbara**
 - Bundle ID: `com.vaalbara.thelastoasis`
-- Version: `1.2.0`
-- Build: `3`
-- Devices: iPhone
+- Version: `1.3.0`
+- Build: `4`
+- Devices: iPhone and iPad
 - Minimum OS: iOS 17
 - Developer: Vaalbara Games
 - Support: <https://matthewfieleke-cmd.github.io/Vaalbara-iOS/support.html>
 - Privacy policy: <https://matthewfieleke-cmd.github.io/Vaalbara-iOS/privacy.html>
 
-A local Xcode archive does not consume a build number. Build `1` remains valid
-until a build with that version and number has been uploaded to App Store
-Connect. Increment `CURRENT_PROJECT_VERSION` before a second upload.
+A local Xcode archive does not consume a build number. Increment
+`CURRENT_PROJECT_VERSION` before a second upload of this version.
 
 ## Before archiving
 
@@ -25,7 +24,7 @@ Connect. Increment `CURRENT_PROJECT_VERSION` before a second upload.
 5. Select the correct Apple Developer team and keep automatic signing enabled.
 6. Confirm the registered App ID is `com.vaalbara.thelastoasis`.
 7. Do not add Game Center for v1.
-8. Run the Release build on a physical iPhone and complete at least one Battle
+8. Run the Release build on a physical iPhone and iPad and complete at least one Battle
    and one Duel with the device in airplane mode.
 9. Select **Any iOS Device (arm64)**, then Product → Archive.
 10. In Organizer, run **Validate App** before uploading.

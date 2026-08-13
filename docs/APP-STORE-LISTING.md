@@ -89,6 +89,16 @@ soundtrack,rhythm,harmony,chords,melody,drums,educational,learn,orchestra,offlin
 
 ## What’s New
 
+### 1.3.0 (Build 4)
+
+```
+iPad Home fills the screen. Intro and Lava Rain polish.
+
+• Full-width Home Screen on iPad
+• Intro camera stays locked — captions sit in their bars
+• Lava Rain card art is alive; the aqua cost badge stays in front
+```
+
 ### 1.2.0 (Build 3)
 
 ### 1.1.0 (Build 2)
