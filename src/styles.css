@@ -1144,6 +1144,8 @@ button {
 }
 
 .card .art {
+  position: relative;
+  z-index: 0;
   width: 100%;
   aspect-ratio: 1.35;
   border-radius: 8px;
@@ -1200,6 +1202,7 @@ button {
 
 .card .cost {
   position: absolute;
+  z-index: 2;
   top: 3px;
   left: 3px;
   width: 20px;
@@ -2821,6 +2824,16 @@ button {
 
   .cine-text p {
     font-size: clamp(0.95rem, 2.1vmin, 1.08rem);
+  }
+
+  /* Tablet bars are wider; even padding reads high because caps + leftover
+     leading sit optically above the geometric centre. Keep band position;
+     shift inner padding so space above the title matches space below the
+     last line (story, magma names, oasis pond names, closing mid-stage). */
+  .cine-text,
+  .cine-hero-label {
+    padding-top: 1.2rem;
+    padding-bottom: 0.55rem;
   }
 
   /* ------------------------------ battlefield ---------------------------- */
