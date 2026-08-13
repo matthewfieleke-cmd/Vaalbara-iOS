@@ -345,7 +345,7 @@ def main() -> None:
 \t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = Vaalbara/Vaalbara.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
-\t\t\t\tCURRENT_PROJECT_VERSION = 3;
+\t\t\t\tCURRENT_PROJECT_VERSION = 4;
 \t\t\t\tDEVELOPMENT_TEAM = "";
 \t\t\t\tENABLE_PREVIEWS = NO;
 \t\t\t\tGENERATE_INFOPLIST_FILE = NO;
@@ -354,7 +354,7 @@ def main() -> None:
 \t\t\t\t\t"$(inherited)",
 \t\t\t\t\t"@executable_path/Frameworks",
 \t\t\t\t);
-\t\t\t\tMARKETING_VERSION = 1.2.0;
+\t\t\t\tMARKETING_VERSION = 1.3.0;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
@@ -368,7 +368,7 @@ def main() -> None:
 \t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = Vaalbara/Vaalbara.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
-\t\t\t\tCURRENT_PROJECT_VERSION = 3;
+\t\t\t\tCURRENT_PROJECT_VERSION = 4;
 \t\t\t\tDEVELOPMENT_TEAM = "";
 \t\t\t\tENABLE_PREVIEWS = NO;
 \t\t\t\tGENERATE_INFOPLIST_FILE = NO;
@@ -377,7 +377,7 @@ def main() -> None:
 \t\t\t\t\t"$(inherited)",
 \t\t\t\t\t"@executable_path/Frameworks",
 \t\t\t\t);
-\t\t\t\tMARKETING_VERSION = 1.2.0;
+\t\t\t\tMARKETING_VERSION = 1.3.0;
 \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.vaalbara.thelastoasis;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSWIFT_EMIT_LOC_STRINGS = YES;
