@@ -708,13 +708,11 @@ function LavaRainArt({ hue }: { hue: number }) {
     let flowStrip: HTMLCanvasElement | null = null;
 
     const buildFlow = (art: HTMLImageElement) => {
-      // Hot lava band from the duel painting: the cascade shelf and the pool
-      // it drains into. Tracks FLOW_REGIONS in duel-stage.ts — if the basalt
-      // backdrop is repainted, re-walk both.
+      // Cascades + the pool they drain into (union of FLOW_REGIONS.basalt).
       const sx = Math.floor(art.naturalWidth * 0.21);
       const sy = Math.floor(art.naturalHeight * 0.42);
       const sw = Math.floor(art.naturalWidth * 0.55);
-      const sh = Math.floor(art.naturalHeight * 0.23);
+      const sh = Math.floor(art.naturalHeight * 0.28);
       const cv = document.createElement('canvas');
       cv.width = sw;
       cv.height = sh;
@@ -736,7 +734,11 @@ function LavaRainArt({ hue }: { hue: number }) {
     const frame = () => {
       if (disposed) return;
       const t = (performance.now() - start) / 1000;
-      const rect = canvas.getBoundingClientRect();
+      // Size from the host frame, not the canvas — same WebKit loop SpriteArt
+      // avoids. An undersized canvas CSS-stretched on iPad made the lower
+      // cascade look mushy.
+      const host = canvas.parentElement ?? canvas;
+      const rect = host.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const W = Math.max(1, Math.round(rect.width * dpr));
       const H = Math.max(1, Math.round(rect.height * dpr));
@@ -744,6 +746,8 @@ function LavaRainArt({ hue }: { hue: number }) {
         canvas.width = W;
         canvas.height = H;
       }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       const art = getDuelArt('basalt');
       if (art && art.naturalWidth > 0) {
@@ -761,15 +765,17 @@ function LavaRainArt({ hue }: { hue: number }) {
         vig.addColorStop(1, 'rgba(8,4,2,0.45)');
         ctx.fillStyle = vig;
         ctx.fillRect(0, 0, W, H);
-        // Living lava: scroll the chroma-masked cascade strip (cinemagraph).
+        // Living lava at the SAME scale as the backdrop crop — do not stretch
+        // a short chroma strip over half the card (that was the blurry lower half).
         if (flowStrip) {
-          const fw = W * 0.7;
-          const fh = H * 0.55;
-          const fx = (W - fw) / 2;
-          const fy = H * 0.28;
+          const sx = art.naturalWidth * 0.21;
+          const sy = art.naturalHeight * 0.42;
+          const fw = flowStrip.width * scale;
+          const fh = flowStrip.height * scale;
+          const fx = ox + sx * scale;
+          const fy = oy + sy * scale;
           const scroll = ((t * 0.22) % 1);
           ctx.save();
-          ctx.globalAlpha = 0.85;
           ctx.beginPath();
           ctx.rect(fx, fy, fw, fh);
           ctx.clip();

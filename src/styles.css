@@ -202,9 +202,14 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
+  gap: 0.55rem;
   text-align: center;
-  padding: 0 clamp(1.1rem, 5.5vw, 1.75rem);
+  /* Real bar: even padding so title + body sit as a centred group. The old
+     ::before radial sat off-centre on tablets (wider column, larger type). */
+  padding: 0.85rem clamp(1.1rem, 5.5vw, 1.75rem);
+  background: rgba(0, 0, 0, 0.72);
+  box-shadow: 0 0 2.4rem 0.4rem rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
 
@@ -217,26 +222,6 @@ button {
 .cine-text.on-stage {
   top: var(--cine-stage-text, 48%);
   transform: translateY(-50%);
-  justify-content: center;
-}
-
-/* A soft full-width dark band behind the copy keeps it legible over any
-   bright patch of the arena paintings. */
-.cine-text::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -1.2rem;
-  bottom: -1.4rem;
-  background: radial-gradient(ellipse 90% 100% at 50% 40%, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.4) 55%, transparent 100%);
-  z-index: -1;
-}
-
-.cine-text.on-stage::before {
-  top: -1.6rem;
-  bottom: -1.6rem;
-  background: radial-gradient(ellipse 92% 110% at 50% 50%, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.4) 55%, transparent 100%);
 }
 
 .cine-text h2 {
@@ -250,8 +235,7 @@ button {
 }
 
 .cine-text p {
-  margin-top: 0.75rem;
-  max-width: min(28ch, 92vw);
+  max-width: 28ch;
   color: var(--ink);
   font-size: clamp(0.92rem, 3.8vw, 1.05rem);
   line-height: 1.5;
@@ -275,11 +259,13 @@ button {
   left: 0;
   right: 0;
   text-align: center;
-  background: radial-gradient(ellipse 78% 140% at 50% 50%, rgba(0, 0, 0, 0.78), transparent 100%);
-  padding: 0.55rem 1rem 0.7rem;
+  background: rgba(0, 0, 0, 0.72);
+  box-shadow: 0 0 2.4rem 0.4rem rgba(0, 0, 0, 0.35);
+  padding: 0.7rem 1.25rem;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.12rem;
   pointer-events: none;
   max-width: 100%;
@@ -2746,18 +2732,17 @@ button {
     --rail-w: clamp(268px, 27vw, 372px);
   }
 
-  /* Menu-style screens stay in a readable column; the screens that are really
-     a viewport onto the world get the whole display. The opening cinematic is
-     the first thing a tablet owner ever sees — boxing it into a phone-width
-     column with bars either side is not the first impression to make. */
+  /* Screens that are a viewport onto the world — plus Home, whose painted
+     backdrop should fill the display — take the whole width. Other hub
+     screens stay in a readable centred column. */
   .app.app-boot,
   .app.app-cinematic,
+  .app.app-menu,
   .app.app-game,
   .app.app-duel {
     max-width: none;
   }
 
-  .app.app-menu,
   .app.app-faction,
   .app.app-matchmaking,
   .app.app-results,
@@ -2786,6 +2771,21 @@ button {
   .menu-actions,
   .bot-strength {
     margin-top: 0;
+  }
+
+  .menu {
+    width: 100%;
+  }
+
+  /* Intro captions: keep type in the same range as the phone so the bar
+     height is content, not a stretched vw line. */
+  .cine-text h2,
+  .cine-hero-label .name {
+    font-size: clamp(1.2rem, 2.6vmin, 1.55rem);
+  }
+
+  .cine-text p {
+    font-size: clamp(0.95rem, 2.1vmin, 1.08rem);
   }
 
   /* ------------------------------ battlefield ---------------------------- */
