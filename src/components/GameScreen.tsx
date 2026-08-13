@@ -11,7 +11,7 @@ import { handleGameEvents, music, playUi } from '../audio';
 import { playHaptic } from '../haptics';
 import type { MatchSession } from '../net';
 import { SpriteArt } from './SpriteArt';
-import { getAnim, getDuelArt, getSprite, loadSprites } from '../sprites';
+import { getAnim, getSprite, loadSprites } from '../sprites';
 
 function basaltElapsedSec(state: GameState): number {
   if (state.phase !== 'basalt') return 0;
@@ -693,10 +693,10 @@ export function GameScreen({
   );
 }
 
-/** Lava Rain card art — a lava-weighted crop of the Basalt Fields painting.
- *  No getImageData / offscreen chroma strip: iPad WebKit paints those as
- *  black-and-white noise in the lower half of the card. Heat and embers are
- *  drawn with rgba() on top of the still. */
+/** Lava Rain card art — living crop of the Basalt Fields painting.
+ *  The painting is an <img> (object-fit + CSS drift). Canvas only paints
+ *  heat and embers. Never drawImage/getImageData the webp: iOS WKWebView
+ *  fills the lower half of that path with black-and-white noise. */
 function LavaRainArt({ hue }: { hue: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -720,83 +720,43 @@ function LavaRainArt({ hue }: { hue: number }) {
         canvas.width = W;
         canvas.height = H;
       }
-      ctx.imageSmoothingEnabled = true;
-      ctx.fillStyle = '#140806';
+      ctx.clearRect(0, 0, W, H);
+
+      const pulse = 0.55 + Math.sin(t * 1.7) * 0.2;
+      const heat = ctx.createRadialGradient(W * 0.5, H * 0.62, 2, W * 0.5, H * 0.72, W * 0.58);
+      heat.addColorStop(0, `rgba(255, ${Math.round(100 + (hue % 30))}, 36, ${0.22 * pulse})`);
+      heat.addColorStop(0.5, `rgba(180, 40, 8, ${0.10 * pulse})`);
+      heat.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = heat;
       ctx.fillRect(0, 0, W, H);
 
-      const art = getDuelArt('basalt');
-      if (art && art.naturalWidth > 0) {
-        const srcW = art.naturalWidth;
-        const srcH = art.naturalHeight;
-        // Integer source rect, fully inside the painting. Overflowing drawImage
-        // source bounds is what iPad WebKit fills with black-and-white noise.
-        const cardAspect = W / H;
-        let sh = Math.floor(srcH * 0.42);
-        let sw = Math.floor(sh * cardAspect);
-        if (sw > srcW) {
-          sw = srcW;
-          sh = Math.floor(sw / cardAspect);
-        }
-        let sx = Math.floor((srcW - sw) / 2);
-        let sy = Math.floor(srcH * 0.38);
-        if (sx < 0) sx = 0;
-        if (sy < 0) sy = 0;
-        if (sx + sw > srcW) sw = srcW - sx;
-        if (sy + sh > srcH) sh = srcH - sy;
-        ctx.drawImage(art, sx, sy, Math.max(1, sw), Math.max(1, sh), 0, 0, W, H);
-
-        const vig = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.12, W / 2, H * 0.52, H * 0.8);
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, 'rgba(8,4,2,0.42)');
-        ctx.fillStyle = vig;
-        ctx.fillRect(0, 0, W, H);
-
-        const pulse = 0.55 + Math.sin(t * 1.7) * 0.2;
-        const heat = ctx.createRadialGradient(W * 0.5, H * 0.62, 2, W * 0.5, H * 0.72, W * 0.58);
-        heat.addColorStop(0, `rgba(255, 118, 36, ${0.24 * pulse})`);
-        heat.addColorStop(0.5, `rgba(180, 40, 8, ${0.12 * pulse})`);
-        heat.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = heat;
-        ctx.fillRect(0, 0, W, H);
-
-        for (let i = 0; i < 10; i++) {
-          const seed = i * 1.7;
-          const life = (t * 0.35 + seed) % 1;
-          const ex = W * (0.2 + (seed % 5) * 0.12) + Math.sin(t + seed) * W * 0.02;
-          const ey = H * (0.85 - life * 0.7);
-          const a = 0.55 * (1 - life);
-          ctx.fillStyle = `rgba(255, ${140 + (i % 3) * 22}, 36, ${a})`;
-          ctx.beginPath();
-          ctx.arc(ex, ey, Math.max(1, W * 0.008 * (1 - life * 0.4)), 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else {
-        const sky = ctx.createLinearGradient(0, 0, 0, H);
-        sky.addColorStop(0, `hsl(${hue - 10} 30% 8%)`);
-        sky.addColorStop(1, `hsl(${hue} 40% 4%)`);
-        ctx.fillStyle = sky;
-        ctx.fillRect(0, 0, W, H);
-        const pulse = 0.5 + Math.sin(t * 1.6) * 0.2;
-        const lava = ctx.createRadialGradient(W * 0.5, H * 0.7, 2, W * 0.5, H * 0.75, W * 0.55);
-        lava.addColorStop(0, `rgba(255, 110, 30, ${0.55 * pulse})`);
-        lava.addColorStop(0.5, `rgba(180, 40, 10, ${0.3 * pulse})`);
-        lava.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = lava;
-        ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 12; i++) {
+        const seed = i * 1.7;
+        const life = (t * 0.38 + seed) % 1;
+        const ex = W * (0.18 + (seed % 5) * 0.13) + Math.sin(t * 1.1 + seed) * W * 0.03;
+        const ey = H * (0.92 - life * 0.78);
+        const a = 0.6 * (1 - life);
+        ctx.fillStyle = `rgba(255, ${130 + (i % 3) * 28}, 32, ${a})`;
+        ctx.beginPath();
+        ctx.arc(ex, ey, Math.max(1.2, W * 0.012 * (1 - life * 0.35)), 0, Math.PI * 2);
+        ctx.fill();
       }
       raf = requestAnimationFrame(frame);
     };
 
-    void loadSprites().then(() => {
-      if (!disposed) raf = requestAnimationFrame(frame);
-    });
     raf = requestAnimationFrame(frame);
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
     };
   }, [hue]);
-  return <canvas ref={ref} />;
+
+  return (
+    <div className="lava-rain-art">
+      <img src="./art/duel-basalt.webp" alt="" draggable={false} />
+      <canvas ref={ref} />
+    </div>
+  );
 }
 
 /** Procedural art for the shifting phase-spell card. */
