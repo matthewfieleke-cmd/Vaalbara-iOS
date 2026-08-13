@@ -44,9 +44,80 @@ const HERO_SCALE: Partial<Record<SpeciesId, number>> = {
 
 /** Per-species intro width cap — keeps busy frames inside the frame. */
 const INTRO_WIDTH_FRAC: Partial<Record<SpeciesId, number>> = {
+  trex: 0.92,
   lion: 0.70,
   bear: 0.68,
 };
+
+/** HSL (h 0–360, s/l 0–1) → sRGB 0–255. Prefer rgba() over hsla() slash-alpha:
+ *  older iPad WebKit often paints the transparent stop as opaque. */
+function hslChannels(h: number, s: number, l: number): [number, number, number] {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(c * 255);
+  };
+  return [f(0), f(8), f(4)];
+}
+
+/** Soft coloured ground glow under a champion — an ellipse, never a clipped rect. */
+function drawGroundGlow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  groundY: number,
+  H: number,
+  hue: number,
+  alpha: number,
+) {
+  const rx = H * 0.17;
+  const ry = H * 0.055;
+  const [r, g, b] = hslChannels(hue, 0.85, 0.55);
+  const R = 64;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, groundY);
+  ctx.scale(rx / R, ry / R);
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  glow.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.40)`);
+  glow.addColorStop(0.32, `rgba(${r}, ${g}, ${b}, 0.22)`);
+  glow.addColorStop(0.62, `rgba(${r}, ${g}, ${b}, 0.08)`);
+  glow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function focusOf(
+  lay: ArenaLayout | null,
+  world: 'basalt' | 'oasis',
+  W: number,
+  H: number,
+): { x: number; y: number } {
+  if (!lay) return { x: W / 2, y: H * 0.52 };
+  const f = STAGE_FOCUS[world];
+  return { x: lay.ox + f.x * lay.iw, y: lay.oy + f.y * lay.ih };
+}
+
+/** Shift a cover-fit layout so its stage focus lands on a shared screen point.
+ *  During a world crossfade both paintings then share one camera, so the pond
+ *  / rivers don't pop vertically when the crop changes. */
+function lockToStage(
+  lay: ArenaLayout | null,
+  world: 'basalt' | 'oasis',
+  stageX: number,
+  stageY: number,
+): ArenaLayout | null {
+  if (!lay) return null;
+  const f = STAGE_FOCUS[world];
+  return {
+    ...lay,
+    ox: lay.ox + (stageX - (lay.ox + f.x * lay.iw)),
+    oy: lay.oy + (stageY - (lay.oy + f.y * lay.ih)),
+  };
+}
 
 /**
  * Where champions stand in the arena paintings (normalized image coords).
@@ -178,6 +249,7 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
     if (!ctx) return;
     let raf = 0;
     let worldBlend = 0; // 0 = basalt, 1 = oasis
+    let driftAmt = 0.28; // eased; story cards drift more than champion beats
     let lastNow = performance.now();
 
     const frame = () => {
@@ -206,7 +278,7 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
           }
         }
       }
-      worldBlend += ((active.world === 'oasis' ? 1 : 0) - worldBlend) * Math.min(1, dt * 2.4);
+      worldBlend += ((active.world === 'oasis' ? 1 : 0) - worldBlend) * Math.min(1, dt * 1.85);
 
       // Base wash.
       const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -219,13 +291,21 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
       // crossfading between worlds as the story moves. COVER-fit: scale to
       // whichever axis is binding (plus drift margin) so the painting always
       // fills the whole screen on any aspect ratio.
-      // Drift is kept gentle so champions stay locked to rivers / pond.
+      // Drift amount and the camera lock both ease — snapping either one
+      // produced a vertical jump at T-Rex, the Oasis cut, and Bear.
       const showingHero = !!(t >= 0 && active.hero);
-      const driftAmt = showingHero ? 0.12 : 0.28;
+      const driftTarget = showingHero ? 0.12 : 0.28;
+      driftAmt += (driftTarget - driftAmt) * Math.min(1, dt * 3.2);
       const basaltImg = getPhaseArt('basalt');
       const oasisImg = getPhaseArt('oasis');
-      const basaltLay = basaltImg ? arenaLayout(basaltImg, W, H, ambient, 1, driftAmt) : null;
-      const oasisLay = oasisImg ? arenaLayout(oasisImg, W, H, ambient, -1, driftAmt) : null;
+      const basaltRaw = basaltImg ? arenaLayout(basaltImg, W, H, ambient, 1, driftAmt) : null;
+      const oasisRaw = oasisImg ? arenaLayout(oasisImg, W, H, ambient, -1, driftAmt) : null;
+      const bFocus = focusOf(basaltRaw, 'basalt', W, H);
+      const oFocus = focusOf(oasisRaw, 'oasis', W, H);
+      const stageX = bFocus.x + (oFocus.x - bFocus.x) * worldBlend;
+      const stageY = bFocus.y + (oFocus.y - bFocus.y) * worldBlend;
+      const basaltLay = lockToStage(basaltRaw, 'basalt', stageX, stageY);
+      const oasisLay = lockToStage(oasisRaw, 'oasis', stageX, stageY);
       const drawArena = (img: HTMLImageElement | null, lay: ArenaLayout | null, alpha: number) => {
         if (!img || !lay || alpha <= 0.01) return;
         ctx.save();
@@ -236,12 +316,8 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
       drawArena(basaltImg, basaltLay, (1 - worldBlend) * 0.85);
       drawArena(oasisImg, oasisLay, worldBlend * 0.85);
 
-      // Stage focus in the active painting → screen (feet / hover line).
       const focusWorld = active.world;
-      const focus = STAGE_FOCUS[focusWorld];
       const focusLay = focusWorld === 'oasis' ? oasisLay : basaltLay;
-      const stageX = focusLay ? focusLay.ox + focus.x * focusLay.iw : W / 2;
-      const stageY = focusLay ? focusLay.oy + focus.y * focusLay.ih : H * 0.52;
 
       // Depth wash keyed to the stage so heroes pop without burying the
       // rivers / pond that give them their place.
@@ -312,23 +388,10 @@ export function Cinematic({ onStarted, onDone }: { onStarted: () => void; onDone
           const widthFrac = INTRO_WIDTH_FRAC[hero.species] ?? 0.78;
           // Approximate foot/glow line; draw path recentres on visual mid.
           const groundY = flying ? centerY : centerY + targetH * 0.38;
-          const glow = ctx.createRadialGradient(cx, groundY, 4, cx, groundY, W * 0.28);
-          glow.addColorStop(0, `hsla(${hero.hue} 85% 55% / 0.34)`);
-          glow.addColorStop(1, `hsla(${hero.hue} 85% 50% / 0)`);
-          ctx.fillStyle = glow;
-          ctx.fillRect(0, groundY - H * 0.08, W, H * 0.20);
+          drawGroundGlow(ctx, cx, groundY, H, hero.hue, heroAlpha);
           let feetY = groundY;
           const drawHero = (f: typeof frames[number], alpha: number) => {
-            let frameScale: number;
-            if (hero.species === 'trex') {
-              // Fit inside the mid-field band — keep snout/tail, don't cover rivers.
-              frameScale = Math.min(
-                (H * 0.28) / f.canvas.height,
-                (W * 0.92) / f.canvas.width,
-              );
-            } else {
-              frameScale = Math.min(targetH / f.h, (W * widthFrac) / f.w);
-            }
+            const frameScale = Math.min(targetH / f.h, (W * widthFrac) / f.w);
             // Walkers: content mid is above the foot anchor. Flyers (eagle/bees)
             // already store visual-centre anchors — use them directly so they
             // sit level with walkers in mid-field / pond.
