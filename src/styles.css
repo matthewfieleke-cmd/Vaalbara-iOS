@@ -2827,13 +2827,25 @@ button {
   }
 
   /* Tablet bars are wider; even padding reads high because caps + leftover
-     leading sit optically above the geometric centre. Keep band position;
-     shift inner padding so space above the title matches space below the
-     last line (story, magma names, oasis pond names, closing mid-stage). */
+     leading sit optically above the geometric centre. Keep band position.
+     This extra-top padding is for the TOP bars only (story cards, Magma
+     names) — mid-screen bars overshoot and sit low, so they override below. */
   .cine-text,
   .cine-hero-label {
     padding-top: 1.2rem;
     padding-bottom: 0.55rem;
+  }
+
+  /* Oasis pond nameplates and the two closing mid-stage cards: lift copy
+     inside the bar. Magma names and top story cards keep the rule above. */
+  .cinematic.world-oasis.has-hero .cine-hero-label {
+    padding-top: 0.78rem;
+    padding-bottom: 0.92rem;
+  }
+
+  .cine-text.on-stage {
+    padding-top: 0.95rem;
+    padding-bottom: 0.75rem;
   }
 
   /* ------------------------------ battlefield ---------------------------- */
