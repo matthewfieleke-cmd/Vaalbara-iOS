@@ -11,7 +11,7 @@ import { handleGameEvents, music, playUi } from '../audio';
 import { playHaptic } from '../haptics';
 import type { MatchSession } from '../net';
 import { SpriteArt } from './SpriteArt';
-import { getAnim, getDuelArt, getSprite, loadSprites } from '../sprites';
+import { getAnim, getSprite, loadSprites } from '../sprites';
 
 function basaltElapsedSec(state: GameState): number {
   if (state.phase !== 'basalt') return 0;
@@ -693,8 +693,10 @@ export function GameScreen({
   );
 }
 
-/** Lava Rain card art — cropped from the Basalt Fields duel backdrop with
- *  living lava cascade motion (same aesthetic as Duels, not cartoon abstract). */
+/** Lava Rain card art — living crop of the Basalt Fields painting.
+ *  The painting is an <img> (object-fit + CSS drift). Canvas only paints
+ *  heat and embers. Never drawImage/getImageData the webp: iOS WKWebView
+ *  fills the lower half of that path with black-and-white noise. */
 function LavaRainArt({ hue }: { hue: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -705,38 +707,10 @@ function LavaRainArt({ hue }: { hue: number }) {
     let raf = 0;
     let disposed = false;
     const start = performance.now();
-    let flowStrip: HTMLCanvasElement | null = null;
-
-    const buildFlow = (art: HTMLImageElement) => {
-      // Cascades + the pool they drain into (union of FLOW_REGIONS.basalt).
-      const sx = Math.floor(art.naturalWidth * 0.21);
-      const sy = Math.floor(art.naturalHeight * 0.42);
-      const sw = Math.floor(art.naturalWidth * 0.55);
-      const sh = Math.floor(art.naturalHeight * 0.28);
-      const cv = document.createElement('canvas');
-      cv.width = sw;
-      cv.height = sh;
-      const c = cv.getContext('2d', { willReadFrequently: true });
-      if (!c) return null;
-      c.drawImage(art, sx, sy, sw, sh, 0, 0, sw, sh);
-      const px = c.getImageData(0, 0, sw, sh);
-      const d = px.data;
-      for (let i = 0; i < sw * sh; i++) {
-        const r = d[i * 4];
-        const b = d[i * 4 + 2];
-        const hot = Math.max(0, Math.min(1, (r - b - 40) / 80)) * Math.max(0, Math.min(1, (r - 150) / 70));
-        d[i * 4 + 3] = Math.round(d[i * 4 + 3] * hot);
-      }
-      c.putImageData(px, 0, 0);
-      return cv;
-    };
 
     const frame = () => {
       if (disposed) return;
       const t = (performance.now() - start) / 1000;
-      // Size from the host frame, not the canvas — same WebKit loop SpriteArt
-      // avoids. An undersized canvas CSS-stretched on iPad made the lower
-      // cascade look mushy.
       const host = canvas.parentElement ?? canvas;
       const rect = host.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -746,91 +720,43 @@ function LavaRainArt({ hue }: { hue: number }) {
         canvas.width = W;
         canvas.height = H;
       }
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      ctx.clearRect(0, 0, W, H);
 
-      const art = getDuelArt('basalt');
-      if (art && art.naturalWidth > 0) {
-        if (!flowStrip) flowStrip = buildFlow(art);
-        // Cover-fit crop of the painted basalt arena — bottom-weighted like Duels.
-        const scale = Math.max(W / art.naturalWidth, H / art.naturalHeight) * 1.15;
-        const dw = art.naturalWidth * scale;
-        const dh = art.naturalHeight * scale;
-        const ox = (W - dw) / 2;
-        const oy = H - dh * 0.92;
-        ctx.drawImage(art, ox, oy, dw, dh);
-        // Dark vignette so the card chrome still reads.
-        const vig = ctx.createRadialGradient(W / 2, H * 0.55, H * 0.15, W / 2, H * 0.5, H * 0.75);
-        vig.addColorStop(0, 'rgba(0,0,0,0)');
-        vig.addColorStop(1, 'rgba(8,4,2,0.45)');
-        ctx.fillStyle = vig;
-        ctx.fillRect(0, 0, W, H);
-        // Living lava at the SAME scale as the backdrop crop — do not stretch
-        // a short chroma strip over half the card (that was the blurry lower half).
-        if (flowStrip) {
-          const sx = art.naturalWidth * 0.21;
-          const sy = art.naturalHeight * 0.42;
-          const fw = flowStrip.width * scale;
-          const fh = flowStrip.height * scale;
-          const fx = ox + sx * scale;
-          const fy = oy + sy * scale;
-          const scroll = ((t * 0.22) % 1);
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(fx, fy, fw, fh);
-          ctx.clip();
-          const drawFlowCopy = (phase: number, alpha: number) => {
-            ctx.globalAlpha = 0.85 * alpha;
-            const yOff = fy - fh * phase;
-            ctx.drawImage(flowStrip!, fx, yOff, fw, fh);
-            ctx.drawImage(flowStrip!, fx, yOff + fh, fw, fh);
-          };
-          drawFlowCopy(scroll, 1);
-          drawFlowCopy((scroll + 0.5) % 1, 0.55);
-          ctx.restore();
-        }
-        // Sparse embers drifting up — match duel basalt particles.
-        for (let i = 0; i < 10; i++) {
-          const seed = i * 1.7;
-          const life = (t * 0.35 + seed) % 1;
-          const ex = W * (0.2 + (seed % 5) * 0.12) + Math.sin(t + seed) * W * 0.02;
-          const ey = H * (0.85 - life * 0.7);
-          ctx.fillStyle = `hsla(${18 + (i % 3) * 8} 95% ${55 + life * 20}% / ${0.55 * (1 - life)})`;
-          ctx.beginPath();
-          ctx.arc(ex, ey, Math.max(1, W * 0.008 * (1 - life * 0.4)), 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else {
-        // Fallback until duel art loads — charcoal + molten, not cartoon.
-        const sky = ctx.createLinearGradient(0, 0, 0, H);
-        sky.addColorStop(0, `hsl(${hue - 10} 30% 8%)`);
-        sky.addColorStop(1, `hsl(${hue} 40% 4%)`);
-        ctx.fillStyle = sky;
-        ctx.fillRect(0, 0, W, H);
-        const pulse = 0.5 + Math.sin(t * 1.6) * 0.2;
-        const lava = ctx.createRadialGradient(W * 0.5, H * 0.7, 2, W * 0.5, H * 0.75, W * 0.55);
-        lava.addColorStop(0, `hsla(18 95% 48% / ${0.55 * pulse})`);
-        lava.addColorStop(0.5, `hsla(12 80% 28% / ${0.3 * pulse})`);
-        lava.addColorStop(1, 'hsla(0 0% 0% / 0)');
-        ctx.fillStyle = lava;
-        ctx.fillRect(0, 0, W, H);
+      const pulse = 0.55 + Math.sin(t * 1.7) * 0.2;
+      const heat = ctx.createRadialGradient(W * 0.5, H * 0.62, 2, W * 0.5, H * 0.72, W * 0.58);
+      heat.addColorStop(0, `rgba(255, ${Math.round(100 + (hue % 30))}, 36, ${0.22 * pulse})`);
+      heat.addColorStop(0.5, `rgba(180, 40, 8, ${0.10 * pulse})`);
+      heat.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = heat;
+      ctx.fillRect(0, 0, W, H);
+
+      for (let i = 0; i < 12; i++) {
+        const seed = i * 1.7;
+        const life = (t * 0.38 + seed) % 1;
+        const ex = W * (0.18 + (seed % 5) * 0.13) + Math.sin(t * 1.1 + seed) * W * 0.03;
+        const ey = H * (0.92 - life * 0.78);
+        const a = 0.6 * (1 - life);
+        ctx.fillStyle = `rgba(255, ${130 + (i % 3) * 28}, 32, ${a})`;
+        ctx.beginPath();
+        ctx.arc(ex, ey, Math.max(1.2, W * 0.012 * (1 - life * 0.35)), 0, Math.PI * 2);
+        ctx.fill();
       }
       raf = requestAnimationFrame(frame);
     };
 
-    void loadSprites().then(() => {
-      if (!disposed) {
-        flowStrip = null;
-        raf = requestAnimationFrame(frame);
-      }
-    });
     raf = requestAnimationFrame(frame);
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
     };
   }, [hue]);
-  return <canvas ref={ref} />;
+
+  return (
+    <div className="lava-rain-art">
+      <img src="./art/duel-basalt.webp" alt="" draggable={false} />
+      <canvas ref={ref} />
+    </div>
+  );
 }
 
 /** Procedural art for the shifting phase-spell card. */
