@@ -494,16 +494,23 @@ export const CAPTURE_RATE = 1;
  *  staged army slots 7–8 add late siege pressure. */
 export const OBELISK_HP = 1680;
 
-/** Phase-2 marble shrine. Sized so a winning mid-pond push crumples it
- *  near 2:00; the 2:30 clock is the backup. */
-export const MARBLE_HP = 2360;
+/** Phase-2 marble shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
+ *  in 2:30; siege multiplier + this HP make a landed push crumple near
+ *  2:00 while a stalled mid still goes to the clock. */
+export const MARBLE_HP = 720;
 export const MARBLE_R = 0.72;
 export const MARBLE_SHOT_DMG = 28;
+/** Melee/ranged hits on marble — the stone is the chapter, so those
+ *  swings have to matter. Spells keep their own building pct. */
+export const MARBLE_SIEGE_MULT = 2.6;
 /** Beats the sim owns — 4 ticks = 1.2 s. The band plays this grid. */
 export const MARBLE_SHOT_INTERVAL = 4;
-/** Must have crossed mid AND be this close. */
-export const MARBLE_SHOT_RANGE = 5.35;
-export const MARBLE_SHIELD_PCT = 0.08;
+/** Owns the friendly half. Marble sits at 1.85/13.15; mid is 7.5.
+ *  5.35 left a safe brawl on the line (5.65 away). 7.4 reaches the
+ *  corners of the half; inMarbleHalf still forbids shooting across. */
+export const MARBLE_SHOT_RANGE = 7.4;
+/** ~190 HP veil — a few tank swings — even after the HP retune. */
+export const MARBLE_SHIELD_PCT = 0.26;
 export const MARBLE_POS: Record<PlayerId, { x: number; y: number }> = {
   0: { x: 4.5, y: 13.15 },
   1: { x: 4.5, y: 1.85 },

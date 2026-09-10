@@ -19,6 +19,7 @@ import {
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
+  MARBLE_SIEGE_MULT,
   MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
   RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
   WORLD_H, WORLD_W, armyCap, fortPads, inOwnHalf, inWorld,
@@ -282,7 +283,9 @@ function effSpeed(st: GameState, u: RuntimeUnit): number {
   let s = u.stats.speed * MARCH_PACE;
   if (u.buffs.blessed) s *= BLESSING_MULT;
   if (u.buffs.slowTicks > 0 && !u.buffs.berserk) s *= u.buffs.slowMult;
-  if (!u.stats.flying && u.stats.heavy && isWater(worldOf(st), u.x, u.y)) s *= 0.6;
+  // Pond drag: enough to feel the water, not enough to die on the wade.
+  // 0.6 * shrine 28 left a T-Rex dead 5 units short of the stone.
+  if (!u.stats.flying && u.stats.heavy && isWater(worldOf(st), u.x, u.y)) s *= 0.9;
   // Clambering over a razed gate's debris: slow, deliberate scramble.
   if (!u.stats.flying && onRubble(st, u.x, u.y)) s *= 0.55;
   return s;
@@ -669,8 +672,20 @@ function pickTarget(st: GameState, u: RuntimeUnit): UnitState | null {
     if (threat && enemies.some((e) => e.id === threat.enemy.id)) return threat.enemy;
   }
   // Eagle hunts the weakest visible heart. Everyone else hunts the NEAREST
-  // visible enemy anywhere on the field.
+  // visible enemy anywhere on the field — except in the Oasis, where a won
+  // mid-fight must walk to the marble instead of turning around for a
+  // fresh spawn on the far shore.
   if (u.species === 'eagle') {
+    if (st.phase === 'oasis') {
+      const reach = (AGGRO_RANGE * 1.35) ** 2;
+      const near = enemies.filter((e) => {
+        if (dist2(u.x, u.y, e.x, e.y) > reach) return false;
+        const behind = u.owner === 0 ? e.y > u.y + 0.55 : e.y < u.y - 0.55;
+        return !behind;
+      });
+      if (near.length === 0) return null;
+      return near.reduce((a, b) => (b.hp < a.hp ? b : a));
+    }
     return enemies.reduce((a, b) => (b.hp < a.hp ? b : a));
   }
   let best: UnitState | null = null;
@@ -686,6 +701,13 @@ function pickTarget(st: GameState, u: RuntimeUnit): UnitState | null {
     if (eFly && !u.stats.canHitAir && !u.stats.flying) continue;
     const d = dist2(u.x, u.y, e.x, e.y) + (e.id % 7) * 1e-4;
     if (eFly && !u.stats.flying && d > flyerCap2) continue;
+    if (st.phase === 'oasis' && d > aggroBase2) continue;
+    // Do not turn around for a spawn behind you — the marble is ahead.
+    if (st.phase === 'oasis') {
+      const behind = u.owner === 0 ? e.y > u.y + 0.55 : e.y < u.y - 0.55;
+      const melee = (u.stats.radius + speciesDef(e.species).stats!.radius + 0.4) ** 2;
+      if (behind && dist2(u.x, u.y, e.x, e.y) > melee) continue;
+    }
     if (d < bestD) {
       bestD = d;
       best = e;
@@ -950,7 +972,7 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
       for (const m of st.marbles) {
         if (m.owner === pr.owner || m.hp <= 0) continue;
         if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
-          dealMarbleDamage(st, ev, pr.owner, m, pr.dmg);
+          dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
         }
       }
       st.zones.push({
@@ -1409,7 +1431,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
       goal = siegeGoal(ob);
     } else if (
       st.phase === 'oasis' && marble && !threatClose &&
-      (u.owner === 0 ? u.y < WORLD_H * 0.48 : u.y > WORLD_H * 0.52)
+      (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
     ) {
       goal = { x: marble.x, y: marble.owner === 0 ? marble.y - 1.05 : marble.y + 1.05 };
     } else {
@@ -1618,13 +1640,13 @@ function attackMarble(st: GameState, ev: GameEvent[], u: RuntimeUnit, m: MarbleS
       x: u.x, y: u.y, px: u.x, py: u.y,
       vx: ((m.x - u.x) / d) * speed,
       vy: ((m.y - u.y) / d) * speed,
-      dmg: effDmg(u, st),
+      dmg: Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT),
       ticksLeft: Math.max(1, Math.ceil(d / speed)),
     });
     ev.push({ type: 'shoot', unitId: u.id, x: u.x, y: u.y, tx: m.x, ty: m.y });
     return;
   }
-  dealMarbleDamage(st, ev, u.owner, m, effDmg(u, st));
+  dealMarbleDamage(st, ev, u.owner, m, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
 }
 
 function tickShrines(st: GameState, ev: GameEvent[]): void {

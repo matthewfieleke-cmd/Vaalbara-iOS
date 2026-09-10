@@ -54,7 +54,7 @@ export const MAGMA_CARDS: CardDef[] = [
   },
   {
     id: 'honeybadger', name: 'Honey Badger', title: 'The Unkillable Grudge', cost: 3, kind: 'unit', species: 'honeybadger',
-    stats: U({ hp: 180, dmg: 23, speed: 0.21, atkCd: 4, radius: 0.32 }),
+    stats: U({ hp: 225, dmg: 23, speed: 0.21, atkCd: 4, radius: 0.32 }),
     blurb: 'Fast berserker. Below 30% HP it snaps: double attack speed and total immunity to crowd control.',
     hue: 45,
   },
@@ -98,7 +98,7 @@ export const OASIS_CARDS: CardDef[] = [
   },
   {
     id: 'wolves', name: 'Pack of Wolves', title: 'Twin Fang Doctrine', cost: 3, kind: 'unit', species: 'wolves',
-    stats: U({ hp: 152, dmg: 25, speed: 0.27, atkCd: 4, radius: 0.34, count: 2, formation: 'pair' }),
+    stats: U({ hp: 152, dmg: 25, speed: 0.23, atkCd: 4, radius: 0.34, count: 2, formation: 'pair' }),
     blurb: 'Skirmish pair. Wolves fighting side by side feed off each other for +15% damage.',
     hue: 210,
   },
