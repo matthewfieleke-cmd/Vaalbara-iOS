@@ -14,6 +14,7 @@ const JOBS = [
   {
     out: 'public/art/forcefield-bottom.webp',
     which: 'bottom',
+    kind: 'forcefield',
     srcs: [
       'art-src/forcefield-bottom.png',
       'Forcefield bottom.png',
@@ -22,6 +23,7 @@ const JOBS = [
   {
     out: 'public/art/forcefield-top.webp',
     which: 'top',
+    kind: 'forcefield',
     srcs: [
       'art-src/forcefield-top.png',
       'Forcefield top.png',
@@ -30,10 +32,13 @@ const JOBS = [
   {
     out: 'public/art/crumble-bottom.webp',
     which: 'bottom',
+    kind: 'crumble',
     srcs: [
       'art-src/crumble-bottom.png',
       'art-src/Crumble bottom.png',
+      'art-src/Bottom crumble.png',
       'Crumble bottom.png',
+      'Bottom crumble.png',
       'art-src/ruin-bottom.png',
       'Ruin bottom.png',
     ],
@@ -41,24 +46,28 @@ const JOBS = [
   {
     out: 'public/art/crumble-top.webp',
     which: 'top',
+    kind: 'crumble',
     srcs: [
       'art-src/crumble-top.png',
       'art-src/Crumble top.png',
+      'art-src/Top crumble.png',
       'Crumble top.png',
+      'Top crumble.png',
       'art-src/ruin-top.png',
       'Ruin top.png',
     ],
   },
 ];
 
-function inDome(wx, wy, which) {
+function inDome(wx, wy, which, kind) {
+  const rubble = kind === 'crumble' ? 1.18 : 1;
   if (which === 'bottom') {
-    const dx = (wx - 4.5) / 2.15;
-    const dy = (wy - 11.62) / 2.05;
+    const dx = (wx - 4.5) / (2.15 * rubble);
+    const dy = (wy - 11.62) / (2.05 * rubble);
     return dx * dx + dy * dy <= 1;
   }
-  const dx = (wx - 4.5) / 2.15;
-  const dy = (wy - 2.42) / 2.25;
+  const dx = (wx - 4.5) / (2.15 * rubble);
+  const dy = (wy - 2.42) / (2.25 * rubble);
   return dx * dx + dy * dy <= 1;
 }
 
@@ -69,7 +78,7 @@ function resolveSrc(srcs) {
   return null;
 }
 
-async function extract(overlayPath, outPath, W, H, which) {
+async function extract(overlayPath, outPath, W, H, which, kind) {
   const base = await sharp(BASE).resize(W, H, { fit: 'fill' }).removeAlpha().raw().toBuffer();
   const ov = await sharp(overlayPath).resize(W, H, { fit: 'fill' }).removeAlpha().raw().toBuffer();
   const rgba = Buffer.alloc(W * H * 4);
@@ -89,7 +98,7 @@ async function extract(overlayPath, outPath, W, H, which) {
     let a = 0;
     if (elec) a = 235;
     else if (dist > 28) a = Math.min(255, Math.round((dist - 28) * 3.4));
-    if (a > 0 && !inDome(wx, wy, which)) a = 0;
+    if (a > 0 && !inDome(wx, wy, which, kind)) a = 0;
     rgba[i * 4] = r;
     rgba[i * 4 + 1] = g;
     rgba[i * 4 + 2] = b;
@@ -134,5 +143,5 @@ for (const job of JOBS) {
     console.log(`skip ${job.out} (not added yet)`);
     continue;
   }
-  await extract(src, job.out, W, H, job.which);
+  await extract(src, job.out, W, H, job.which, job.kind);
 }
