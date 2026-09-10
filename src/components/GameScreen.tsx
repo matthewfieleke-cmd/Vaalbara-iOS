@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LAVA_RAIN_CARD, PHASE1_TICKS, PHASE2_TICKS, PHASE_SPELL_CARD, TICK_MS, WORLD_H, WORLD_W,
-  armyCap, fortPads, inDeployBand,
+  armyCap, fortPads, inOwnHalf,
 } from '../types';
 import type { BotStrength, CardId, GameEvent, GameState, PlayerId, SpeciesId } from '../types';
 import { cardDef, speciesDef } from '../data';
@@ -187,11 +187,18 @@ export function GameScreen({
         // Soundtrack: five-minute additive ladder (hard cuts); army tints
         // presence beds. Transition still settles buses into Oasis.
         const elapsed = basaltElapsedSec(state);
+        const oasisDanger = state.marbles.length === 0
+          ? 0
+          : Math.max(...state.marbles.map((m) => {
+            const max = m.maxHp + m.shieldMax;
+            return max > 0 ? 1 - (m.hp + m.shield) / max : 0;
+          }));
         music.setBattlePulse({
           phase: state.phase,
           basaltElapsedSec: elapsed,
           unitCount: state.units.filter((u) => u.hp > 0).length,
           speciesCounts: livingSpeciesCounts(state),
+          oasisDanger,
         });
         music.setMode(state.phase);
         setUi({ ...state });
@@ -228,10 +235,20 @@ export function GameScreen({
           playHaptic('medium');
           setBanner({
             id: Date.now(),
-            title: 'Phase II — Hold the Pond',
-            body: 'Keep more fighters in the water — fill the bar to claim it.',
+            title: 'Phase II — The Last Shrines',
+            body: 'Cross the pond. Crumble their marble. First stone to fall wins.',
             color: '#4fd8ff',
           });
+        } else if (e.type === 'marbleDown') {
+          playHaptic(e.owner === seat ? 'warning' : 'success');
+          setBanner({
+            id: Date.now(),
+            title: e.owner === seat ? 'Your Shrine Crumbles!' : 'Their Shrine Crumbles!',
+            body: e.owner === seat ? 'The marble gives — the Oasis slips away.' : 'The last stone falls. The water is yours.',
+            color: e.owner === seat ? '#ff7d6d' : '#ffc94d',
+          });
+        } else if (e.type === 'shieldBreak') {
+          playHaptic('medium');
         } else if (e.type === 'obeliskDown') {
           playHaptic('heavy');
           const razed = state.obelisks
@@ -247,20 +264,14 @@ export function GameScreen({
               : (razed ? 'The Basalt Fields are yours — march on the Oasis!' : 'One gatehouse down — bring down the other!'),
             color: e.owner === seat ? '#ff7d6d' : '#ffc94d',
           });
-        } else if (e.type === 'pondClaimed') {
-          playHaptic(e.player === seat ? 'success' : 'warning');
-          setBanner({
-            id: Date.now(),
-            title: e.player === seat ? 'The Pond Is Yours!' : 'The Pond Is Lost',
-            body: e.player === seat ? 'Total control of the last water on Earth.' : 'The enemy claims the last water…',
-            color: e.player === seat ? '#7dffce' : '#ff7d6d',
-          });
         } else if (e.type === 'blessing') {
           playHaptic(e.player === seat ? 'success' : 'warning');
           setBanner({
             id: Date.now(),
-            title: e.player === seat ? 'Vaalbara Blessing!' : 'Enemy Blessed',
-            body: e.player === seat ? 'Your dominance grants +10% speed & damage.' : 'Their dominance grants them +10% power.',
+            title: e.player === seat ? 'Temple Ward' : 'Enemy Ward',
+            body: e.player === seat
+              ? 'Your shrine wears a short veil of light. Break theirs first.'
+              : 'Their marble wears a veil. Tear it, then the stone.',
             color: '#ffc94d',
           });
         } else if (e.type === 'gameOver' && !endedRef.current) {
@@ -372,9 +383,9 @@ export function GameScreen({
       return;
     }
 
-    // Oasis: free vector deploy — touch must begin inside the local band.
-    if (!inDeployBand(seat, gy)) {
-      showToast('Deploy from your baseline — drag to aim the charge');
+    // Oasis: your half — sand and water. Never past the middle.
+    if (!inOwnHalf(seat, gy)) {
+      showToast('Drop in your half — sand or water. Not past the middle.');
       playUi('error');
       return;
     }
@@ -434,12 +445,7 @@ export function GameScreen({
   const me = ui?.players[seat];
   const phase = ui?.phase ?? 'basalt';
   const secondsLeft = Math.max(0, Math.round((ui?.phaseTicksLeft ?? 0) * (TICK_MS / 1000)));
-  // The siege has no fixed end (it runs until a fortress falls), so Phase 1
-  // shows battle time ELAPSED; the Oasis keeps its hard countdown.
-  const basaltElapsed = ui?.phase === 'basalt'
-    ? Math.max(0, Math.round(((ui.cfg?.phase1Ticks ?? PHASE1_TICKS) - ui.phaseTicksLeft) * (TICK_MS / 1000)))
-    : 0;
-  const clockSecs = ui?.phase === 'basalt' ? basaltElapsed : secondsLeft;
+  const clockSecs = secondsLeft;
   const mm = Math.floor(clockSecs / 60);
   const ss = String(clockSecs % 60).padStart(2, '0');
 
@@ -464,19 +470,18 @@ export function GameScreen({
     };
   }, [ui, seat]);
 
-  // Phase 2 objective: capture percentage + which way it is ticking.
-  const prevMeterRef = useRef(0);
-  const capture = useMemo(() => {
-    if (!ui || (ui.phase !== 'oasis' && ui.phase !== 'ended')) return null;
-    const m = seat === 0 ? ui.captureMeter : -ui.captureMeter;
-    const trend = m - prevMeterRef.current;
-    prevMeterRef.current = m;
+  const marbles = useMemo(() => {
+    if (!ui || ui.marbles.length === 0) return null;
+    const mine = ui.marbles.find((m) => m.owner === seat);
+    const theirs = ui.marbles.find((m) => m.owner !== seat);
+    if (!mine || !theirs) return null;
+    const life = (m: typeof mine) => (m.hp + m.shield) / (m.maxHp + m.shieldMax || 1);
     return {
-      pct: Math.abs(m),
-      mineLeads: m > 0,
-      gaining: trend > 0,
-      losing: trend < 0,
-      fill: 50 + m / 2,
+      mine: life(mine),
+      theirs: life(theirs),
+      mineHp: Math.max(0, Math.round(mine.hp + mine.shield)),
+      theirsHp: Math.max(0, Math.round(theirs.hp + theirs.shield)),
+      mineWard: mine.shield > 0,
     };
   }, [ui, seat]);
 
@@ -524,7 +529,7 @@ export function GameScreen({
           <span className={`phase-pill ${phase === 'oasis' || phase === 'ended' ? 'oasis' : 'basalt'}`}>
             {phase === 'basalt' ? 'I · Basalt Fields' : phase === 'transition' ? '⇧ The March' : 'II · The Oasis'}
           </span>
-          <span className={`timer ${secondsLeft <= 30 && phase === 'oasis' ? 'urgent' : ''}`}>
+          <span className={`timer ${secondsLeft <= 30 && (phase === 'oasis' || phase === 'basalt') ? 'urgent' : ''}`}>
             {mm}:{ss}
           </span>
         </div>
@@ -547,18 +552,22 @@ export function GameScreen({
               <span className="ob-label">ENEMY</span>
             </div>
           </div>
-        ) : capture ? (
-          /* Phase 2 scoreboard: pond claim percentage with live trend. */
-          <div className="capture-wrap">
-            <div className="meter-bar">
-              <div className="mine" style={{ width: `${capture.fill}%` }} />
-              <div className="theirs" style={{ width: `${100 - capture.fill}%` }} />
-              <span className="capture-pct">
-                {capture.pct > 0
-                  ? `${capture.mineLeads ? 'YOU' : 'ENEMY'} ${capture.pct}%`
-                  : 'CONTESTED'}
-                {capture.gaining ? ' ▲' : capture.losing ? ' ▼' : ''}
-              </span>
+        ) : marbles ? (
+          <div className="objective-bars">
+            <div className="obelisk-track mine-side">
+              <span className="ob-label">{marbles.mineWard ? 'WARD' : 'YOURS'}</span>
+              <div className="ob-bar">
+                <div className="fill mine" style={{ width: `${marbles.mine * 100}%` }} />
+              </div>
+              <span className="ob-hp">{marbles.mineHp}</span>
+            </div>
+            <span className="ob-vs">⚔</span>
+            <div className="obelisk-track their-side">
+              <span className="ob-hp">{marbles.theirsHp}</span>
+              <div className="ob-bar">
+                <div className="fill theirs" style={{ width: `${marbles.theirs * 100}%` }} />
+              </div>
+              <span className="ob-label">ENEMY</span>
             </div>
           </div>
         ) : (
@@ -572,9 +581,9 @@ export function GameScreen({
             ? '⛨ Raze both enemy gatehouses — defend your fortress'
             : phase === 'transition'
               ? 'The armies march to the last water…'
-              : '❖ Hold the pond — 100% claims victory'}
+              : '❖ First marble to crumble wins'}
         </div>
-        {me?.blessed && <div className="blessing-tag">✦ Vaalbara Blessing ✦</div>}
+        {me?.blessed && <div className="blessing-tag">✦ Temple Ward ✦</div>}
       </div>
 
       <div

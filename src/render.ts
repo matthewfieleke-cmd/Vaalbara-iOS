@@ -429,6 +429,12 @@ export class Renderer {
         else if (e.spell === 'thicket') this.burst(p.x, p.y, 16, 'petal', 110, 2);
         break;
       }
+      case 'thicketRustle': {
+        const p = this.worldToScreen(e.x, e.y);
+        this.burst(p.x, p.y, 8, 'petal', 110, 1.1);
+        this.burst(p.x, p.y + this.unit * 0.08, 4, 'mist', 100, 0.7);
+        break;
+      }
       case 'lavaStrike': {
         const p = this.worldToScreen(e.x, e.y);
         this.burst(p.x, p.y, 46, 'spark', 12, 3.2);
@@ -441,6 +447,33 @@ export class Renderer {
         const p = this.worldToScreen(e.x, e.y);
         this.burst(p.x, p.y, 20, 'mote', 140, 2.4);
         this.burst(p.x, p.y, 10, 'petal', 320, 1.8);
+        break;
+      }
+      case 'marbleHit': {
+        const p = this.worldToScreen(e.x, e.y);
+        this.burst(p.x, p.y - this.unit * 0.55, 10, 'spark', e.shielded ? 48 : 190, 1.5);
+        this.shake = Math.max(this.shake, 6);
+        break;
+      }
+      case 'marbleDown': {
+        const p = this.worldToScreen(e.x, e.y);
+        this.burst(p.x, p.y, 36, 'spark', 48, 2.8);
+        this.burst(p.x, p.y, 18, 'ash', 30, 2.2);
+        this.burst(p.x, p.y, 8, 'shockwave', 175, 1.4);
+        this.shake = 16;
+        break;
+      }
+      case 'shieldBreak': {
+        const p = this.worldToScreen(e.x, e.y);
+        this.burst(p.x, p.y - this.unit * 0.4, 22, 'mote', 48, 2);
+        break;
+      }
+      case 'shrineShot': {
+        const a = this.worldToScreen(e.x, e.y);
+        const b = this.worldToScreen(e.tx, e.ty);
+        const hue = e.kind === 'ember' ? 18 : 190;
+        this.burst(a.x, a.y - this.unit * 0.9, 8, 'spark', hue, 1.1);
+        this.burst(b.x, b.y, 6, e.kind === 'ember' ? 'spark' : 'bubble', hue, 0.9);
         break;
       }
       case 'obeliskHit': {
@@ -819,8 +852,8 @@ export class Renderer {
 
     // Deploy-band glow — Oasis only; Phase 1 deploys at the gate pads.
     if (st.phase === 'oasis') {
-      const bandTopWorld = this.localSeat === 0 ? WORLD_H - 3 : 0;
-      const p0 = this.worldToScreen(0, this.localSeat === 0 ? bandTopWorld : 3);
+      const bandTopWorld = this.localSeat === 0 ? WORLD_H * 0.5 : 0;
+      const p0 = this.worldToScreen(0, this.localSeat === 0 ? bandTopWorld : WORLD_H * 0.5);
       const p1 = this.worldToScreen(0, this.localSeat === 0 ? WORLD_H : 0);
       const yTop = Math.min(p0.y, p1.y);
       const yBot = Math.max(p0.y, p1.y);
@@ -847,42 +880,129 @@ export class Renderer {
     // The strongholds themselves are drawn from frame(): backdrop, the
     // behind-the-wall unit pass, then each facade in its own depth slot.
 
-    // Pond control ring: glows in the leading side's colour, harder as the
-    // claim approaches 100%.
     if (st.phase === 'oasis' || st.phase === 'ended') {
-      const m = st.captureMeter;
-      if (m !== 0) {
-        const leader: PlayerId = m > 0 ? 0 : 1;
-        const mine = leader === this.localSeat;
-        const hue = mine ? 175 : 6;
-        const k = Math.abs(m) / 100;
-        const p = this.worldToScreen(WORLD_W / 2, WORLD_H / 2);
-        const rx = this.unit * 2.55;
-        const ry = this.unit * 2.0;
-        const pulse = 0.5 + Math.sin(this.time * (2 + k * 4)) * 0.5;
-        ctx.save();
-        ctx.strokeStyle = `hsla(${hue} 95% 62% / ${0.22 + k * 0.5 + pulse * 0.12})`;
-        ctx.lineWidth = 2.5 + k * 2.5;
-        ctx.setLineDash([14, 10]);
-        ctx.lineDashOffset = this.time * (mine ? -26 : 26);
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        const g = ctx.createRadialGradient(p.x, p.y, rx * 0.3, p.x, p.y, rx);
-        g.addColorStop(0, `hsla(${hue} 90% 55% / 0)`);
-        g.addColorStop(1, `hsla(${hue} 90% 55% / ${0.05 + k * 0.14})`);
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        if (k > 0.7 && Math.random() < 0.2) {
-          const a = Math.random() * Math.PI * 2;
-          this.burst(p.x + Math.cos(a) * rx, p.y + Math.sin(a) * ry, 1, 'mote', hue, 0.8);
-        }
-      }
+      this.drawMarbles(ctx, st);
     }
+  }
+
+  /** White marble shrine + guardian. Sits behind the reeds on each shore. */
+  private drawMarbles(ctx: CanvasRenderingContext2D, st: GameState): void {
+    const t = this.time;
+    for (const m of st.marbles) {
+      if (m.hp <= 0 && m.shield <= 0) continue;
+      const p = this.worldToScreen(m.x, m.y);
+      const u = this.unit;
+      const mine = m.owner === this.localSeat;
+      const faction = st.players[m.owner].faction;
+      const ember = faction === 'magma';
+      const life = m.hp / m.maxHp;
+      ctx.save();
+      // Reflection in the shallows.
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = ember ? '#c45a2a' : '#7ec8c0';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + u * 0.42, u * 0.95, u * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Plinth
+      const crumbled = m.hp <= 0;
+      ctx.fillStyle = crumbled ? '#8a8680' : '#f4efe6';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + u * 0.12, u * 0.82, u * 0.34, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = crumbled ? '#6d6964' : '#e8e0d2';
+      ctx.beginPath();
+      ctx.moveTo(p.x - u * 0.55, p.y + u * 0.08);
+      ctx.lineTo(p.x - u * 0.38, p.y - u * 1.15);
+      ctx.lineTo(p.x + u * 0.38, p.y - u * 1.15);
+      ctx.lineTo(p.x + u * 0.55, p.y + u * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      // Crown
+      ctx.fillStyle = '#fffaf2';
+      ctx.beginPath();
+      ctx.moveTo(p.x - u * 0.38, p.y - u * 1.15);
+      ctx.lineTo(p.x, p.y - u * 1.55);
+      ctx.lineTo(p.x + u * 0.38, p.y - u * 1.15);
+      ctx.closePath();
+      ctx.fill();
+      // Veins
+      ctx.strokeStyle = ember ? 'rgba(255,120,50,0.35)' : 'rgba(90,210,200,0.4)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(p.x - u * 0.12, p.y + u * 0.05);
+      ctx.lineTo(p.x - u * 0.06, p.y - u * 1.1);
+      ctx.moveTo(p.x + u * 0.16, p.y + u * 0.02);
+      ctx.lineTo(p.x + u * 0.1, p.y - u * 0.9);
+      ctx.stroke();
+      if (m.shield > 0) {
+        const pulse = 0.42 + Math.sin(t * 5) * 0.12;
+        ctx.strokeStyle = `hsla(48 95% 62% / ${pulse})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y - u * 0.45, u * 0.95, u * 1.15, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `hsla(48 90% 60% / ${0.08 + Math.sin(t * 5) * 0.03})`;
+        ctx.fill();
+      }
+      if (!crumbled) this.drawGuardian(ctx, p.x, p.y - u * 1.62, u, ember, t);
+      // HP pip
+      const bw = u * 1.35;
+      const bh = 5;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(p.x - bw / 2, p.y + u * 0.48, bw, bh);
+      ctx.fillStyle = mine ? '#6de5ff' : '#ff8a7a';
+      ctx.fillRect(p.x - bw / 2, p.y + u * 0.48, bw * Math.max(0, life), bh);
+      ctx.restore();
+    }
+  }
+
+  private drawGuardian(
+    ctx: CanvasRenderingContext2D, x: number, y: number, u: number, ember: boolean, t: number,
+  ): void {
+    ctx.save();
+    const bob = Math.sin(t * 3.1) * u * 0.04;
+    ctx.translate(x, y + bob);
+    if (ember) {
+      // Salamander: long body, ember spine.
+      ctx.fillStyle = '#c45a28';
+      ctx.beginPath();
+      ctx.ellipse(0, u * 0.08, u * 0.34, u * 0.14, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#7a2410';
+      ctx.beginPath();
+      ctx.ellipse(-u * 0.22, u * 0.02, u * 0.12, u * 0.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `hsla(22 95% 58% / ${0.7 + Math.sin(t * 8) * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(u * 0.28, u * 0.04);
+      ctx.quadraticCurveTo(u * 0.5, -u * 0.12, u * 0.62, u * 0.1);
+      ctx.stroke();
+    } else {
+      // Heron: neck and spear beak.
+      ctx.fillStyle = '#e8eef2';
+      ctx.beginPath();
+      ctx.ellipse(0, u * 0.12, u * 0.16, u * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#d7e4ea';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-u * 0.08, -u * 0.28, u * 0.04, -u * 0.42);
+      ctx.stroke();
+      ctx.fillStyle = '#1c2a30';
+      ctx.beginPath();
+      ctx.arc(u * 0.05, -u * 0.44, u * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#c9a227';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(u * 0.08, -u * 0.44);
+      ctx.lineTo(u * 0.28, -u * 0.38);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /* ---------------------------- fortresses ------------------------------- */
@@ -1565,19 +1685,26 @@ export class Renderer {
           this.burst(p.x + (Math.random() - 0.5) * rw, p.y + (Math.random() - 0.5) * rh, 1, 'mist', 58, 0.8);
         }
       } else if (z.kind === 'thicket' && layer === 'under') {
-        ctx.fillStyle = 'hsla(110 50% 25% / 0.5)';
+        // Living stand: layered sod + many blades. The grass is the read;
+        // enemies hiding in it stay off the board.
+        const sod = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, rw);
+        sod.addColorStop(0, `hsla(118 48% 28% / ${0.62 + Math.sin(t * 1.4) * 0.06})`);
+        sod.addColorStop(0.7, 'hsla(112 42% 22% / 0.5)');
+        sod.addColorStop(1, 'hsla(110 35% 18% / 0)');
+        ctx.fillStyle = sod;
         ctx.beginPath();
         ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = 'hsla(100 60% 42% / 0.9)';
-        ctx.lineWidth = 1.6;
-        for (let b = 0; b < 12; b++) {
-          const bx = p.x + Math.cos(b * 2.1) * rw * 0.7;
-          const by = p.y + Math.sin(b * 1.3) * rh * 0.7;
-          const sway = Math.sin(t * 1.8 + b) * 3;
+        for (let b = 0; b < 22; b++) {
+          const bx = p.x + Math.cos(b * 1.7 + t * 0.2) * rw * (0.28 + (b % 5) * 0.12);
+          const by = p.y + Math.sin(b * 1.1 + t * 0.15) * rh * (0.28 + (b % 4) * 0.12);
+          const sway = Math.sin(t * 2.1 + b * 0.7) * 4;
+          const tall = 10 + (b % 3) * 5;
+          ctx.strokeStyle = `hsla(${104 + (b % 5) * 4} ${55 + (b % 3) * 8}% ${34 + (b % 4) * 6}% / 0.92)`;
+          ctx.lineWidth = 1.7;
           ctx.beginPath();
-          ctx.moveTo(bx, by + 8);
-          ctx.quadraticCurveTo(bx + sway * 0.5, by, bx + sway, by - 9);
+          ctx.moveTo(bx, by + 6);
+          ctx.quadraticCurveTo(bx + sway * 0.45, by - tall * 0.35, bx + sway, by - tall);
           ctx.stroke();
         }
       } else if (z.kind === 'acidpool' && layer === 'under') {
@@ -1794,11 +1921,12 @@ export class Renderer {
       const rearGunner = u.species === 'beetles' && (d.atk !== undefined || u.action === 'attack');
       const simFace: 1 | -1 = rearGunner ? (u.facing === 1 ? -1 : 1) : u.facing;
 
-      // Facing hysteresis: only flip after the sim holds a direction ~0.22 s,
-      // so wall-slide wobble can't mirror-strobe the sprite.
+      // Facing hold: wait ~0.48 s of a new heading. Do not snap on a swing —
+      // three painted views plus L/R already flip enough; attack pose is not
+      // a license to strobe.
       if (simFace !== d.face) {
         d.faceHold += dt;
-        if (d.faceHold > 0.22 || d.atk) {
+        if (d.faceHold > 0.48) {
           d.face = simFace;
           d.faceHold = 0;
         }
@@ -1841,7 +1969,7 @@ export class Renderer {
         }
         if (wantDir && wantDir !== d.dir) {
           d.dirHold += dt;
-          if (d.dirHold > 0.18 || d.atk) {
+          if (d.dirHold > 0.42) {
             d.dir = wantDir;
             d.dirHold = 0;
           }
@@ -2039,8 +2167,26 @@ export class Renderer {
         this.burst(p.x, wl - 2, 4, 'mist', 195, 0.9);
       }
 
-      const stealthAlpha = (u.stealthed ? (u.owner === this.localSeat ? 0.45 : 0.08) : 1) * tunnelFade * farFade;
       const mineUnit = u.owner === this.localSeat;
+      // You still read your own warriors in the grass. They see living
+      // blades, not the Bear — skip the sprite entirely.
+      if (u.stealthed && !mineUnit) {
+        ctx.save();
+        ctx.globalAlpha = 0.7 * tunnelFade * farFade;
+        for (let b = 0; b < 5; b++) {
+          const sway = Math.sin(this.time * 2.2 + u.id + b) * 3;
+          ctx.strokeStyle = `hsla(${108 + b * 3} 50% 32% / 0.85)`;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(p.x + (b - 2) * 4, p.y + 6);
+          ctx.quadraticCurveTo(p.x + (b - 2) * 4 + sway * 0.4, p.y - 4, p.x + (b - 2) * 4 + sway, p.y - 12);
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (clipped) ctx.restore();
+        continue;
+      }
+      const stealthAlpha = tunnelFade * farFade;
       ctx.save();
       ctx.globalAlpha = stealthAlpha;
 

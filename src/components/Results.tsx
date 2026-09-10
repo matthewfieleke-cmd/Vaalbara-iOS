@@ -27,10 +27,10 @@ export function Results({
       </h1>
       <p style={{ color: 'var(--ink-dim)', maxWidth: '30ch' }}>
         {outcome === 'win'
-          ? 'Your coalition drinks first. Vaalbara will sing of this.'
+          ? 'Their marble is dust. The last water is yours — Vaalbara will sing of this.'
           : outcome === 'loss'
-            ? 'The water slips away… but the drought is long, and so is memory.'
-            : 'The meter froze at dead centre. Both armies share the pond — for now.'}
+            ? 'Your shrine gave way. The drought is long, and so is memory.'
+            : 'Both stones still stand — or both fell together. The water waits.'}
       </p>
       <div className="stats">
         <span>
