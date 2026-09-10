@@ -27,7 +27,7 @@ export const WORLD_H = 15;
 
 /** Phase durations, in ticks (300 ms/tick). Phase 1 is a 3:00 siege that
  *  ends when a fortress loses BOTH gatehouses, or at the clock. Phase 2 is
- *  sudden death on one marble shrine each: first crumple wins, 2:30 cap. */
+ *  sudden death on one shrine each: first crumble wins, 2:30 cap. */
 export const PHASE1_TICKS = 600; // 3:00
 export const TRANSITION_TICKS = 20; // 6 s marching cutscene
 export const PHASE2_TICKS = 500; // 2:30
@@ -352,7 +352,7 @@ export interface GameState {
   players: [PlayerBoardState, PlayerBoardState];
   /** Kept for replay/UI; Phase 2 no longer wins by pond claim. */
   captureMeter: number;
-  /** Marble damage this chapter, used for the 2:30 tie and same-tick crumple. */
+  /** Shrine damage this chapter, used for the 2:30 tie and same-tick crumble. */
   marbleDamage: [number, number];
   winner: PlayerId | 'tie' | null;
   dominanceP0: number;
@@ -494,26 +494,40 @@ export const CAPTURE_RATE = 1;
  *  staged army slots 7–8 add late siege pressure. */
 export const OBELISK_HP = 1680;
 
-/** Phase-2 marble shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
- *  in 2:30; siege multiplier + this HP make a landed push crumple near
+/** Phase-2 shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
+ *  in 2:30; siege multiplier + this HP make a landed push crumble near
  *  2:00 while a stalled mid still goes to the clock. */
 export const MARBLE_HP = 720;
-export const MARBLE_R = 0.72;
+/** Footprint radius — matches the painted keep / temple, so units stop
+ *  at the door instead of walking through the stone. */
+export const MARBLE_R = 1.48;
 export const MARBLE_SHOT_DMG = 28;
 /** Melee/ranged hits on marble — the stone is the chapter, so those
  *  swings have to matter. Spells keep their own building pct. */
 export const MARBLE_SIEGE_MULT = 2.6;
 /** Beats the sim owns — 4 ticks = 1.2 s. The band plays this grid. */
 export const MARBLE_SHOT_INTERVAL = 4;
-/** Owns the friendly half. Marble sits at 1.85/13.15; mid is 7.5.
- *  5.35 left a safe brawl on the line (5.65 away). 7.4 reaches the
- *  corners of the half; inMarbleHalf still forbids shooting across. */
+/** Owns the friendly half. inMarbleHalf still forbids shooting across. */
 export const MARBLE_SHOT_RANGE = 7.4;
 /** ~190 HP veil — a few tank swings — even after the HP retune. */
 export const MARBLE_SHIELD_PCT = 0.26;
+
+/** Painted shrines on Oasis.png. Seat 0 is the keep (south); seat 1 is
+ *  the temple (north). Footprints are the masonry mass — not a loose AABB —
+ *  so units walk the grass to the pond-facing door instead of through stone.
+ *  Shots leave the keep's front battlement / the temple spire. */
+export const SHRINE: Record<PlayerId, {
+  x: number; y: number;
+  shotX: number; shotY: number;
+  doorX: number; doorY: number;
+  hw: number; hh: number;
+}> = {
+  0: { x: 4.50, y: 11.90, shotX: 4.50, shotY: 11.38, doorX: 4.50, doorY: 10.58, hw: 1.28, hh: 1.16 },
+  1: { x: 4.50, y:  2.78, shotX: 4.50, shotY:  1.86, doorX: 4.50, doorY:  4.16, hw: 1.16, hh: 1.24 },
+};
 export const MARBLE_POS: Record<PlayerId, { x: number; y: number }> = {
-  0: { x: 4.5, y: 13.15 },
-  1: { x: 4.5, y: 1.85 },
+  0: { x: SHRINE[0].x, y: SHRINE[0].y },
+  1: { x: SHRINE[1].x, y: SHRINE[1].y },
 };
 
 export interface MarbleState {

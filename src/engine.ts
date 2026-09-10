@@ -21,6 +21,7 @@ import {
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
   MARBLE_SIEGE_MULT,
   MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
+  SHRINE,
   RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
   WORLD_H, WORLD_W, armyCap, fortPads, inOwnHalf, inWorld,
 } from './types';
@@ -126,19 +127,27 @@ export function phase1Winner(st: GameState): PlayerId | null {
   return null;
 }
 
+/** The new Oasis painting already has reeds and lotuses in the oil.
+ *  Extra authored props would sit on top of that art. */
 function oasisProps(): PropState[] {
-  return [
-    // Reed banks (stealth) flanking the pond, where the cattails grow.
-    { kind: 'reeds', x: 1.15, y: 5.4, r: 0.95, destroyed: false },
-    { kind: 'reeds', x: 7.85, y: 5.6, r: 0.95, destroyed: false },
-    { kind: 'reeds', x: 1.2, y: 9.6, r: 0.95, destroyed: false },
-    { kind: 'reeds', x: 7.8, y: 9.4, r: 0.95, destroyed: false },
-    // Lotus blooms at the shoreline — breakable healing bursts.
-    { kind: 'lotus', x: 2.5, y: 4.9, r: 0.45, destroyed: false },
-    { kind: 'lotus', x: 6.5, y: 5.1, r: 0.45, destroyed: false },
-    { kind: 'lotus', x: 2.4, y: 10.1, r: 0.45, destroyed: false },
-    { kind: 'lotus', x: 6.6, y: 9.9, r: 0.45, destroyed: false },
-  ];
+  return [];
+}
+
+/** Pond-facing door of a shrine — where a siege stands, not inside the stone. */
+function shrineDoor(owner: PlayerId): Vec2 {
+  return { x: SHRINE[owner].doorX, y: SHRINE[owner].doorY };
+}
+
+/** Survivors re-enter on the camera-side grass, flanking their own shrine
+ *  so they never spawn inside the keep / temple mass. */
+function oasisReentry(owner: PlayerId, lane: number): Vec2 {
+  const left = lane % 2 === 0;
+  const slot = Math.floor(lane / 2) % 3;
+  const x = left ? 1.22 + slot * 0.82 : 7.78 - slot * 0.82;
+  const y = owner === 0
+    ? 13.52 - Math.floor(lane / 6) * 0.32
+    : 1.48 + Math.floor(lane / 6) * 0.32;
+  return { x, y };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1433,7 +1442,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
       st.phase === 'oasis' && marble && !threatClose &&
       (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
     ) {
-      goal = { x: marble.x, y: marble.owner === 0 ? marble.y - 1.05 : marble.y + 1.05 };
+      goal = shrineDoor(marble.owner);
     } else {
       goal = { x: target.x, y: target.y };
     }
@@ -1442,7 +1451,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   } else {
     u.waypoint = null;
     goal = st.phase === 'oasis' && marble
-      ? { x: marble.x, y: marble.owner === 0 ? marble.y - 1.05 : marble.y + 1.05 }
+      ? shrineDoor(marble.owner)
       : ob
         ? siegeGoal(ob)
         : st.phase === 'oasis'
@@ -1572,16 +1581,14 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   st.units = [];
   let lane = 0;
   for (const u of survivors) {
-    const col = 1.4 + (lane % 6) * 1.25;
-    const row = u.owner === 0 ? WORLD_H - 1.6 - Math.floor(lane / 6) * 0.9 : 1.6 + Math.floor(lane / 6) * 0.9;
+    const spot = oasisReentry(u.owner, lane);
     lane++;
-    u.x = col;
-    u.y = row;
-    u.px = col;
-    u.py = row;
+    u.x = spot.x;
+    u.y = spot.y;
+    u.px = spot.x;
+    u.py = spot.y;
     const foeOwner = (1 - u.owner) as PlayerId;
-    const foe = MARBLE_POS[foeOwner];
-    u.waypoint = { x: foe.x, y: foeOwner === 0 ? foe.y - 1.15 : foe.y + 1.15 };
+    u.waypoint = shrineDoor(foeOwner);
     u.stall = 0;
     u.stallRef = Infinity;
     u.buffs = freshBuffs();
@@ -1675,7 +1682,7 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
     ev.push({
       type: 'shrineShot',
       owner: m.owner,
-      x: m.x, y: m.y, tx: best.x, ty: best.y,
+      x: SHRINE[m.owner].shotX, y: SHRINE[m.owner].shotY, tx: best.x, ty: best.y,
       kind: faction === 'magma' ? 'ember' : 'water',
     });
     dealDamage(st, ev, null, best, MARBLE_SHOT_DMG, 'ranged');
@@ -2168,7 +2175,7 @@ export class BotBrain {
       ? WORLD_H * 0.5 + 0.35 + this.rng() * (WORLD_H * 0.42)
       : 0.45 + this.rng() * (WORLD_H * 0.42);
     const y = defend && foes.some((u) => dist2(u.x, u.y, defend.x, defend.y) <= 4.2 * 4.2)
-      ? (this.seat === 0 ? WORLD_H - 2.1 : 2.1)
+      ? (this.seat === 0 ? SHRINE[0].doorY + 0.4 : SHRINE[1].doorY - 0.4)
       : myHalfDeep;
     this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
     return {

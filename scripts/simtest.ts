@@ -131,7 +131,7 @@ for (let s = 1; s <= 24; s++) {
       `seed ${String(s * 7919).padStart(6)} [${factions[0]} vs ${factions[1]}]  winner=${r.winner.padEnd(4)} ` +
       `ticks=${r.ticks} spawns=${r.unitsSpawnedP0}/${r.unitsSpawnedP1} dmg=${r.dmgP0}/${r.dmgP1} ` +
       `dom0=${r.dominanceP0} marble=${r.marbleDmg0}/${r.marbleDmg1} ` +
-      `spells=${r.sulfur}/${r.thicket}/${r.lava}${r.crumple ? ' CRUMPLE' : ''} ` +
+      `spells=${r.sulfur}/${r.thicket}/${r.lava}${r.crumple ? ' CRUMBLE' : ''} ` +
       `maxAlive=${r.maxUnitsAlive} ${ok ? 'OK' : '** SUSPECT **'}`,
     );
   } catch (err) {

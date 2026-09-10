@@ -126,6 +126,15 @@ export function getPhaseArt(world: 'basalt' | 'oasis'): HTMLImageElement | null 
   return arenaArt[world];
 }
 
+/** Full-board transparent overlays for the Oasis painting: the Phase-1
+ *  winner's lightning veil, and (when authored) a crumbled keep / temple. */
+export type OasisOverlayKey = 'forcefield-bottom' | 'forcefield-top' | 'crumble-bottom' | 'crumble-top';
+const oasisOverlays = new Map<OasisOverlayKey, HTMLImageElement>();
+
+export function getOasisOverlay(key: OasisOverlayKey): HTMLImageElement | null {
+  return oasisOverlays.get(key) ?? null;
+}
+
 export function getFortArt(key: FortArtKey): HTMLImageElement | null {
   return fortArt.get(key) ?? null;
 }
@@ -911,11 +920,18 @@ export function loadSprites(baseUrl = './art/'): Promise<void> {
       })(),
       (async () => {
         try {
-          arenaArt.oasis = await loadImage(`${baseUrl}arena2.webp`);
+          arenaArt.oasis = await loadImage(`${baseUrl}oasis.webp`);
         } catch {
           arenaArt.oasis = null;
         }
       })(),
+      ...(['forcefield-bottom', 'forcefield-top', 'crumble-bottom', 'crumble-top'] as const).map(async (k) => {
+        try {
+          oasisOverlays.set(k, await loadImage(`${baseUrl}${k}.webp`));
+        } catch {
+          oasisOverlays.delete(k);
+        }
+      }),
       ...(['basalt', 'oasis'] as const).map(async (w) => {
         try {
           duelArt[w] = await loadImage(`${baseUrl}duel-${w}.webp`);

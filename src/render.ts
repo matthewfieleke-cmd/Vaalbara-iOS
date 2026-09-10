@@ -16,10 +16,10 @@
  *    tick, with visual catch-up interpolation for network corrections.
  * ========================================================================== */
 
-import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
+import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
-import { getAnim, getFortArt, getPhaseArt, getSprite } from './sprites';
+import { getAnim, getFortArt, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
 import type { Sprite } from './sprites';
 import { CELL, cellAt } from './navmask';
 import type { WorldId } from './navmask';
@@ -209,6 +209,11 @@ export class Renderer {
   private flashes = new Map<number, number>();
   /** Gatehouse hit flash, keyed owner * 2 + wing. */
   private obeliskFlash = new Map<number, number>();
+  /** Brief keep / temple bolt from the painted roof to the target. */
+  private shrineBeams: Array<{
+    x0: number; y0: number; x1: number; y1: number;
+    hue: number; life: number; maxLife: number;
+  }> = [];
   private ghosts: Ghost[] = [];
   private hitStop = 0;
   private lastHitDir = new Map<number, { x: number; y: number }>();
@@ -450,13 +455,15 @@ export class Renderer {
         break;
       }
       case 'marbleHit': {
-        const p = this.worldToScreen(e.x, e.y);
-        this.burst(p.x, p.y - this.unit * 0.55, 10, 'spark', e.shielded ? 48 : 190, 1.5);
+        const door = SHRINE[e.owner];
+        const p = this.worldToScreen(door.doorX, door.doorY);
+        this.burst(p.x, p.y - this.unit * 0.15, 10, 'spark', e.shielded ? 48 : 190, 1.5);
         this.shake = Math.max(this.shake, 6);
         break;
       }
       case 'marbleDown': {
-        const p = this.worldToScreen(e.x, e.y);
+        const door = SHRINE[e.owner];
+        const p = this.worldToScreen(door.doorX, door.doorY);
         this.burst(p.x, p.y, 36, 'spark', 48, 2.8);
         this.burst(p.x, p.y, 18, 'ash', 30, 2.2);
         this.burst(p.x, p.y, 8, 'shockwave', 175, 1.4);
@@ -472,8 +479,9 @@ export class Renderer {
         const a = this.worldToScreen(e.x, e.y);
         const b = this.worldToScreen(e.tx, e.ty);
         const hue = e.kind === 'ember' ? 18 : 190;
-        this.burst(a.x, a.y - this.unit * 0.9, 8, 'spark', hue, 1.1);
+        this.burst(a.x, a.y, 8, 'spark', hue, 1.1);
         this.burst(b.x, b.y, 6, e.kind === 'ember' ? 'spark' : 'bubble', hue, 0.9);
+        this.shrineBeams.push({ x0: a.x, y0: a.y, x1: b.x, y1: b.y, hue, life: 0, maxLife: 0.28 });
         break;
       }
       case 'obeliskHit': {
@@ -623,6 +631,7 @@ export class Renderer {
       if (st.obelisks.length > 0) this.drawFortressWalls(ctx, st, this.localSeat);
       this.drawUnits(ctx, st, dt, now, 'over');
       this.drawProjectiles(ctx, st, now);
+      this.drawShrineBeams(ctx, dt);
       this.drawZones(ctx, st, 'over');
       if (st.obelisks.length > 0) this.drawFortressBars(ctx, st);
       this.drawAtmosphere(ctx, W, H);
@@ -748,21 +757,29 @@ export class Renderer {
       }
     }
 
-    // Depth grade + duel midline.
+    // Depth grade. Oasis keeps it quiet so the new painting stays true.
     const grade = ctx.createLinearGradient(0, r.top, 0, r.top + r.h);
-    grade.addColorStop(0, 'rgba(255,255,255,0.05)');
-    grade.addColorStop(0.5, 'rgba(0,0,0,0)');
-    grade.addColorStop(1, 'rgba(0,0,0,0.16)');
+    if (world === 'oasis') {
+      grade.addColorStop(0, 'rgba(255,255,255,0.025)');
+      grade.addColorStop(0.5, 'rgba(0,0,0,0)');
+      grade.addColorStop(1, 'rgba(0,0,0,0.07)');
+    } else {
+      grade.addColorStop(0, 'rgba(255,255,255,0.05)');
+      grade.addColorStop(0.5, 'rgba(0,0,0,0)');
+      grade.addColorStop(1, 'rgba(0,0,0,0.16)');
+    }
     ctx.fillStyle = grade;
     ctx.fillRect(r.left, r.top, r.w, r.h);
-    ctx.strokeStyle = world === 'oasis' ? 'rgba(120,255,220,0.11)' : 'rgba(255,150,90,0.11)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 8]);
-    ctx.beginPath();
-    ctx.moveTo(r.left + 6, r.top + r.h / 2);
-    ctx.lineTo(r.left + r.w - 6, r.top + r.h / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (world !== 'oasis') {
+      ctx.strokeStyle = 'rgba(255,150,90,0.11)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.moveTo(r.left + 6, r.top + r.h / 2);
+      ctx.lineTo(r.left + r.w - 6, r.top + r.h / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     // Animated accents keyed to the physical navmask.
     const pts = accentsFor(world);
@@ -794,7 +811,7 @@ export class Renderer {
         const pt = pts.water[i];
         const p = this.worldToScreen(pt.x, pt.y);
         const rp = (t * 0.5 + i * 0.618) % 1;
-        ctx.strokeStyle = `rgba(255,255,255,${0.12 * (1 - rp)})`;
+        ctx.strokeStyle = `rgba(255,255,255,${0.07 * (1 - rp)})`;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.ellipse(p.x, p.y, this.unit * 0.4 * rp + 2, this.unit * 0.3 * rp + 1.4, 0, 0, Math.PI * 2);
@@ -850,6 +867,8 @@ export class Renderer {
       }
     }
 
+    if (world === 'oasis') this.drawOasisOverlays(ctx, st);
+
     // Deploy-band glow — Oasis only; Phase 1 deploys at the gate pads.
     if (st.phase === 'oasis') {
       const bandTopWorld = this.localSeat === 0 ? WORLD_H * 0.5 : 0;
@@ -870,7 +889,7 @@ export class Renderer {
   /* --------------------------- objectives -------------------------------- */
 
   /** Phase objectives, always on the field: the Ancient Obelisks (phase 1)
-   *  and the pond-control ring (phase 2). */
+   *  and the painted keep / temple (phase 2). */
   private drawObjectives(ctx: CanvasRenderingContext2D, st: GameState, dt: number): void {
     for (const [k, v] of [...this.obeliskFlash]) {
       const n = v - dt;
@@ -885,124 +904,51 @@ export class Renderer {
     }
   }
 
-  /** White marble shrine + guardian. Sits behind the reeds on each shore. */
-  private drawMarbles(ctx: CanvasRenderingContext2D, st: GameState): void {
-    const t = this.time;
+  /** Lightning veil (Phase-1 winner only) and optional crumble pass, drawn
+   *  in the same camera as the Oasis painting so seat 1 stays registered. */
+  private drawOasisOverlays(ctx: CanvasRenderingContext2D, st: GameState): void {
     for (const m of st.marbles) {
-      if (m.hp <= 0 && m.shield <= 0) continue;
-      const p = this.worldToScreen(m.x, m.y);
-      const u = this.unit;
-      const mine = m.owner === this.localSeat;
-      const faction = st.players[m.owner].faction;
-      const ember = faction === 'magma';
-      const life = m.hp / m.maxHp;
-      ctx.save();
-      // Reflection in the shallows.
-      ctx.globalAlpha = 0.22;
-      ctx.fillStyle = ember ? '#c45a2a' : '#7ec8c0';
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y + u * 0.42, u * 0.95, u * 0.28, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      // Plinth
-      const crumbled = m.hp <= 0;
-      ctx.fillStyle = crumbled ? '#8a8680' : '#f4efe6';
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y + u * 0.12, u * 0.82, u * 0.34, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = crumbled ? '#6d6964' : '#e8e0d2';
-      ctx.beginPath();
-      ctx.moveTo(p.x - u * 0.55, p.y + u * 0.08);
-      ctx.lineTo(p.x - u * 0.38, p.y - u * 1.15);
-      ctx.lineTo(p.x + u * 0.38, p.y - u * 1.15);
-      ctx.lineTo(p.x + u * 0.55, p.y + u * 0.08);
-      ctx.closePath();
-      ctx.fill();
-      // Crown
-      ctx.fillStyle = '#fffaf2';
-      ctx.beginPath();
-      ctx.moveTo(p.x - u * 0.38, p.y - u * 1.15);
-      ctx.lineTo(p.x, p.y - u * 1.55);
-      ctx.lineTo(p.x + u * 0.38, p.y - u * 1.15);
-      ctx.closePath();
-      ctx.fill();
-      // Veins
-      ctx.strokeStyle = ember ? 'rgba(255,120,50,0.35)' : 'rgba(90,210,200,0.4)';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(p.x - u * 0.12, p.y + u * 0.05);
-      ctx.lineTo(p.x - u * 0.06, p.y - u * 1.1);
-      ctx.moveTo(p.x + u * 0.16, p.y + u * 0.02);
-      ctx.lineTo(p.x + u * 0.1, p.y - u * 0.9);
-      ctx.stroke();
-      if (m.shield > 0) {
-        const pulse = 0.42 + Math.sin(t * 5) * 0.12;
-        ctx.strokeStyle = `hsla(48 95% 62% / ${pulse})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y - u * 0.45, u * 0.95, u * 1.15, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = `hsla(48 90% 60% / ${0.08 + Math.sin(t * 5) * 0.03})`;
-        ctx.fill();
+      const side = m.owner === 0 ? 'bottom' : 'top';
+      if (m.hp <= 0) {
+        const ruin = getOasisOverlay(`crumble-${side}`);
+        if (ruin) this.drawArenaImage(ctx, ruin, 1);
+        continue;
       }
-      if (!crumbled) this.drawGuardian(ctx, p.x, p.y - u * 1.62, u, ember, t);
-      // HP pip
-      const bw = u * 1.35;
-      const bh = 5;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(p.x - bw / 2, p.y + u * 0.48, bw, bh);
-      ctx.fillStyle = mine ? '#6de5ff' : '#ff8a7a';
-      ctx.fillRect(p.x - bw / 2, p.y + u * 0.48, bw * Math.max(0, life), bh);
-      ctx.restore();
+      if (m.shield > 0) {
+        const field = getOasisOverlay(`forcefield-${side}`);
+        if (field) {
+          // Slow breathe, clearly visible — never fades all the way out.
+          const pulse = 0.44 + 0.50 * (0.5 + 0.5 * Math.sin(this.time * 2.02));
+          this.drawArenaImage(ctx, field, pulse);
+        }
+      }
     }
   }
 
-  private drawGuardian(
-    ctx: CanvasRenderingContext2D, x: number, y: number, u: number, ember: boolean, t: number,
-  ): void {
-    ctx.save();
-    const bob = Math.sin(t * 3.1) * u * 0.04;
-    ctx.translate(x, y + bob);
-    if (ember) {
-      // Salamander: long body, ember spine.
-      ctx.fillStyle = '#c45a28';
-      ctx.beginPath();
-      ctx.ellipse(0, u * 0.08, u * 0.34, u * 0.14, -0.25, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#7a2410';
-      ctx.beginPath();
-      ctx.ellipse(-u * 0.22, u * 0.02, u * 0.12, u * 0.1, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = `hsla(22 95% 58% / ${0.7 + Math.sin(t * 8) * 0.2})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(u * 0.28, u * 0.04);
-      ctx.quadraticCurveTo(u * 0.5, -u * 0.12, u * 0.62, u * 0.1);
-      ctx.stroke();
-    } else {
-      // Heron: neck and spear beak.
-      ctx.fillStyle = '#e8eef2';
-      ctx.beginPath();
-      ctx.ellipse(0, u * 0.12, u * 0.16, u * 0.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#d7e4ea';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(-u * 0.08, -u * 0.28, u * 0.04, -u * 0.42);
-      ctx.stroke();
-      ctx.fillStyle = '#1c2a30';
-      ctx.beginPath();
-      ctx.arc(u * 0.05, -u * 0.44, u * 0.06, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#c9a227';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(u * 0.08, -u * 0.44);
-      ctx.lineTo(u * 0.28, -u * 0.38);
-      ctx.stroke();
+  /** Small HP pip on the pond-facing door. The keep and temple are the
+   *  painting; we do not draw a second marble or a guardian on top. */
+  private drawMarbles(ctx: CanvasRenderingContext2D, st: GameState): void {
+    for (const m of st.marbles) {
+      if (m.hp <= 0) continue;
+      const s = SHRINE[m.owner];
+      const p = this.worldToScreen(s.doorX, s.doorY);
+      const u = this.unit;
+      const mine = m.owner === this.localSeat;
+      const life = m.hp / m.maxHp;
+      ctx.save();
+      const bw = u * 1.15;
+      const bh = 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(p.x - bw / 2, p.y + u * 0.18, bw, bh);
+      ctx.fillStyle = mine ? '#6de5ff' : '#ff8a7a';
+      ctx.fillRect(p.x - bw / 2, p.y + u * 0.18, bw * Math.max(0, life), bh);
+      if (m.shield > 0) {
+        const ward = (m.shield / Math.max(1, m.shieldMax)) * bw;
+        ctx.fillStyle = 'rgba(255, 214, 90, 0.85)';
+        ctx.fillRect(p.x - bw / 2, p.y + u * 0.18 - 3, ward, 2);
+      }
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   /* ---------------------------- fortresses ------------------------------- */
@@ -1781,6 +1727,29 @@ export class Renderer {
       ctx.ellipse(p.x, p.y + 3, 6, 2.6, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  private drawShrineBeams(ctx: CanvasRenderingContext2D, dt: number): void {
+    const next = [];
+    for (const b of this.shrineBeams) {
+      b.life += dt;
+      if (b.life >= b.maxLife) continue;
+      const t = 1 - b.life / b.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `hsla(${b.hue} 95% 72% / ${0.55 * t})`;
+      ctx.lineWidth = 2.4 * t + 0.6;
+      ctx.beginPath();
+      ctx.moveTo(b.x0, b.y0);
+      ctx.lineTo(b.x1, b.y1);
+      ctx.stroke();
+      ctx.strokeStyle = `hsla(${b.hue} 100% 88% / ${0.85 * t})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      next.push(b);
+    }
+    this.shrineBeams = next;
   }
 
   /* ------------------------------- units --------------------------------- */

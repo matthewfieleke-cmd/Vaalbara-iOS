@@ -236,15 +236,17 @@ export function GameScreen({
           setBanner({
             id: Date.now(),
             title: 'Phase II — The Last Shrines',
-            body: 'Cross the pond. Crumble their marble. First stone to fall wins.',
+            body: 'Cross the pond. Crumble their shrine. First stone to fall wins.',
             color: '#4fd8ff',
           });
         } else if (e.type === 'marbleDown') {
           playHaptic(e.owner === seat ? 'warning' : 'success');
           setBanner({
             id: Date.now(),
-            title: e.owner === seat ? 'Your Shrine Crumbles!' : 'Their Shrine Crumbles!',
-            body: e.owner === seat ? 'The marble gives — the Oasis slips away.' : 'The last stone falls. The water is yours.',
+            title: e.owner === seat
+              ? `Your ${e.owner === 0 ? 'Keep' : 'Temple'} Crumbles!`
+              : `Their ${e.owner === 0 ? 'Keep' : 'Temple'} Crumbles!`,
+            body: e.owner === seat ? 'The stone gives — the Oasis slips away.' : 'The last stone falls. The water is yours.',
             color: e.owner === seat ? '#ff7d6d' : '#ffc94d',
           });
         } else if (e.type === 'shieldBreak') {
@@ -270,8 +272,8 @@ export function GameScreen({
             id: Date.now(),
             title: e.player === seat ? 'Temple Ward' : 'Enemy Ward',
             body: e.player === seat
-              ? 'Your shrine wears a short veil of light. Break theirs first.'
-              : 'Their marble wears a veil. Tear it, then the stone.',
+              ? `Your ${e.player === 0 ? 'keep' : 'temple'} wears a short veil of light. Break theirs first.`
+              : `Their ${e.player === 0 ? 'keep' : 'temple'} wears a veil. Tear it, then the stone.`,
             color: '#ffc94d',
           });
         } else if (e.type === 'gameOver' && !endedRef.current) {
@@ -482,6 +484,8 @@ export function GameScreen({
       mineHp: Math.max(0, Math.round(mine.hp + mine.shield)),
       theirsHp: Math.max(0, Math.round(theirs.hp + theirs.shield)),
       mineWard: mine.shield > 0,
+      mineName: seat === 0 ? 'KEEP' : 'TEMPLE',
+      theirsName: seat === 0 ? 'TEMPLE' : 'KEEP',
     };
   }, [ui, seat]);
 
@@ -555,7 +559,7 @@ export function GameScreen({
         ) : marbles ? (
           <div className="objective-bars">
             <div className="obelisk-track mine-side">
-              <span className="ob-label">{marbles.mineWard ? 'WARD' : 'YOURS'}</span>
+              <span className="ob-label">{marbles.mineWard ? 'WARD' : marbles.mineName}</span>
               <div className="ob-bar">
                 <div className="fill mine" style={{ width: `${marbles.mine * 100}%` }} />
               </div>
@@ -567,7 +571,7 @@ export function GameScreen({
               <div className="ob-bar">
                 <div className="fill theirs" style={{ width: `${marbles.theirs * 100}%` }} />
               </div>
-              <span className="ob-label">ENEMY</span>
+              <span className="ob-label">{marbles.theirsName}</span>
             </div>
           </div>
         ) : (
@@ -581,7 +585,7 @@ export function GameScreen({
             ? '⛨ Raze both enemy gatehouses — defend your fortress'
             : phase === 'transition'
               ? 'The armies march to the last water…'
-              : '❖ First marble to crumble wins'}
+              : '❖ First shrine to crumble wins'}
         </div>
         {me?.blessed && <div className="blessing-tag">✦ Temple Ward ✦</div>}
       </div>
