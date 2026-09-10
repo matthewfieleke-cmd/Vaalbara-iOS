@@ -94,10 +94,17 @@ async function extract(overlayPath, outPath, W, H, which, kind) {
     const dg = g - base[i * 3 + 1];
     const db = b - base[i * 3 + 2];
     const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-    const elec = b > 165 && g > 110 && b > r + 12 && r < 190;
+    const elec = b > 155 && g > 95 && b > r + 10 && r < 200 && b + g > r * 2;
     let a = 0;
-    if (elec) a = 235;
-    else if (dist > 28) a = Math.min(255, Math.round((dist - 28) * 3.4));
+    if (kind === 'forcefield') {
+      // Lightning only — a stone delta would frost the keep when pulsed.
+      if (elec) a = 245;
+      else if (b > 150 && b > r + 18 && g > 100 && r < 180) a = 170;
+    } else if (elec) {
+      a = 235;
+    } else if (dist > 28) {
+      a = Math.min(255, Math.round((dist - 28) * 3.4));
+    }
     if (a > 0 && !inDome(wx, wy, which, kind)) a = 0;
     rgba[i * 4] = r;
     rgba[i * 4 + 1] = g;

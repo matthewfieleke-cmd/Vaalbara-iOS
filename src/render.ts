@@ -690,9 +690,16 @@ export class Renderer {
 
   /* ------------------------------- arena --------------------------------- */
 
-  private drawArenaImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, alpha = 1, yShift = 0): void {
+  private drawArenaImage(
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    alpha = 1,
+    yShift = 0,
+    composite: GlobalCompositeOperation = 'source-over',
+  ): void {
     const r = this.boardRect();
     ctx.save();
+    ctx.globalCompositeOperation = composite;
     ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.roundRect(r.left - 3, r.top - 3, r.w + 6, r.h + 6, 12);
@@ -918,8 +925,8 @@ export class Renderer {
         const field = getOasisOverlay(`forcefield-${side}`);
         if (field) {
           // Slow breathe, clearly visible — never fades all the way out.
-          const pulse = 0.44 + 0.50 * (0.5 + 0.5 * Math.sin(this.time * 2.02));
-          this.drawArenaImage(ctx, field, pulse);
+          const pulse = 0.38 + 0.52 * (0.5 + 0.5 * Math.sin(this.time * 2.02));
+          this.drawArenaImage(ctx, field, pulse, 0, 'lighter');
         }
       }
     }
