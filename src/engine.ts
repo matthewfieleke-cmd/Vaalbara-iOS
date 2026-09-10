@@ -15,19 +15,22 @@
 
 import {
   ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_PER_TICK_P1, AQUA_PER_TICK_P2, BLESSING_MULT,
-  BRIDGE_HALF_W, CAPTURE_RATE, DEPLOY_DEPTH, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
+  BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
-  PHASE1_TICKS, PHASE2_TICKS, RUBBLE_VISIBLE_DEPTH, RIVER_BANDS,
-  TICK_MS, TRANSITION_TICKS, VENT_DMG, WORLD_H, WORLD_W, armyCap, fortPads, inDeployBand, inWorld,
+  MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
+  MARBLE_SIEGE_MULT,
+  MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
+  RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
+  WORLD_H, WORLD_W, armyCap, fortPads, inOwnHalf, inWorld,
 } from './types';
 import type {
-  BotStrength, CardId, FactionId, GameEvent, GameState, ObeliskState, PhaseConfig, PlayerId,
+  BotStrength, CardId, FactionId, GameEvent, GameState, MarbleState, ObeliskState, PhaseConfig, PlayerId,
   PlayerInput, PropState, TickResult, UnitState, UnitStats, Vec2,
 } from './types';
 import { LAVA_RAIN, MECHANICS, SPELL_BALANCE, buildDeck, cardDef, speciesDef } from './data';
-import { LAVA_RAIN_CARD } from './types';
-import { CELL, cellAt, isDeep, isWater, nextCorridor, walkableAt } from './navmask';
+import { LAVA_RAIN_CARD, PHASE_SPELL_CARD } from './types';
+import { CELL, cellAt, isWater, nextCorridor, walkableAt } from './navmask';
 import type { WorldId } from './navmask';
 
 /* ------------------------------------------------------------------------ */
@@ -86,6 +89,43 @@ function makeObelisks(): ObeliskState[] {
   return wings;
 }
 
+function makeMarbles(winner: PlayerId | null): MarbleState[] {
+  return ([0, 1] as const).map((owner) => {
+    const pos = MARBLE_POS[owner];
+    const ward = winner === owner;
+    const shield = ward ? Math.round(MARBLE_HP * MARBLE_SHIELD_PCT) : 0;
+    return {
+      owner,
+      hp: MARBLE_HP,
+      maxHp: MARBLE_HP,
+      shield,
+      shieldMax: shield,
+      x: pos.x,
+      y: pos.y,
+      r: MARBLE_R,
+      atkTimer: 1,
+    };
+  });
+}
+
+/** Phase 1 chapter score: more crumbled enemy wings, else more tower damage. */
+export function phase1Winner(st: GameState): PlayerId | null {
+  const razed = (attacker: PlayerId) =>
+    st.obelisks.filter((o) => o.owner !== attacker && o.hp <= 0).length;
+  const a = razed(0);
+  const b = razed(1);
+  if (a > b) return 0;
+  if (b > a) return 1;
+  const dmgOn = (owner: PlayerId) =>
+    st.obelisks.filter((o) => o.owner === owner)
+      .reduce((s, o) => s + (o.maxHp - Math.max(0, o.hp)), 0);
+  const d0 = dmgOn(1);
+  const d1 = dmgOn(0);
+  if (d0 > d1) return 0;
+  if (d1 > d0) return 1;
+  return null;
+}
+
 function oasisProps(): PropState[] {
   return [
     // Reed banks (stealth) flanking the pond, where the cattails grow.
@@ -138,9 +178,11 @@ export function createGame(
     zones: [],
     props: basaltProps(),
     obelisks: makeObelisks(),
+    marbles: [],
     pendingLava: [],
     players: [makePlayer(factions[0]), makePlayer(factions[1])],
     captureMeter: 0,
+    marbleDamage: [0, 0],
     winner: null,
     dominanceP0: 0.5,
   };
@@ -241,7 +283,9 @@ function effSpeed(st: GameState, u: RuntimeUnit): number {
   let s = u.stats.speed * MARCH_PACE;
   if (u.buffs.blessed) s *= BLESSING_MULT;
   if (u.buffs.slowTicks > 0 && !u.buffs.berserk) s *= u.buffs.slowMult;
-  if (!u.stats.flying && u.stats.heavy && isWater(worldOf(st), u.x, u.y)) s *= 0.6;
+  // Pond drag: enough to feel the water, not enough to die on the wade.
+  // 0.6 * shrine 28 left a T-Rex dead 5 units short of the stone.
+  if (!u.stats.flying && u.stats.heavy && isWater(worldOf(st), u.x, u.y)) s *= 0.9;
   // Clambering over a razed gate's debris: slow, deliberate scramble.
   if (!u.stats.flying && onRubble(st, u.x, u.y)) s *= 0.55;
   return s;
@@ -339,7 +383,7 @@ function spawnUnit(
     targetId: null,
     homeWing,
   };
-  if (st.players[owner].blessed) u.buffs.blessed = true;
+  // Temple Ward is a marble veil, not a unit buff. Do not snowball combat.
   st.units.push(u);
   ev.push({ type: 'spawn', unitId: u.id, species, owner, x, y });
   return u;
@@ -386,9 +430,10 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
     }
 
     if (def.kind !== 'spell') return;
+    const spell = def.name === 'Thicket' ? 'thicket' : 'sulfur';
+    if (spell === 'thicket' && st.phase === 'oasis' && !inOwnHalf(input.player, a.y)) return;
     p.aqua -= def.cost;
     cycleCard(p, handIdx);
-    const spell = def.name === 'Thicket' ? 'thicket' : 'sulfur';
     const bal = SPELL_BALANCE[spell];
     st.zones.push({
       id: nextZoneId++, kind: spell, owner: input.player,
@@ -452,15 +497,14 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
         };
       }
     } else {
-      // Oasis: free vector spawning along your own baseline; the drag
-      // vector becomes an entry trajectory the unit sprints down.
-      if (!inDeployBand(input.player, a.y)) return;
+      // Oasis: your half — sand and water. Drag is the first charge.
+      if (!inOwnHalf(input.player, a.y)) return;
       // Nudge the spawn point onto open ground if the touch grazed water.
       if (!stats.flying && !groundOpen(st, sx, sy)) {
         let fixed = false;
         for (let r = 0.25; r <= 1.5 && !fixed; r += 0.25) {
           for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]] as const) {
-            if (inWorld(sx + dx, sy + dy) && inDeployBand(input.player, sy + dy) && groundOpen(st, sx + dx, sy + dy)) {
+            if (inWorld(sx + dx, sy + dy) && inOwnHalf(input.player, sy + dy) && groundOpen(st, sx + dx, sy + dy)) {
               sx += dx;
               sy += dy;
               fixed = true;
@@ -628,8 +672,20 @@ function pickTarget(st: GameState, u: RuntimeUnit): UnitState | null {
     if (threat && enemies.some((e) => e.id === threat.enemy.id)) return threat.enemy;
   }
   // Eagle hunts the weakest visible heart. Everyone else hunts the NEAREST
-  // visible enemy anywhere on the field.
+  // visible enemy anywhere on the field — except in the Oasis, where a won
+  // mid-fight must walk to the marble instead of turning around for a
+  // fresh spawn on the far shore.
   if (u.species === 'eagle') {
+    if (st.phase === 'oasis') {
+      const reach = (AGGRO_RANGE * 1.35) ** 2;
+      const near = enemies.filter((e) => {
+        if (dist2(u.x, u.y, e.x, e.y) > reach) return false;
+        const behind = u.owner === 0 ? e.y > u.y + 0.55 : e.y < u.y - 0.55;
+        return !behind;
+      });
+      if (near.length === 0) return null;
+      return near.reduce((a, b) => (b.hp < a.hp ? b : a));
+    }
     return enemies.reduce((a, b) => (b.hp < a.hp ? b : a));
   }
   let best: UnitState | null = null;
@@ -645,6 +701,13 @@ function pickTarget(st: GameState, u: RuntimeUnit): UnitState | null {
     if (eFly && !u.stats.canHitAir && !u.stats.flying) continue;
     const d = dist2(u.x, u.y, e.x, e.y) + (e.id % 7) * 1e-4;
     if (eFly && !u.stats.flying && d > flyerCap2) continue;
+    if (st.phase === 'oasis' && d > aggroBase2) continue;
+    // Do not turn around for a spawn behind you — the marble is ahead.
+    if (st.phase === 'oasis') {
+      const behind = u.owner === 0 ? e.y > u.y + 0.55 : e.y < u.y - 0.55;
+      const melee = (u.stats.radius + speciesDef(e.species).stats!.radius + 0.4) ** 2;
+      if (behind && dist2(u.x, u.y, e.x, e.y) > melee) continue;
+    }
     if (d < bestD) {
       bestD = d;
       best = e;
@@ -657,6 +720,11 @@ function pickTarget(st: GameState, u: RuntimeUnit): UnitState | null {
  *  Units batter the wing of the lane they marched down — the wall around
  *  their own arch — and only swing to the far gatehouse once their lane's
  *  wing has already crumbled. */
+function enemyMarble(st: GameState, u: UnitState): MarbleState | null {
+  if (st.phase !== 'oasis' && st.phase !== 'ended') return null;
+  return st.marbles.find((m) => m.owner !== u.owner && m.hp > 0) ?? null;
+}
+
 function enemyObelisk(st: GameState, u: UnitState): ObeliskState | null {
   if (st.phase !== 'basalt') return null;
   const wings = st.obelisks.filter((o) => o.owner !== u.owner);
@@ -901,6 +969,12 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
           dealObeliskDamage(st, ev, pr.owner, ob, pr.dmg);
         }
       }
+      for (const m of st.marbles) {
+        if (m.owner === pr.owner || m.hp <= 0) continue;
+        if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
+          dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
+        }
+      }
       st.zones.push({
         id: nextZoneId++, kind: 'acidpool', owner: pr.owner,
         x: pr.x, y: pr.y, r: SPELL_BALANCE.acidpool.radius,
@@ -936,7 +1010,11 @@ function applyFieldEffects(st: GameState, ev: GameEvent[], u: RuntimeUnit): void
       }
     }
   }
+  const wasStealthed = u.stealthed;
   u.stealthed = inStealthCover(st, u);
+  if (!wasStealthed && u.stealthed) {
+    ev.push({ type: 'thicketRustle', owner: u.owner, x: u.x, y: u.y });
+  }
 }
 
 function applyZoneEffects(st: GameState, ev: GameEvent[]): void {
@@ -974,6 +1052,21 @@ function applyZoneEffects(st: GameState, ev: GameEvent[]): void {
         }
       }
     }
+    if (z.kind === 'sulfur') {
+      const chip = Math.max(2, Math.round(SPELL_BALANCE.sulfur.chip * 0.55));
+      for (const ob of st.obelisks) {
+        if (ob.owner === z.owner || ob.hp <= 0) continue;
+        if (dist2(ob.x, ob.y, z.x, z.y) <= (z.r + ob.r) ** 2) {
+          dealObeliskDamage(st, ev, z.owner, ob, chip);
+        }
+      }
+      for (const m of st.marbles) {
+        if (m.owner === z.owner || m.hp <= 0) continue;
+        if (dist2(m.x, m.y, z.x, z.y) <= (z.r + m.r) ** 2) {
+          dealMarbleDamage(st, ev, z.owner, m, chip);
+        }
+      }
+    }
     z.ticksLeft--;
   }
   st.zones = st.zones.filter((z) => z.ticksLeft > 0);
@@ -993,6 +1086,26 @@ function resolveLavaRain(st: GameState, ev: GameEvent[]): void {
       else if (d <= LAVA_RAIN.midR) dmg = LAVA_RAIN.midDmg;
       else if (d <= LAVA_RAIN.rimR) dmg = LAVA_RAIN.rimDmg;
       if (dmg > 0) dealDamage(st, ev, null, u, dmg, 'lava');
+    }
+    // Same ring bites a gatehouse — otherwise the 5-cost sky is only a
+    // unit wipe and sits dead in hand when the lane is empty.
+    for (const ob of st.obelisks) {
+      if (ob.hp <= 0 || ob.owner === strike.owner) continue;
+      const d = dist(ob.x, ob.y, strike.x, strike.y);
+      let dmg = 0;
+      if (d <= LAVA_RAIN.centerR + ob.r) dmg = LAVA_RAIN.centerDmg;
+      else if (d <= LAVA_RAIN.midR + ob.r) dmg = LAVA_RAIN.midDmg;
+      else if (d <= LAVA_RAIN.rimR + ob.r) dmg = LAVA_RAIN.rimDmg;
+      if (dmg > 0) dealObeliskDamage(st, ev, strike.owner, ob, Math.round(dmg * LAVA_RAIN.buildingPct));
+    }
+    for (const m of st.marbles) {
+      if (m.hp <= 0 || m.owner === strike.owner) continue;
+      const d = dist(m.x, m.y, strike.x, strike.y);
+      let dmg = 0;
+      if (d <= LAVA_RAIN.centerR + m.r) dmg = LAVA_RAIN.centerDmg;
+      else if (d <= LAVA_RAIN.midR + m.r) dmg = LAVA_RAIN.midDmg;
+      else if (d <= LAVA_RAIN.rimR + m.r) dmg = LAVA_RAIN.rimDmg;
+      if (dmg > 0) dealMarbleDamage(st, ev, strike.owner, m, Math.round(dmg * LAVA_RAIN.buildingPct));
     }
   }
 }
@@ -1232,14 +1345,25 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   const target = pickTarget(st, u);
   u.targetId = target?.id ?? null;
   const ob = enemyObelisk(st, u);
+  const marble = enemyMarble(st, u);
   const siegeReach = ob ? attackReach(u) + u.stats.radius + ob.r : 0;
   const canSiege = !!ob && dist2(u.x, u.y, ob.x, ob.y) <= siegeReach * siegeReach;
+  const marbleReach = marble ? attackReach(u) + u.stats.radius + marble.r : 0;
+  const canSiegeMarble = !!marble && dist2(u.x, u.y, marble.x, marble.y) <= marbleReach * marbleReach;
   const threatClose = target
     && dist2(u.x, u.y, target.x, target.y) <= (Math.max(1.05, u.stats.radius + speciesDef(target.species).stats!.radius + 0.35) ** 2);
 
   if (canSiege && !threatClose) {
     if (u.atkTimer <= 0) attackObelisk(st, ev, u, ob!);
     else u.facing = ob!.x >= u.x ? 1 : -1;
+    u.stall = 0;
+    u.stallRef = Infinity;
+    return;
+  }
+
+  if (canSiegeMarble && !threatClose) {
+    if (u.atkTimer <= 0) attackMarble(st, ev, u, marble!);
+    else u.facing = marble!.x >= u.x ? 1 : -1;
     u.stall = 0;
     u.stallRef = Infinity;
     return;
@@ -1266,17 +1390,22 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     }
   }
 
+  if (marble && !target) {
+    const reach = attackReach(u) + u.stats.radius + marble.r;
+    if (dist2(u.x, u.y, marble.x, marble.y) <= reach * reach) {
+      if (u.atkTimer <= 0) attackMarble(st, ev, u, marble);
+      else u.facing = marble.x >= u.x ? 1 : -1;
+      u.stall = 0;
+      u.stallRef = Infinity;
+      return;
+    }
+  }
+
   // 2. Otherwise move.
   const speed = effSpeed(st, u);
   if (speed <= 0) return;
 
-  // Standing in the deep pond IS the Phase-2 objective — but only rest on
-  // the prize when there is NO enemy to fight. A duel target always takes
-  // priority, otherwise both armies camp their own bank and never clash.
-  if (st.phase === 'oasis' && !target && !u.waypoint && isDeep(worldOf(st), u.x, u.y)) {
-    u.stall = 0;
-    return;
-  }
+  // Oasis: never camp the deep. The marble is the prize; mid is a fight.
 
   let goal: Vec2;
   if (target && u.unstick === 0) {
@@ -1296,13 +1425,15 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
         y: u.owner === 0 ? FORT_WALL_FRONT[0] - 0.5 : FORT_WALL_FRONT[1] + 0.5,
       };
     } else if (
-      // On the enemy half with a gate still standing: commit to the siege
-      // unless a foe is in our face. This is what allows BOTH seats to chip
-      // a tower in the same match instead of one midfield wipe deciding all.
       st.phase === 'basalt' && ob && !threatClose &&
       (u.owner === 0 ? u.y < WORLD_H * 0.48 : u.y > WORLD_H * 0.52)
     ) {
       goal = siegeGoal(ob);
+    } else if (
+      st.phase === 'oasis' && marble && !threatClose &&
+      (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
+    ) {
+      goal = { x: marble.x, y: marble.owner === 0 ? marble.y - 1.05 : marble.y + 1.05 };
     } else {
       goal = { x: target.x, y: target.y };
     }
@@ -1310,11 +1441,13 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     goal = u.waypoint;
   } else {
     u.waypoint = null;
-    goal = st.phase === 'oasis'
-      ? { x: WORLD_W / 2, y: WORLD_H / 2 }
+    goal = st.phase === 'oasis' && marble
+      ? { x: marble.x, y: marble.owner === 0 ? marble.y - 1.05 : marble.y + 1.05 }
       : ob
         ? siegeGoal(ob)
-        : { x: u.x, y: u.owner === 0 ? FORT_WALL_FRONT[1] + 0.6 : FORT_WALL_FRONT[0] - 0.6 };
+        : st.phase === 'oasis'
+          ? { x: WORLD_W / 2, y: WORLD_H / 2 }
+          : { x: u.x, y: u.owner === 0 ? FORT_WALL_FRONT[1] + 0.6 : FORT_WALL_FRONT[0] - 0.6 };
   }
 
   const before = { x: u.x, y: u.y };
@@ -1384,40 +1517,14 @@ function scoreTerritory(st: GameState): void {
   }
 }
 
-/** Phase-1 dominance = share of obelisk damage dealt (the towers ARE the
- *  scoreboard). Destroying one is a hard 1.0/0.0; ties fall back to combat
- *  damage share. */
-function computeDominance(st: GameState): number {
-  const wings0 = st.obelisks.filter((o) => o.owner === 0);
-  const wings1 = st.obelisks.filter((o) => o.owner === 1);
-  if (wings0.length > 0 && wings1.length > 0) {
-    const razed0 = wings0.every((o) => o.hp <= 0);
-    const razed1 = wings1.every((o) => o.hp <= 0);
-    if (razed1 && !razed0) return 1;
-    if (razed0 && !razed1) return 0;
-    // No fortress fully razed (timer safety valve): score by siege damage,
-    // weighting each crumbled gatehouse as its full HP.
-    const dealtByP0 = wings1.reduce((s, o) => s + (o.maxHp - Math.max(0, o.hp)), 0);
-    const dealtByP1 = wings0.reduce((s, o) => s + (o.maxHp - Math.max(0, o.hp)), 0);
-    if (dealtByP0 + dealtByP1 > 0 && !(razed0 && razed1)) {
-      return dealtByP0 / (dealtByP0 + dealtByP1);
-    }
-  }
-  const p0 = st.players[0];
-  const p1 = st.players[1];
-  const dmgTotal = p0.damageDealt + p1.damageDealt;
-  return dmgTotal > 0 ? p0.damageDealt / dmgTotal : 0.5;
-}
-
 function beginTransition(st: GameState, ev: GameEvent[]): void {
   st.phase = 'transition';
   st.phaseTicksLeft = TRANSITION_TICKS;
-  st.dominanceP0 = computeDominance(st);
-  const blessedPlayer: PlayerId | null =
-    st.dominanceP0 > 0.5 ? 0 : st.dominanceP0 < 0.5 ? 1 : null;
-  if (blessedPlayer !== null) {
-    st.players[blessedPlayer].blessed = true;
-    ev.push({ type: 'blessing', player: blessedPlayer });
+  const chapter = phase1Winner(st);
+  st.dominanceP0 = chapter === 0 ? 1 : chapter === 1 ? 0 : 0.5;
+  if (chapter !== null) {
+    st.players[chapter].blessed = true;
+    ev.push({ type: 'blessing', player: chapter });
   }
   // Survivors form marching columns home THROUGH their own gates — the
   // renderer plays the exodus cutscene over these ticks.
@@ -1455,8 +1562,12 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   st.pendingLava = [];
   st.props = oasisProps();
   st.obelisks = [];
+  const ward: PlayerId | null = st.players[0].blessed ? 0 : st.players[1].blessed ? 1 : null;
+  st.marbles = makeMarbles(ward);
+  st.marbleDamage = [0, 0];
 
-  // Survivors re-enter from their own edge, HP intact, marching on the pond.
+  // Survivors re-enter from their own edge, scars intact, marching the pond
+  // toward the enemy marble — not a capture ring.
   const survivors = st.units.filter((u) => u.hp > 0);
   st.units = [];
   let lane = 0;
@@ -1468,11 +1579,12 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
     u.y = row;
     u.px = col;
     u.py = row;
-    u.waypoint = { x: WORLD_W / 2, y: WORLD_H / 2 };
+    const foeOwner = (1 - u.owner) as PlayerId;
+    const foe = MARBLE_POS[foeOwner];
+    u.waypoint = { x: foe.x, y: foeOwner === 0 ? foe.y - 1.15 : foe.y + 1.15 };
     u.stall = 0;
     u.stallRef = Infinity;
     u.buffs = freshBuffs();
-    if (st.players[u.owner].blessed) u.buffs.blessed = true;
     u.action = 'spawn';
     u.targetId = null;
     st.units.push(u);
@@ -1481,32 +1593,121 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   ev.push({ type: 'phaseChange', phase: 'oasis' });
 }
 
-function tickCapture(st: GameState, ev: GameEvent[]): void {
-  let p0 = 0;
-  let p1 = 0;
-  const world = worldOf(st);
-  for (const u of st.units) {
-    if (u.hp <= 0) continue;
-    if (!isWater(world, u.x, u.y)) continue;
-    const weight = isDeep(world, u.x, u.y) ? 2 : 1;
-    if (u.owner === 0) p0 += weight;
-    else p1 += weight;
+function inMarbleHalf(m: MarbleState, y: number): boolean {
+  return m.owner === 0 ? y >= WORLD_H * 0.5 : y < WORLD_H * 0.5;
+}
+
+function dealMarbleDamage(
+  st: GameState, ev: GameEvent[], attacker: PlayerId, m: MarbleState, amount: number,
+): void {
+  amount = Math.round(amount);
+  if (m.hp <= 0 || amount <= 0) return;
+  let left = amount;
+  let shielded = false;
+  if (m.shield > 0) {
+    shielded = true;
+    const eat = Math.min(m.shield, left);
+    m.shield -= eat;
+    left -= eat;
+    if (m.shield <= 0) ev.push({ type: 'shieldBreak', owner: m.owner, x: m.x, y: m.y });
   }
-  if (p0 > p1) st.captureMeter = Math.min(100, st.captureMeter + CAPTURE_RATE);
-  else if (p1 > p0) st.captureMeter = Math.max(-100, st.captureMeter - CAPTURE_RATE);
-  // Decisive claim: fill the meter and the pond is yours — game over early.
-  if (Math.abs(st.captureMeter) >= 100 && st.phase === 'oasis') {
-    const claimant: PlayerId = st.captureMeter > 0 ? 0 : 1;
-    ev.push({ type: 'pondClaimed', player: claimant });
-    endGame(st, ev);
+  if (left > 0) m.hp = Math.max(0, m.hp - left);
+  st.marbleDamage[attacker] += amount;
+  st.players[attacker].damageDealt += amount;
+  ev.push({ type: 'marbleHit', owner: m.owner, amount, x: m.x, y: m.y, shielded });
+  if (m.hp <= 0) {
+    ev.push({ type: 'marbleDown', owner: m.owner, x: m.x, y: m.y });
+    const other = st.marbles.find((o) => o.owner !== m.owner);
+    if (other && other.hp > 0) endGame(st, ev, attacker);
   }
 }
 
-function endGame(st: GameState, ev: GameEvent[]): void {
+function attackMarble(st: GameState, ev: GameEvent[], u: RuntimeUnit, m: MarbleState): void {
+  u.traveled = 0;
+  u.action = 'attack';
+  u.facing = m.x >= u.x ? 1 : -1;
+  let cd = u.stats.atkCd;
+  if (u.buffs.berserk) cd = Math.max(1, Math.round(cd / 2));
+  u.atkTimer = cd;
+  ev.push({ type: 'attack', unitId: u.id, species: u.species, owner: u.owner, x: u.x, y: u.y, tx: m.x, ty: m.y, crit: false, air: false });
+  if (u.stats.ranged) {
+    const d = Math.max(0.001, dist(u.x, u.y, m.x, m.y));
+    const speed = MECHANICS.acidJetSpeed;
+    st.projectiles.push({
+      id: nextProjId++,
+      owner: u.owner,
+      kind: 'acid',
+      x: u.x, y: u.y, px: u.x, py: u.y,
+      vx: ((m.x - u.x) / d) * speed,
+      vy: ((m.y - u.y) / d) * speed,
+      dmg: Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT),
+      ticksLeft: Math.max(1, Math.ceil(d / speed)),
+    });
+    ev.push({ type: 'shoot', unitId: u.id, x: u.x, y: u.y, tx: m.x, ty: m.y });
+    return;
+  }
+  dealMarbleDamage(st, ev, u.owner, m, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
+}
+
+function tickShrines(st: GameState, ev: GameEvent[]): void {
+  if (st.phase !== 'oasis') return;
+  for (const m of st.marbles) {
+    if (m.hp <= 0) continue;
+    if (m.atkTimer > 0) m.atkTimer--;
+    if (m.atkTimer > 0) continue;
+    let best: UnitState | null = null;
+    let bestD = Infinity;
+    for (const u of st.units) {
+      if (u.hp <= 0 || u.owner === m.owner) continue;
+      if (!inMarbleHalf(m, u.y)) continue;
+      const d = dist(u.x, u.y, m.x, m.y);
+      if (d > MARBLE_SHOT_RANGE) continue;
+      if (d < bestD) {
+        bestD = d;
+        best = u;
+      }
+    }
+    if (!best) {
+      m.atkTimer = 1;
+      continue;
+    }
+    const faction = st.players[m.owner].faction;
+    ev.push({
+      type: 'shrineShot',
+      owner: m.owner,
+      x: m.x, y: m.y, tx: best.x, ty: best.y,
+      kind: faction === 'magma' ? 'ember' : 'water',
+    });
+    dealDamage(st, ev, null, best, MARBLE_SHOT_DMG, 'ranged');
+    m.atkTimer = MARBLE_SHOT_INTERVAL;
+  }
+}
+
+function oasisWinner(st: GameState): PlayerId | 'tie' {
+  const m0 = st.marbles.find((m) => m.owner === 0);
+  const m1 = st.marbles.find((m) => m.owner === 1);
+  if (!m0 || !m1) return 'tie';
+  const d0 = m0.hp <= 0;
+  const d1 = m1.hp <= 0;
+  if (d1 && !d0) return 0;
+  if (d0 && !d1) return 1;
+  if (d0 && d1) {
+    if (st.marbleDamage[0] !== st.marbleDamage[1]) {
+      return st.marbleDamage[0] > st.marbleDamage[1] ? 0 : 1;
+    }
+    return 'tie';
+  }
+  const dealt0 = (m1.maxHp - m1.hp) + (m1.shieldMax - m1.shield);
+  const dealt1 = (m0.maxHp - m0.hp) + (m0.shieldMax - m0.shield);
+  if (dealt0 > dealt1) return 0;
+  if (dealt1 > dealt0) return 1;
+  return 'tie';
+}
+
+function endGame(st: GameState, ev: GameEvent[], forced?: PlayerId | 'tie'): void {
+  if (st.phase === 'ended') return;
   st.phase = 'ended';
-  if (st.captureMeter > 0) st.winner = 0;
-  else if (st.captureMeter < 0) st.winner = 1;
-  else st.winner = 'tie';
+  st.winner = forced ?? oasisWinner(st);
   ev.push({ type: 'gameOver', winner: st.winner });
 }
 
@@ -1555,7 +1756,7 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
   st.units = st.units.filter((u) => u.hp > 0);
 
   if (st.phase === 'basalt') scoreTerritory(st);
-  if (st.phase === 'oasis') tickCapture(st, ev);
+  if (st.phase === 'oasis') tickShrines(st, ev);
 
   // The Basalt Fields end only when a fortress has lost BOTH gatehouses —
   // a decisive phase-1 victory that carries the Blessing into the Oasis.
@@ -1815,11 +2016,16 @@ export class BotBrain {
           return { type: 'spell', card: LAVA_RAIN_CARD, x: best.x, y: best.y };
         }
       }
+      // Empty board or a wounded shrine: the sky still cracks marble.
+      const foeMarble = st.marbles.find((m) => m.owner !== this.seat && m.hp > 0);
+      if (foeMarble && (flush || foeMarble.hp + foeMarble.shield < (foeMarble.maxHp + foeMarble.shieldMax) * 0.55)) {
+        this.nextActionTick = st.tick + (strong ? 2 : 4);
+        return { type: 'spell', card: LAVA_RAIN_CARD, x: foeMarble.x, y: foeMarble.y };
+      }
     }
 
     // Relentless pressure: no idle beats — if the bot can act, it acts.
     if (me.aqua < 2) return null;
-    if (armySize(st, this.seat) >= currentArmyCap(st)) return null;
 
     const affordable = me.hand.filter((c) => cardDef(c, st.phase).cost <= me.aqua);
     if (affordable.length === 0) return null;
@@ -1853,7 +2059,10 @@ export class BotBrain {
     const scored = affordable.map((c) => ({ c, s: scoreCard(c) }));
     scored.sort((a, b) => b.s - a.s);
     if (strong && !flush && !punishing) {
-      const urgentDefense = st.obelisks
+      const shrineThreat = st.marbles.some((m) =>
+        m.owner === this.seat && m.hp > 0 &&
+        foes.some((u) => dist2(u.x, u.y, m.x, m.y) <= 4.5 * 4.5));
+      const urgentDefense = shrineThreat || st.obelisks
         .filter((o) => o.owner === this.seat && o.hp > 0)
         .some((o) => foes.some((u) => dist2(u.x, u.y, o.x, o.y) <= 4.5 * 4.5));
       const bestAffordable = scored[0]?.s ?? -Infinity;
@@ -1870,13 +2079,18 @@ export class BotBrain {
       const d = cardDef(cand.c, st.phase);
       if (d.kind === 'spell') {
         if (cand.c === LAVA_RAIN_CARD) continue; // handled above
-        const enemies = st.units.filter((u) => u.hp > 0 && u.owner !== this.seat && isCombatVisible(st, u));
-        if (enemies.length === 0) continue;
-        // Aim at the densest knot — a random single target wasted the cast.
-        let best = enemies[0];
+        // Thicket hides YOUR knot. Sulfur burns THEIRS.
+        const hide = cand.c === PHASE_SPELL_CARD && st.phase === 'oasis';
+        const pool = st.units.filter((u) =>
+          u.hp > 0 &&
+          (hide
+            ? u.owner === this.seat && inOwnHalf(this.seat, u.y)
+            : u.owner !== this.seat && isCombatVisible(st, u)));
+        if (pool.length === 0) continue;
+        let best = pool[0];
         let bestN = 0;
-        for (const e of enemies) {
-          const n = enemies.filter((o) => dist2(o.x, o.y, e.x, e.y) <= 1.6 * 1.6).length;
+        for (const e of pool) {
+          const n = pool.filter((o) => dist2(o.x, o.y, e.x, e.y) <= 1.6 * 1.6).length;
           if (n > bestN) {
             bestN = n;
             best = e;
@@ -1891,6 +2105,7 @@ export class BotBrain {
     }
     if (pick === null) return null;
     const def = cardDef(pick, st.phase);
+    if (def.kind === 'unit' && armySize(st, this.seat) >= currentArmyCap(st)) return null;
 
     const dirY = this.seat === 0 ? -1 : 1;
     if (st.phase === 'basalt') {
@@ -1945,10 +2160,16 @@ export class BotBrain {
       ? visibleFoes.reduce((sum, u) => sum + u.x, 0) / visibleFoes.length
       : WORLD_W / 2;
     const spread = strong ? (this.rng() - 0.5) * 0.7 : (this.rng() - 0.5) * 5;
-    const x = Math.max(0.8, Math.min(WORLD_W - 0.8, targetX + spread));
-    const y = this.seat === 0
-      ? WORLD_H - DEPLOY_DEPTH + 0.4 + this.rng() * (DEPLOY_DEPTH - 0.9)
-      : 0.5 + this.rng() * (DEPLOY_DEPTH - 0.9);
+    const marble = st.marbles.find((m) => m.owner !== this.seat && m.hp > 0);
+    const defend = st.marbles.find((m) => m.owner === this.seat && m.hp > 0);
+    const shrineX = marble?.x ?? WORLD_W / 2;
+    const x = Math.max(0.8, Math.min(WORLD_W - 0.8, (strong ? shrineX : targetX) + spread));
+    const myHalfDeep = this.seat === 0
+      ? WORLD_H * 0.5 + 0.35 + this.rng() * (WORLD_H * 0.42)
+      : 0.45 + this.rng() * (WORLD_H * 0.42);
+    const y = defend && foes.some((u) => dist2(u.x, u.y, defend.x, defend.y) <= 4.2 * 4.2)
+      ? (this.seat === 0 ? WORLD_H - 2.1 : 2.1)
+      : myHalfDeep;
     this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
     return {
       type: 'deploy',

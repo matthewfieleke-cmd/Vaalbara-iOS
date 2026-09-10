@@ -611,6 +611,32 @@ const GLOBAL_SFX = {
     noise({ dur: 0.8, gain: 0.14, filterFreq: 2500, filterEnd: 5000, filterType: 'highpass' });
     voice({ type: 'triangle', freq: 500, freqEnd: 800, dur: 0.5, gain: 0.08 });
   },
+  thicketRustle: () => {
+    noise({ dur: 0.28, gain: 0.09, filterFreq: 1800, filterEnd: 4200, filterType: 'bandpass' });
+    voice({ type: 'triangle', freq: 340, freqEnd: 520, dur: 0.18, gain: 0.04 });
+  },
+  shrineShotEmber: () => {
+    voice({ type: 'sawtooth', freq: 310, freqEnd: 140, dur: 0.22, gain: 0.14, filterFreq: 900 });
+    noise({ dur: 0.2, gain: 0.1, filterFreq: 1400, filterEnd: 400 });
+  },
+  shrineShotWater: () => {
+    voice({ type: 'sine', freq: 620, freqEnd: 240, dur: 0.24, gain: 0.12 });
+    noise({ dur: 0.18, gain: 0.08, filterFreq: 2800, filterType: 'bandpass' });
+  },
+  marbleHit: () => {
+    voice({ type: 'sine', freq: 180, freqEnd: 70, dur: 0.22, gain: 0.2 });
+    noise({ dur: 0.16, gain: 0.1, filterFreq: 1100, filterEnd: 280 });
+  },
+  marbleDown: () => {
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 96, freqEnd: 28, dur: 1.4, gain: 0.48 });
+    noise({ dur: 1.5, gain: 0.32, filterFreq: 1600, filterEnd: 70 });
+    voice({ type: 'triangle', freq: 440, freqEnd: 180, dur: 0.7, gain: 0.08, when: t + 0.12 });
+  },
+  shieldBreak: () => {
+    voice({ type: 'triangle', freq: 720, freqEnd: 220, dur: 0.35, gain: 0.1 });
+    noise({ dur: 0.28, gain: 0.08, filterFreq: 2400, filterEnd: 600 });
+  },
   death: () => {
     voice({ type: 'triangle', freq: 300, freqEnd: 60, dur: 0.4, gain: 0.16 });
   },
@@ -792,6 +818,8 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'lavaTelegraph':
       case 'lavaStrike':
       case 'obeliskDown':
+      case 'marbleDown':
+      case 'shrineShot':
         return 1;
       default:
         return 2;
@@ -874,6 +902,27 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'obeliskDown':
         if (!claim(6)) break;
         GLOBAL_SFX.obeliskDown();
+        break;
+      case 'shrineShot':
+        if (!claim(2)) break;
+        if (e.kind === 'ember') GLOBAL_SFX.shrineShotEmber();
+        else GLOBAL_SFX.shrineShotWater();
+        break;
+      case 'marbleHit':
+        if (!claim(1)) break;
+        GLOBAL_SFX.marbleHit();
+        break;
+      case 'marbleDown':
+        if (!claim(6)) break;
+        GLOBAL_SFX.marbleDown();
+        break;
+      case 'shieldBreak':
+        if (!claim(3)) break;
+        GLOBAL_SFX.shieldBreak();
+        break;
+      case 'thicketRustle':
+        if (!claim(1)) break;
+        GLOBAL_SFX.thicketRustle();
         break;
       case 'pondClaimed':
         if (!claim(7)) break;
@@ -1145,8 +1194,8 @@ class MusicDirector {
       this.rideReverb(0.45);
     } else if (mode === 'oasis' && prev === 'transition') {
       this.braam(220, 1.4, 0.5);
-      this.intensityTarget = 0.4;
-      this.volumeTarget = 1;
+      this.intensityTarget = 0.68;
+      this.volumeTarget = 1.08;
       this.rideSfxBus(0.9);
       this.rideReverb(0.45);
     } else if (mode === 'basalt') {
@@ -1183,6 +1232,8 @@ class MusicDirector {
     basaltElapsedSec: number;
     unitCount: number;
     speciesCounts: Partial<Record<SpeciesId, number>>;
+    /** 0..1 — how close either marble is to crumpling. Arrangement only. */
+    oasisDanger?: number;
   }): void {
     const previousEagleCount = this.eagleCount;
     this.beeCount = opts.speciesCounts.bees ?? 0;
@@ -1197,10 +1248,12 @@ class MusicDirector {
         .map(([species]) => species as SpeciesId),
     );
     if (opts.phase === 'basalt') {
-      this.basaltElapsed = opts.basaltElapsedSec;
+      // 3:00 clock mapped onto the old 5:00 ladder so the drummer still
+      // arrives in the last act (~2:06 of real time) instead of never landing.
+      this.basaltElapsed = MusicDirector.virtualBasaltElapsed(opts.basaltElapsedSec);
       // Continuous ladder position: every minute is an 8-second SLIDE up
       // (intensity, volume, bus rides all interpolate — no terraced steps).
-      const pos = MusicDirector.ladderPos(opts.basaltElapsedSec);
+      const pos = MusicDirector.ladderPos(this.basaltElapsed);
       const army = Math.min(1, opts.unitCount / 18);
       this.armyHeat += (army - this.armyHeat) * 0.15;
       this.intensityTarget = Math.min(1, MusicDirector.lerpTab([0.5, 0.55, 0.72, 0.84, 0.94], pos) + army * 0.14);
@@ -1208,13 +1261,17 @@ class MusicDirector {
       this.rideSfxBus(MusicDirector.lerpTab([0.9, 0.94, 1.0, 1.06, 1.14], pos));
       this.rideReverb(MusicDirector.lerpTab([0.42, 0.45, 0.48, 0.54, 0.6], pos));
     } else if (opts.phase === 'oasis') {
-      const army = Math.min(1, opts.unitCount / 18);
-      this.intensityTarget = Math.min(1, 0.38 + army * 0.45);
-      this.volumeTarget = 1;
+      const army = Math.min(1, opts.unitCount / 14);
+      const danger = Math.max(0, Math.min(1, opts.oasisDanger ?? 0));
+      this.armyHeat += (army - this.armyHeat) * 0.18;
+      // Start hot — the fist-pump is the crumple, not a calm pond bed.
+      // Thicken the arrangement only; shrine fire rate stays on the sim grid.
+      this.intensityTarget = Math.min(1, 0.64 + this.armyHeat * 0.24 + danger * 0.18);
+      this.volumeTarget = 1.08 + danger * 0.08;
       this.musicTier = 0;
       this.swellMinute = -1;
-      this.rideSfxBus(0.9);
-      this.rideReverb(0.45);
+      this.rideSfxBus(0.94 + danger * 0.08);
+      this.rideReverb(0.48 + danger * 0.08);
     } else if (opts.phase === 'transition') {
       this.volumeTarget = 1;
       this.musicTier = 0;
@@ -1248,6 +1305,11 @@ class MusicDirector {
     const origin = this.gridOrigin || when;
     const steps = Math.round((when - origin) / STEP);
     return origin + Math.max(0, steps) * STEP;
+  }
+
+  /** Stretch a 3:00 Basalt clock onto the authored 5:00 ladder. */
+  private static virtualBasaltElapsed(realSec: number): number {
+    return realSec * (300 / 180);
   }
 
   /**
@@ -2492,7 +2554,10 @@ class MusicDirector {
         if (s16 === 0) this.taiko(t, true, 0.8);
         if (s16 === 8) this.taiko(t, false, 0.7);
         if (inten > 0.6 && s16 === 12) this.taiko(t, false, 0.5);
+        if (inten > 0.72 && s16 === 4) this.taiko(t, false, 0.55);
         if (inten > 0.45 && s16 % 4 === 3) this.hat(t, 0.5);
+        if (inten > 0.78 && s16 % 2 === 1) this.hat(t, 0.42);
+        if (inten > 0.82 && s16 === 0) this.cello(t, chord[1] / 2, 2.2, 0.05);
         // The theme returns in the light — up an octave, gentler.
         if (bar % 8 === 4 && s16 === 0) this.playTheme(t, 2, 0.045);
         // Shimmer.

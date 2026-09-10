@@ -6,8 +6,8 @@
  *  - Cheap swarm (2 aqua) trades up vs single big targets but melts to AOE.
  *  - Tanks (6 aqua) anchor lanes; they survive ~15 s of mid-tier focus.
  *  - Income of 1 aqua / ~3.75 s (faster in the Oasis) plus a staged army
- *    cap (6 early, unlocking to 8 late) keeps the field a handful of
- *    readable duels, not a mob.
+ *    cap on the 3:00 clock (6 → 7 at 1:30 → 8 at 2:30) keeps the field a
+ *    handful of readable duels, not a mob.
  *  - HP curves run generous so every engagement plays out long enough to
  *    watch, react to and counter.
  * ========================================================================== */
@@ -54,7 +54,7 @@ export const MAGMA_CARDS: CardDef[] = [
   },
   {
     id: 'honeybadger', name: 'Honey Badger', title: 'The Unkillable Grudge', cost: 3, kind: 'unit', species: 'honeybadger',
-    stats: U({ hp: 180, dmg: 23, speed: 0.21, atkCd: 4, radius: 0.32 }),
+    stats: U({ hp: 225, dmg: 23, speed: 0.21, atkCd: 4, radius: 0.32 }),
     blurb: 'Fast berserker. Below 30% HP it snaps: double attack speed and total immunity to crowd control.',
     hue: 45,
   },
@@ -98,7 +98,7 @@ export const OASIS_CARDS: CardDef[] = [
   },
   {
     id: 'wolves', name: 'Pack of Wolves', title: 'Twin Fang Doctrine', cost: 3, kind: 'unit', species: 'wolves',
-    stats: U({ hp: 152, dmg: 25, speed: 0.27, atkCd: 4, radius: 0.34, count: 2, formation: 'pair' }),
+    stats: U({ hp: 152, dmg: 25, speed: 0.23, atkCd: 4, radius: 0.34, count: 2, formation: 'pair' }),
     blurb: 'Skirmish pair. Wolves fighting side by side feed off each other for +15% damage.',
     hue: 210,
   },
@@ -125,12 +125,12 @@ export const OASIS_CARDS: CardDef[] = [
 export const PHASE_SPELL_DEF: Record<'sulfur' | 'thicket', CardDef> = {
   sulfur: {
     id: PHASE_SPELL_CARD, name: 'Sulfur Cloud', title: 'Volcanic Sulfur Cloud', cost: 3, kind: 'spell',
-    blurb: 'A choking fog. Enemies inside crawl at half speed and cough away 1 HP per beat.',
+    blurb: 'A choking fog. Enemies inside crawl at half speed and burn — a swarm dies in the cloud; a tank feels it.',
     hue: 55,
   },
   thicket: {
     id: PHASE_SPELL_CARD, name: 'Thicket', title: 'Whispering Thicket', cost: 3, kind: 'spell',
-    blurb: 'A temporary stand of high grass. Friendly units vanish into total camouflage; enemies wade through at half pace.',
+    blurb: 'A living stand of grass. Your warriors hide in it; enemies wade slow. They see the grass, not who waits.',
     hue: 110,
   },
 };
@@ -141,7 +141,7 @@ export const LAVA_RAIN_CARD_DEF: CardDef = {
   title: 'Judgement of Old Vaalbara',
   cost: 5,
   kind: 'spell',
-  blurb: 'A 1.2 s shadow warns the sky is falling. Centre: annihilation (flyers doubly so). Mid-ring: heavy burns. Rim: a scalding kiss. Enemies only.',
+  blurb: 'A 1.2 s shadow warns the sky is falling. A pile in the pond dies; a shrine takes a real crack. Enemies only.',
   hue: 12,
 };
 
@@ -150,19 +150,21 @@ export const LAVA_RAIN = {
   title: 'Judgement of Old Vaalbara',
   blurb: LAVA_RAIN_CARD_DEF.blurb,
   telegraphTicks: 4,
-  centerDmg: 130,
+  centerDmg: 160,
   flyerCenterMult: 1.6,
-  midDmg: 65,
-  rimDmg: 25,
-  centerR: 0.8,
-  midR: 1.7,
-  rimR: 2.6,
+  midDmg: 98,
+  rimDmg: 36,
+  centerR: 1.08,
+  midR: 2.05,
+  rimR: 2.7,
+  /** Fraction of the ring damage that also bites a marble shrine. */
+  buildingPct: 0.55,
   hue: 12,
 };
 
 export const SPELL_BALANCE = {
-  sulfur: { duration: 33, slowMult: 0.5, chip: 1, radius: 1.5 },
-  thicket: { duration: 40, slowMult: 0.5, radius: 1.5 },
+  sulfur: { duration: 33, slowMult: 0.5, chip: 7, radius: 1.55 },
+  thicket: { duration: 40, slowMult: 0.5, radius: 1.65 },
   acidpool: { duration: 10, slowMult: 0.72, radius: 0.75 },
   healmist: { duration: 1, radius: 1.4 },
 };

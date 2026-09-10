@@ -19,9 +19,14 @@ interface MatchStats {
   dmgP0: number;
   dmgP1: number;
   dominanceP0: number;
-  captureMeter: number;
+  marbleDmg0: number;
+  marbleDmg1: number;
   maxUnitsAlive: number;
   eventsTotal: number;
+  sulfur: number;
+  thicket: number;
+  lava: number;
+  crumple: boolean;
 }
 
 function runMatch(seed: number, factions: ['magma', 'oasis'] | ['oasis', 'magma']): MatchStats {
@@ -33,6 +38,10 @@ function runMatch(seed: number, factions: ['magma', 'oasis'] | ['oasis', 'magma'
   let spawned1 = 0;
   let maxAlive = 0;
   let eventsTotal = 0;
+  let sulfur = 0;
+  let thicket = 0;
+  let lava = 0;
+  let crumple = false;
 
   for (let i = 0; i < MAX_TICKS && st.phase !== 'ended'; i++) {
     const inputs: PlayerInput[] = [];
@@ -47,6 +56,12 @@ function runMatch(seed: number, factions: ['magma', 'oasis'] | ['oasis', 'magma'
         if (e.owner === 0) spawned0++;
         else spawned1++;
       }
+      if (e.type === 'spellCast') {
+        if (e.spell === 'sulfur') sulfur++;
+        else if (e.spell === 'thicket') thicket++;
+        else if (e.spell === 'lavarain') lava++;
+      }
+      if (e.type === 'marbleDown') crumple = true;
     }
     maxAlive = Math.max(maxAlive, st.units.length);
   }
@@ -59,9 +74,14 @@ function runMatch(seed: number, factions: ['magma', 'oasis'] | ['oasis', 'magma'
     dmgP0: Math.round(st.players[0].damageDealt),
     dmgP1: Math.round(st.players[1].damageDealt),
     dominanceP0: Math.round(st.dominanceP0 * 100) / 100,
-    captureMeter: st.captureMeter,
+    marbleDmg0: st.marbleDamage[0],
+    marbleDmg1: st.marbleDamage[1],
     maxUnitsAlive: maxAlive,
     eventsTotal,
+    sulfur,
+    thicket,
+    lava,
+    crumple,
   };
 }
 
@@ -110,7 +130,9 @@ for (let s = 1; s <= 24; s++) {
     console.log(
       `seed ${String(s * 7919).padStart(6)} [${factions[0]} vs ${factions[1]}]  winner=${r.winner.padEnd(4)} ` +
       `ticks=${r.ticks} spawns=${r.unitsSpawnedP0}/${r.unitsSpawnedP1} dmg=${r.dmgP0}/${r.dmgP1} ` +
-      `dom0=${r.dominanceP0} meter=${r.captureMeter} maxAlive=${r.maxUnitsAlive} ${ok ? 'OK' : '** SUSPECT **'}`,
+      `dom0=${r.dominanceP0} marble=${r.marbleDmg0}/${r.marbleDmg1} ` +
+      `spells=${r.sulfur}/${r.thicket}/${r.lava}${r.crumple ? ' CRUMPLE' : ''} ` +
+      `maxAlive=${r.maxUnitsAlive} ${ok ? 'OK' : '** SUSPECT **'}`,
     );
   } catch (err) {
     failures++;

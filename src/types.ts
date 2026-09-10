@@ -25,12 +25,12 @@ export const TICK_MS = 300;
 export const WORLD_W = 9;
 export const WORLD_H = 15;
 
-/** Phase durations, in ticks (300 ms/tick). Phase 1 is a siege that ends
- *  when a fortress loses BOTH gatehouses, or at the 5:00 stalemate valve.
- *  Target: most matches reach ~5:00 with traded gatehouses (see balance-gates). */
-export const PHASE1_TICKS = 1000; // 5:00
+/** Phase durations, in ticks (300 ms/tick). Phase 1 is a 3:00 siege that
+ *  ends when a fortress loses BOTH gatehouses, or at the clock. Phase 2 is
+ *  sudden death on one marble shrine each: first crumple wins, 2:30 cap. */
+export const PHASE1_TICKS = 600; // 3:00
 export const TRANSITION_TICKS = 20; // 6 s marching cutscene
-export const PHASE2_TICKS = 500;
+export const PHASE2_TICKS = 500; // 2:30
 
 /** Player seat. Seat 0 deploys along the bottom band, seat 1 along the top. */
 export type PlayerId = 0 | 1;
@@ -126,7 +126,8 @@ export interface UnitBuffs {
   burnTicks: number;
   /** Bees hovering overhead cap this unit's range while > 0. */
   rangeCapTicks: number;
-  /** Vaalbara Blessing: +10% speed & damage for phase 2. */
+  /** Legacy combat bless. Temple Ward no longer sets this — Phase 1
+   *  prize is the marble shield only. Kept so old replays stay typed. */
   blessed: boolean;
   /** Honey badger frenzy (computed, persisted for renderer/audio). */
   berserk: boolean;
@@ -314,6 +315,11 @@ export type GameEvent =
   | { type: 'lotusBurst'; x: number; y: number }
   | { type: 'obeliskHit'; owner: PlayerId; amount: number; x: number; y: number }
   | { type: 'obeliskDown'; owner: PlayerId; x: number; y: number }
+  | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
+  | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
+  | { type: 'shrineShot'; owner: PlayerId; x: number; y: number; tx: number; ty: number; kind: 'ember' | 'water' }
+  | { type: 'shieldBreak'; owner: PlayerId; x: number; y: number }
+  | { type: 'thicketRustle'; owner: PlayerId; x: number; y: number }
   | { type: 'pondClaimed'; player: PlayerId }
   | { type: 'phaseChange'; phase: GamePhase }
   | { type: 'blessing'; player: PlayerId }
@@ -340,10 +346,14 @@ export interface GameState {
   props: PropState[];
   /** Phase-1 objectives: [seat 0's obelisk, seat 1's obelisk]. Empty in P2. */
   obelisks: ObeliskState[];
+  /** Phase-2 marble shrines. Empty in Basalt. */
+  marbles: MarbleState[];
   pendingLava: PendingLavaRain[];
   players: [PlayerBoardState, PlayerBoardState];
-  /** Phase-2 capture meter, range [-100, +100]; positive favours player 0. */
+  /** Kept for replay/UI; Phase 2 no longer wins by pond claim. */
   captureMeter: number;
+  /** Marble damage this chapter, used for the 2:30 tie and same-tick crumple. */
+  marbleDamage: [number, number];
   winner: PlayerId | 'tie' | null;
   dominanceP0: number;
 }
@@ -395,10 +405,15 @@ export interface MatchConfig {
 export const inWorld = (x: number, y: number): boolean =>
   x >= 0 && x < WORLD_W && y >= 0 && y < WORLD_H;
 
-/** Deploy band depth (world units from a seat's own edge). */
+/** Deploy band depth (world units from a seat's own edge). Phase 1 pads
+ *  still use this; Phase 2 uses the whole friendly half. */
 export const DEPLOY_DEPTH = 3;
 export const inDeployBand = (player: PlayerId, y: number): boolean =>
   player === 0 ? y >= WORLD_H - DEPLOY_DEPTH : y < DEPLOY_DEPTH;
+
+/** Phase 2 drop rule: your sand and your water, never past mid. */
+export const inOwnHalf = (player: PlayerId, y: number): boolean =>
+  player === 0 ? y >= WORLD_H * 0.5 : y < WORLD_H * 0.5;
 
 /* Phase-1 fortresses ------------------------------------------------------ */
 /** Gate/lane x positions per fortress owner, measured from the painted lava
@@ -459,16 +474,16 @@ export const ARMY_BASE_CAP = 6;
 export const LANE_SOFT_CAP = 4;
 
 /**
- * Staged army cap from Basalt elapsed time (seconds).
- *  - Minutes 1–3: 6 (readable duels)
- *  - Start of minute 4 (t=3:00): 7
- *  - Start of minute 5 (t=4:00): 8
- * Oasis / transition keep the absolute ceiling so late answers still fit.
+ * Staged army cap from Basalt elapsed time (seconds) on a 3:00 clock.
+ *  - First 90 s: 6
+ *  - 1:30: 7
+ *  - 2:30: 8
+ * Oasis / transition keep the ceiling so leftover armies plus answers still fit.
  */
 export function armyCap(phase: 'basalt' | 'transition' | 'oasis' | 'ended', basaltElapsedSec = 0): number {
   if (phase !== 'basalt') return MAX_ARMY;
-  if (basaltElapsedSec < 180) return ARMY_BASE_CAP;
-  if (basaltElapsedSec < 240) return 7;
+  if (basaltElapsedSec < 90) return ARMY_BASE_CAP;
+  if (basaltElapsedSec < 150) return 7;
   return MAX_ARMY;
 }
 export const CAPTURE_RATE = 1;
@@ -477,7 +492,42 @@ export const CAPTURE_RATE = 1;
 /** First-gate HP. The remaining wing hardens after its sister falls
  *  (see dealObeliskDamage) so clean sweeps stay rare — especially once
  *  staged army slots 7–8 add late siege pressure. */
-export const OBELISK_HP = 2050;
+export const OBELISK_HP = 1680;
+
+/** Phase-2 marble shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
+ *  in 2:30; siege multiplier + this HP make a landed push crumple near
+ *  2:00 while a stalled mid still goes to the clock. */
+export const MARBLE_HP = 720;
+export const MARBLE_R = 0.72;
+export const MARBLE_SHOT_DMG = 28;
+/** Melee/ranged hits on marble — the stone is the chapter, so those
+ *  swings have to matter. Spells keep their own building pct. */
+export const MARBLE_SIEGE_MULT = 2.6;
+/** Beats the sim owns — 4 ticks = 1.2 s. The band plays this grid. */
+export const MARBLE_SHOT_INTERVAL = 4;
+/** Owns the friendly half. Marble sits at 1.85/13.15; mid is 7.5.
+ *  5.35 left a safe brawl on the line (5.65 away). 7.4 reaches the
+ *  corners of the half; inMarbleHalf still forbids shooting across. */
+export const MARBLE_SHOT_RANGE = 7.4;
+/** ~190 HP veil — a few tank swings — even after the HP retune. */
+export const MARBLE_SHIELD_PCT = 0.26;
+export const MARBLE_POS: Record<PlayerId, { x: number; y: number }> = {
+  0: { x: 4.5, y: 13.15 },
+  1: { x: 4.5, y: 1.85 },
+};
+
+export interface MarbleState {
+  readonly owner: PlayerId;
+  hp: number;
+  maxHp: number;
+  /** Extra life from winning Phase 1; 0 if they did not win the chapter. */
+  shield: number;
+  shieldMax: number;
+  readonly x: number;
+  readonly y: number;
+  readonly r: number;
+  atkTimer: number;
+}
 
 /** On a razed lane, warriors become combat-visible once they've climbed
  *  onto the causeway / rubble pile (depth from the field-side wall lip). */
