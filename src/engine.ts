@@ -485,26 +485,14 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
       homeWing = wing;
       const pad = pads[wing];
       sx = pad.x;
-      const ownGate = st.obelisks.find((o) => o.owner === input.player && o.wing === wing);
-      const ownRazed = !!ownGate && ownGate.hp <= 0;
-      if (ownRazed) {
-        // Own gate down: materialise on the rear apron (NOT on the field) so
-        // the warrior marches a couple steps, then scrambles over the rubble
-        // pile before entering the battlefield. It stays IN ITS LANE for the
-        // whole crossing — threats at the other gate are engaged only after
-        // it has climbed over the mound, from the battlefield side.
-        sy = FORT_SPAWN_Y[input.player];
-        wp = { x: pad.x, y: input.player === 0 ? 10.85 : 4.15 };
-      } else {
-        sy = FORT_SPAWN_Y[input.player];
-        // March to the CENTRAL plateau (pulled toward mid-field from the
-        // gate lane): both armies converge there and clash before anyone
-        // pushes on down a lane toward the enemy walls.
-        wp = {
-          x: pad.x + (WORLD_W / 2 - pad.x) * 0.5,
-          y: input.player === 0 ? 7.6 : 7.4,
-        };
-      }
+      sy = FORT_SPAWN_Y[input.player];
+      // Stay in this lane: through the tunnel (or over rubble), over this
+      // bridge, then that gatehouse. Mid is a fight that happens when both
+      // armies sent the same corridor — not a rally point.
+      wp = {
+        x: pad.x,
+        y: input.player === 0 ? FORT_WALL_FRONT[0] - 0.8 : FORT_WALL_FRONT[1] + 0.8,
+      };
     } else {
       // Oasis: your half — sand and water. Drag is the first charge.
       if (!inOwnHalf(input.player, a.y)) return;
