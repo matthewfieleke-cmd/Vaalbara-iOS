@@ -229,6 +229,8 @@ export class Renderer {
   private lastFrame = 0;
   private camPan = 0;
   private shake = 0;
+  /** Full-frame muzzle flash — the blast has to punch through a phone screen. */
+  private blastFlash = 0;
   localSeat: PlayerId = 0;
   drag: DragOverlay = { active: false, fromX: 0, fromY: 0, toX: 0, toY: 0, valid: false, hue: 0 };
   telegraph: TelegraphOverlay = { active: false, x: 0, y: 0, kind: 'spell' };
@@ -496,9 +498,10 @@ export class Renderer {
         this.burst(a.x, a.y, 22, 'ash', ember ? 22 : 200, 2.6);
         this.burst(a.x, a.y, 16, 'mist', ember ? 18 : 195, 2.2);
         this.burst(a.x, a.y, 4, 'flash', ember ? 40 : 188, 1.8);
-        this.muzzleBlasts.push({ x: a.x, y: a.y, hue, ember, life: 0, maxLife: 0.5 });
-        this.shake = Math.max(this.shake, 18);
-        this.hitStop = Math.max(this.hitStop, 0.07);
+        this.muzzleBlasts.push({ x: a.x, y: a.y, hue, ember, life: 0, maxLife: 0.62 });
+        this.shake = Math.max(this.shake, 22);
+        this.hitStop = Math.max(this.hitStop, 0.08);
+        this.blastFlash = Math.max(this.blastFlash, 1);
         break;
       }
       case 'shrineImpact': {
@@ -654,6 +657,7 @@ export class Renderer {
       // rear tunnel mouths / the ground beyond its front crest.
       if (st.obelisks.length > 0) this.drawFortressWalls(ctx, st, this.localSeat);
       this.drawUnits(ctx, st, dt, now, 'over');
+      if (st.phase === 'oasis' || st.phase === 'ended') this.drawCannonBarrels(ctx, st);
       this.drawProjectiles(ctx, st, now);
       this.drawMuzzleBlasts(ctx, dt);
       this.drawShrineBeams(ctx, dt);
@@ -666,6 +670,14 @@ export class Renderer {
     }
     this.updateParticles(ctx, dt);
     this.updateFloats(ctx, dt);
+    if (this.blastFlash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(255, 196, 92, ${0.55 * this.blastFlash})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      this.blastFlash = Math.max(0, this.blastFlash - dt * 3.6);
+    }
     this.drawVignette(ctx, W, H);
     ctx.restore();
   }
@@ -998,12 +1010,18 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255, 214, 90, 0.85)';
         ctx.fillRect(p.x - bw / 2, p.y + u * 0.18 - 3, ward, 2);
       }
-      this.drawCannonBarrel(ctx, st, m.owner, m.atkTimer);
       ctx.restore();
     }
   }
 
-  /** Iron mouth on the battlement / spire. Idle is a dark tube; the last
+  private drawCannonBarrels(ctx: CanvasRenderingContext2D, st: GameState): void {
+    for (const m of st.marbles) {
+      if (m.hp <= 0) continue;
+      this.drawCannonBarrel(ctx, st, m.owner, m.atkTimer);
+    }
+  }
+
+  /** Iron siege gun on the battlement / spire. Idle is cold metal; the last
    *  two seconds go white-hot so the blast is telegraphed, not a surprise. */
   private drawCannonBarrel(
     ctx: CanvasRenderingContext2D, st: GameState, owner: PlayerId, atkTimer: number,
@@ -1023,66 +1041,87 @@ export class Renderer {
       aimX = unit.x;
       aimY = unit.y;
     }
-    const ahead = this.worldToScreen(aimX, aimY);
-    const ang = Math.atan2(ahead.y - muzzle.y, ahead.x - muzzle.x);
+    const rest = this.worldToScreen(s.shotX, owner === 0 ? s.shotY - 1 : s.shotY + 1);
+    const restAng = Math.atan2(rest.y - muzzle.y, rest.x - muzzle.x);
+    const aimed = this.worldToScreen(aimX, aimY);
+    const aimAng = Math.atan2(aimed.y - muzzle.y, aimed.x - muzzle.x);
+    let delta = aimAng - restAng;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    // Slight 3/4 yaw so the snout reads as a barrel, not a bore facing us.
+    const side = owner === this.localSeat ? 0.22 : -0.22;
+    const ang = restAng + clamp(delta, -0.35, 0.35) + side;
     const raw = clamp(1 - atkTimer / MARBLE_SHOT_INTERVAL, 0, 1);
-    // First ~6 s stay iron. Last 7 ticks (~2.1 s) ramp to white-hot.
     const heatTicks = 7;
     const heat = atkTimer <= heatTicks ? 1 - atkTimer / heatTicks : 0;
     const charge = atkTimer > heatTicks
-      ? 0.05 + raw * 0.12
-      : 0.18 + Math.pow(heat, 1.12) * 0.82;
+      ? 0.04 + raw * 0.08
+      : 0.16 + Math.pow(heat, 1.05) * 0.84;
     const ember = st.players[owner].faction === 'magma';
     const hue = ember ? 22 : 192;
-    const pulse = 0.8 + Math.sin(this.time * (3.4 + charge * 10)) * 0.2 * Math.max(0.15, charge);
+    const pulse = 0.8 + Math.sin(this.time * (3.8 + charge * 12)) * 0.2 * Math.max(0.15, charge);
+    const len = u * (0.48 + charge * 0.38);
+    const half = u * (0.09 + charge * 0.03);
+    const tipX = muzzle.x + Math.cos(ang) * len * 0.88;
+    const tipY = muzzle.y + Math.sin(ang) * len * 0.88;
+
+    // Roof mount — a short iron gun, not a floating sausage.
+    ctx.save();
+    ctx.translate(muzzle.x, muzzle.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(0, u * 0.08, u * 0.28, u * 0.11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const mount = ctx.createRadialGradient(-u * 0.06, -u * 0.05, 1, 0, 0, u * 0.26);
+    mount.addColorStop(0, `hsl(22 10% ${18 + charge * 14}%)`);
+    mount.addColorStop(1, `hsl(18 8% ${8 + charge * 6}%)`);
+    ctx.fillStyle = mount;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, u * 0.24, u * 0.17, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     ctx.save();
     ctx.translate(muzzle.x, muzzle.y);
     ctx.rotate(ang);
-    // Dark tube — reads as a barrel, not a floating light.
-    const len = u * 0.98;
-    const half = u * (0.2 + charge * 0.07);
-    ctx.fillStyle = 'rgba(6,5,8,0.82)';
-    ctx.beginPath();
-    ctx.roundRect(-len * 0.28, -half * 1.22, len * 1.22, half * 2.44, 4);
-    ctx.fill();
-    const tube = ctx.createLinearGradient(-len * 0.22, 0, len * 0.92, 0);
-    tube.addColorStop(0, `hsl(22 8% ${10 + charge * 10}%)`);
-    tube.addColorStop(0.55, `hsl(18 14% ${14 + charge * 14}%)`);
-    tube.addColorStop(1, `hsl(${hue} ${18 + charge * 55}% ${16 + charge * 28}%)`);
+    const tube = ctx.createLinearGradient(0, 0, len, 0);
+    tube.addColorStop(0, `hsl(20 8% ${12 + charge * 8}%)`);
+    tube.addColorStop(0.65, `hsl(18 12% ${14 + charge * 12}%)`);
+    tube.addColorStop(1, `hsl(${hue} ${14 + charge * 58}% ${12 + charge * 26}%)`);
     ctx.fillStyle = tube;
     ctx.beginPath();
-    ctx.roundRect(-len * 0.2, -half, len, half * 2, 3);
+    ctx.roundRect(-u * 0.04, -half, len, half * 2, 2);
     ctx.fill();
-    // Bore — fills with heat as the shot comes up.
-    ctx.fillStyle = charge < 0.35
-      ? 'hsl(0 0% 5%)'
-      : `hsl(${ember ? 28 : 190} ${40 + charge * 50}% ${8 + charge * 42}%)`;
+    ctx.fillStyle = `hsl(0 0% ${7 + charge * 8}%)`;
+    ctx.fillRect(len * 0.35, -half * 1.15, u * 0.05, half * 2.3);
+    ctx.fillStyle = charge < 0.25
+      ? 'hsl(0 0% 4%)'
+      : `hsl(${ember ? 30 : 190} ${55 + charge * 35}% ${8 + charge * 50}%)`;
     ctx.beginPath();
-    ctx.ellipse(len * 0.76, 0, half * 0.48, half * 0.98, 0, 0, Math.PI * 2);
+    ctx.ellipse(len * 0.92, 0, half * 0.45, half * 0.95, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const rad = u * (0.55 + charge * 1.55) * pulse;
-    const glow = ctx.createRadialGradient(muzzle.x, muzzle.y, 1, muzzle.x, muzzle.y, rad);
-    glow.addColorStop(0, `hsla(${ember ? 44 : 186} 100% ${70 + charge * 22}% / ${0.22 + charge * 0.78})`);
-    glow.addColorStop(0.32, `hsla(${hue} 95% ${52 + charge * 16}% / ${0.16 + charge * 0.5})`);
+    const rad = u * (0.55 + charge * 2.35) * pulse;
+    const glow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, rad);
+    glow.addColorStop(0, `hsla(${ember ? 46 : 186} 100% ${74 + charge * 20}% / ${0.2 + charge * 0.85})`);
+    glow.addColorStop(0.3, `hsla(${hue} 95% ${54 + charge * 14}% / ${0.14 + charge * 0.52})`);
     glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(muzzle.x, muzzle.y, rad, 0, Math.PI * 2);
+    ctx.arc(tipX, tipY, rad, 0, Math.PI * 2);
     ctx.fill();
-    if (charge > 0.4) {
-      ctx.fillStyle = `hsla(${ember ? 48 : 186} 100% 97% / ${0.28 + (charge - 0.4) * 1.25})`;
+    if (charge > 0.35) {
+      ctx.fillStyle = `hsla(${ember ? 48 : 186} 100% 98% / ${0.3 + (charge - 0.35) * 1.25})`;
       ctx.beginPath();
-      ctx.arc(muzzle.x, muzzle.y, u * (0.1 + charge * 0.16), 0, Math.PI * 2);
+      ctx.arc(tipX, tipY, u * (0.1 + charge * 0.18), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
 
-    if (charge > 0.22) this.emitBarrelHeat(`barrel-${owner}`, muzzle.x, muzzle.y, ember, charge);
+    if (charge > 0.18) this.emitBarrelHeat(`barrel-${owner}`, tipX, tipY, ember, charge);
   }
 
   private emitBarrelHeat(key: string, x: number, y: number, ember: boolean, charge: number): void {
@@ -1988,7 +2027,7 @@ export class Renderer {
         const y = p.y - arc;
         const prev = this.worldToScreen(pr.px, pr.py);
         const ang = Math.atan2(p.y - prev.y, p.x - prev.x);
-        const rad = this.unit * 0.17;
+        const rad = this.unit * 0.26;
         ctx.save();
         ctx.translate(p.x, y);
         ctx.rotate(ang);
@@ -2068,7 +2107,7 @@ export class Renderer {
       const u = this.unit;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const rad = u * (0.85 + t * 2.6);
+      const rad = u * (1.15 + t * 3.4);
       const g = ctx.createRadialGradient(b.x, b.y, 1, b.x, b.y, rad);
       g.addColorStop(0, `hsla(${b.ember ? 48 : 186} 100% 97% / ${0.98 * fade})`);
       g.addColorStop(0.2, `hsla(${b.hue} 100% 62% / ${0.78 * fade})`);

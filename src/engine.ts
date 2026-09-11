@@ -1773,7 +1773,7 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
     // distance/speed is not an integer — a 2.2 wu shot at speed 3 would
     // fly 3 wu and miss a 0.75 splash. At least two ticks so the shell
     // is on screen as a flying projectile, not a teleport.
-    const ticks = Math.max(2, Math.ceil(d / MARBLE_CANNON_SPEED));
+    const ticks = Math.max(3, Math.ceil(d / MARBLE_CANNON_SPEED));
     st.projectiles.push({
       id: nextProjId++,
       owner: m.owner,
