@@ -1,6 +1,6 @@
 /* ============================================================================
  * Battle balance harness — bot vs bot, many seeds.
- * Reports Phase 1 / Phase 2 length, marble crumple time, spell use, win rates.
+ * Reports Phase 1 / Phase 2 length, marble crumble time, spell use, win rates.
  *
  *   npx tsx scripts/balance-battle.ts
  * ========================================================================== */
@@ -154,7 +154,7 @@ const crumpleS = rows.filter((r) => r.crumple).map((r) => (r.p2Ticks * TICK_MS) 
 console.log(`finished ${rows.length}  crashed ${crashes}`);
 console.log(`win split   seat0=${wins['0']}  seat1=${wins['1']}  tie=${wins.tie}`);
 console.log(`faction     magma=${faction.magma}  oasis=${faction.oasis}  tie=${faction.tie}`);
-console.log(`P2 end      crumple=${crumples} (${pct(crumples, rows.length)})  timeout=${timeouts} (${pct(timeouts, rows.length)})`);
+console.log(`P2 end      crumble=${crumples} (${pct(crumples, rows.length)})  timeout=${timeouts} (${pct(timeouts, rows.length)})`);
 console.log(`P1 length   mean=${mean(p1s).toFixed(1)}s  min=${Math.min(...p1s).toFixed(0)}  max=${Math.max(...p1s).toFixed(0)}`);
 console.log(`P2 length   mean=${mean(p2s).toFixed(1)}s  min=${p2s.length ? Math.min(...p2s).toFixed(0) : 0}  max=${p2s.length ? Math.max(...p2s).toFixed(0) : 0}`);
 console.log(`crumple t   mean=${crumpleS.length ? mean(crumpleS).toFixed(1) : '—'}s  (target ~120s, cap 150s)`);
@@ -178,7 +178,7 @@ for (const r of rows.slice(0, 8)) {
   console.log(
     `seed ${r.seed} [${r.factions[0]} vs ${r.factions[1]}] w=${r.winner.padEnd(4)} ` +
     `p1=${((r.p1Ticks * TICK_MS) / 1000).toFixed(0)}s p2=${((r.p2Ticks * TICK_MS) / 1000).toFixed(0)}s ` +
-    `${r.crumple ? 'CRUMPLE' : r.timeout ? 'CLOCK' : r.winner} ` +
+    `${r.crumple ? 'CRUMBLE' : r.timeout ? 'CLOCK' : r.winner} ` +
     `ward=${r.ward} lava=${r.lava} sulfur=${r.sulfur} thicket=${r.thicket}`,
   );
 }

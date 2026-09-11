@@ -85,7 +85,7 @@ function ascii(cells) {
 }
 
 const basalt = await classify('art-src/arena1.png', 'basalt');
-const oasis = await classify('art-src/arena2.png', 'oasis');
+const oasis = await classify('art-src/oasis.png', 'oasis');
 
 console.log('=== BASALT ===');
 console.log(ascii(basalt));

@@ -11,7 +11,7 @@
 
 import {
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_WALL_FRONT, RIVER_BANDS,
-  WORLD_H, WORLD_W,
+  SHRINE, WORLD_H, WORLD_W,
 } from './types';
 import { BASALT_MASK_B64, NAV_GH, NAV_GW, OASIS_MASK_B64 } from './navmask-data';
 
@@ -87,9 +87,37 @@ function applyRivers(mask: Uint8Array): Uint8Array {
   return mask;
 }
 
+/** Stamp the painted keep (seat 0) and temple (seat 1) as solid stone so
+ *  ground units walk the grass to the door instead of through the oil. A
+ *  small door notch stays open so a siege can stand on the threshold. */
+function applyOasisShrines(mask: Uint8Array): Uint8Array {
+  const cx = NAV_GW / WORLD_W;
+  const cy = NAV_GH / WORLD_H;
+  for (const owner of [0, 1] as const) {
+    const s = SHRINE[owner];
+    const gx0 = Math.max(0, Math.floor((s.x - s.hw) * cx));
+    const gx1 = Math.min(NAV_GW, Math.ceil((s.x + s.hw) * cx));
+    const gy0 = Math.max(0, Math.floor((s.y - s.hh) * cy));
+    const gy1 = Math.min(NAV_GH, Math.ceil((s.y + s.hh) * cy));
+    for (let gy = gy0; gy < gy1; gy++) {
+      for (let gx = gx0; gx < gx1; gx++) {
+        const wx = (gx + 0.5) / cx;
+        const wy = (gy + 0.5) / cy;
+        const dx = (wx - s.x) / s.hw;
+        const dy = (wy - s.y) / s.hh;
+        if (dx * dx + dy * dy > 1) continue;
+        const onDoor = Math.abs(wx - s.doorX) <= 0.40 && Math.abs(wy - s.doorY) <= 0.26;
+        if (onDoor) continue;
+        mask[gy * NAV_GW + gx] = CELL.BLOCKED;
+      }
+    }
+  }
+  return mask;
+}
+
 const MASKS: Record<WorldId, Uint8Array> = {
   basalt: applyFortresses(applyRivers(decode(BASALT_MASK_B64))),
-  oasis: decode(OASIS_MASK_B64),
+  oasis: applyOasisShrines(decode(OASIS_MASK_B64)),
 };
 
 const CX = NAV_GW / WORLD_W; // cells per world unit (8)

@@ -1264,7 +1264,7 @@ class MusicDirector {
       const army = Math.min(1, opts.unitCount / 14);
       const danger = Math.max(0, Math.min(1, opts.oasisDanger ?? 0));
       this.armyHeat += (army - this.armyHeat) * 0.18;
-      // Start hot — the fist-pump is the crumple, not a calm pond bed.
+      // Start hot — the fist-pump is the crumble, not a calm pond bed.
       // Thicken the arrangement only; shrine fire rate stays on the sim grid.
       this.intensityTarget = Math.min(1, 0.64 + this.armyHeat * 0.24 + danger * 0.18);
       this.volumeTarget = 1.08 + danger * 0.08;

@@ -28,6 +28,7 @@ const arenas = [
   ['art-src/arena1.png', 'public/art/arena1.webp', 1206],
   ['art-src/arena2.png', 'public/art/arena2.webp', 1206],
 ];
+const oasisFloor = ['art-src/oasis.png', 'public/art/oasis.webp', 1206];
 
 /* Duel backdrops. Painted portrait to match the stage they fill — the old
  * landscape masters had to be cover-cropped to their middle third and blown
@@ -367,6 +368,7 @@ async function convertFortress(src, out, maxW) {
 
 for (const [src, out, w] of portraits) if (wanted(out)) await convert(src, out, w);
 for (const [src, out, w] of arenas) if (wanted(out)) await convert(src, out, w);
+if (wanted(oasisFloor[1])) await convertBackdrop(oasisFloor[0], oasisFloor[1], oasisFloor[2]);
 for (const [src, out, w] of duelBackdrops) if (wanted(out)) await convertBackdrop(src, out, w);
 for (const [src, out, w] of fortresses) if (wanted(out)) await convertFortress(src, out, w);
 /* 1280 costs the ordinary sheets nothing — they are authored at 1206-1536 and
