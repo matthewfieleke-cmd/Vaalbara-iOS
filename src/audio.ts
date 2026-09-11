@@ -1000,6 +1000,9 @@ class MusicDirector {
   /** Live army density 0..1 — a big on-screen brawl pushes rhythm density
    *  one subtle notch above what the minute ladder prescribes. */
   private armyHeat = 0;
+  /** How close either shrine is to crumpling (0..1). Opens a new Oasis
+   *  danger layer — still water (pads, harp, taiko, cello), not a rock kit. */
+  private oasisDanger = 0;
   /** Global bar index when Phase 1 began — anchors the verse/chorus phrase
    *  grid (and the chord loop) to battle start, so the suckout-and-slam
    *  always lands on a true section boundary. */
@@ -1263,15 +1266,17 @@ class MusicDirector {
     } else if (opts.phase === 'oasis') {
       const army = Math.min(1, opts.unitCount / 14);
       const danger = Math.max(0, Math.min(1, opts.oasisDanger ?? 0));
+      this.oasisDanger += (danger - this.oasisDanger) * 0.22;
       this.armyHeat += (army - this.armyHeat) * 0.18;
       // Start hot — the fist-pump is the crumble, not a calm pond bed.
-      // Thicken the arrangement only; shrine fire rate stays on the sim grid.
-      this.intensityTarget = Math.min(1, 0.64 + this.armyHeat * 0.24 + danger * 0.18);
-      this.volumeTarget = 1.08 + danger * 0.08;
+      // Danger opens a NEW arrangement layer (see case 'oasis'); intensity
+      // still thickens the hopeful bed so the two read as one score.
+      this.intensityTarget = Math.min(1, 0.70 + this.armyHeat * 0.18 + this.oasisDanger * 0.16);
+      this.volumeTarget = 1.10 + this.oasisDanger * 0.10;
       this.musicTier = 0;
       this.swellMinute = -1;
-      this.rideSfxBus(0.94 + danger * 0.08);
-      this.rideReverb(0.48 + danger * 0.08);
+      this.rideSfxBus(0.94 + this.oasisDanger * 0.08);
+      this.rideReverb(0.50 + this.oasisDanger * 0.10);
     } else if (opts.phase === 'transition') {
       this.volumeTarget = 1;
       this.musicTier = 0;
@@ -2534,12 +2539,14 @@ class MusicDirector {
 
       case 'oasis': {
         // Hopeful but driving: pads, harp arpeggios, plucked lead, lighter
-        // taikos — same heartbeat, warmer light.
+        // taikos — same heartbeat, warmer light. Danger does not just
+        // turn the same loop up; it opens a second water layer.
         const chord = MusicDirector.OASIS_PADS[bar % 4];
+        const danger = this.oasisDanger;
         if (s16 === 0) {
-          this.padChord(t, chord, 2.6, 0.05);
-          voice({ type: 'sine', freq: chord[0] / 2, dur: 2.2, gain: 0.22, bus: this.bus, when: t });
-          this.cello(t, chord[0] / 2, 2.4, 0.06);
+          this.padChord(t, chord, 2.6, 0.05 + danger * 0.012);
+          voice({ type: 'sine', freq: chord[0] / 2, dur: 2.2, gain: 0.22 + danger * 0.04, bus: this.bus, when: t });
+          this.cello(t, chord[0] / 2, 2.4, 0.06 + danger * 0.02);
         }
         // Harp / celesta arpeggio climbing the chord on the 8ths.
         if (s16 % 2 === 0) {
@@ -2551,8 +2558,8 @@ class MusicDirector {
           const note = MusicDirector.OASIS_LEAD[(bar * 2 + (s16 >> 1)) % 8];
           voice({ type: 'sine', freq: note, dur: 0.32, gain: 0.085, attack: 0.01, bus: this.bus, when: t, pan: 0.1 });
         }
-        if (s16 === 0) this.taiko(t, true, 0.8);
-        if (s16 === 8) this.taiko(t, false, 0.7);
+        if (s16 === 0) this.taiko(t, true, 0.8 + danger * 0.12);
+        if (s16 === 8) this.taiko(t, false, 0.7 + danger * 0.1);
         if (inten > 0.6 && s16 === 12) this.taiko(t, false, 0.5);
         if (inten > 0.72 && s16 === 4) this.taiko(t, false, 0.55);
         if (inten > 0.45 && s16 % 4 === 3) this.hat(t, 0.5);
@@ -2562,6 +2569,39 @@ class MusicDirector {
         if (bar % 8 === 4 && s16 === 0) this.playTheme(t, 2, 0.045);
         // Shimmer.
         if (step % 32 === 24) this.shimmer(t, 1174.7, 1.6, 0.02);
+
+        // --- Danger layer: still water, new voices --------------------------
+        // A low cello pedal, answering taikos, and 16th harp filigree open
+        // as the stone cracks. No rock kit — urgency from the same pond.
+        if (danger > 0.22) {
+          const d = (danger - 0.22) / 0.78;
+          if (s16 === 0) {
+            this.cello(t, chord[0] / 4, 2.55, 0.045 * d);
+            this.padChord(t, [chord[0] / 2, chord[1] / 2, chord[2] / 2], 2.6, 0.028 * d);
+          }
+          // Answering taiko on the and-of-2 / and-of-4 — a second drummer,
+          // not a louder first one.
+          if (s16 === 6) this.taiko(t, false, (0.32 + 0.38 * d));
+          if (s16 === 14) this.taiko(t, false, (0.28 + 0.34 * d));
+        }
+        if (danger > 0.48) {
+          const d = (danger - 0.48) / 0.52;
+          // Off-8th harp: the pond speeds up without leaving the harp.
+          if (s16 % 2 === 1) {
+            const tone = chord[(s16 >> 1) % 4] * 3;
+            this.harp(t, tone, 0.016 * d, s16 % 4 === 1 ? -0.32 : 0.32);
+          }
+          // Sub heartbeat — sine, not a kick drum.
+          if (s16 === 0 || s16 === 8) {
+            voice({
+              type: 'sine', freq: 46, freqEnd: 30, dur: 0.32,
+              gain: 0.10 * d, attack: 0.012, bus: this.bus, when: t,
+            });
+          }
+        }
+        if (danger > 0.72 && s16 === 0 && bar % 4 === 2) {
+          this.shimmer(t, 880, 1.8, 0.018);
+        }
         break;
       }
 
