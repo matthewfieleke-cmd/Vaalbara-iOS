@@ -2040,7 +2040,7 @@ export class Renderer {
         const ember = pr.style !== 'water';
         const arc = Math.sin(flight * Math.PI) * this.unit * 0.22;
         const y = p.y - arc;
-        const rad = this.unit * 0.11;
+        const rad = this.unit * 0.15;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 2.4);
