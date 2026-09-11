@@ -144,9 +144,10 @@ console.log('scripted agency checks');
   st.players[0].hand[0] = 'lion';
   const gx = FORT_LANES[0][0];
   const gy = FORT_PAD_Y[0];
-  advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x: gx, y: gy, dirX: 0, dirY: -1 } }]);
+  const { events: gateEv } = advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x: gx, y: gy, dirX: 0, dirY: -1 } }]);
+  const spawn = gateEv.find((e) => e.type === 'spawn');
   const lion = st.units.find((u) => u.species === 'lion');
-  assert(!!lion && Math.abs(lion.y - FORT_SPAWN_Y[0]) < 0.08, 'gate march spawns on the rear apron');
+  assert(!!spawn && Math.abs(spawn.y - FORT_SPAWN_Y[0]) < 0.08, 'gate march spawns on the rear apron');
   assert(!!lion?.waypoint && Math.abs(lion.waypoint.x - gx) < 0.05, 'gate march waypoint holds the lane x');
 }
 
