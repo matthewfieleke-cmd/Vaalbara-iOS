@@ -229,8 +229,11 @@ export class Renderer {
   drag: DragOverlay = { active: false, fromX: 0, fromY: 0, toX: 0, toY: 0, valid: false, hue: 0 };
   telegraph: TelegraphOverlay = { active: false, x: 0, y: 0, kind: 'spell' };
   /** True while the player has a unit card armed in Phase 1 — the two gate
-   *  pads pulse hard so "tap a gate" is unmissable. */
+   *  pads pulse hard so "tap a gate" is unmissable, and the friendly half
+   *  glows so a field drop is equally obvious. */
   padHint = false;
+  /** Last emit time for each persistent ruin-smoke column (render-only). */
+  private ruinSmokeAt = new Map<string, number>();
 
   // Layout.
   private unit = 40; // px per world unit
@@ -563,7 +566,7 @@ export class Renderer {
         gravity: kind === 'spark' ? 130 : kind === 'ash' ? 12 : kind === 'mote' ? -30 : kind === 'petal' ? 24 : 0,
       });
     }
-    if (this.particles.length > 700) this.particles.splice(0, this.particles.length - 700);
+    if (this.particles.length > 900) this.particles.splice(0, this.particles.length - 900);
   }
 
   /* ------------------------------ main loop ----------------------------- */
@@ -919,6 +922,11 @@ export class Renderer {
       if (m.hp <= 0) {
         const ruin = getOasisOverlay(`crumble-${side}`);
         if (ruin) this.drawArenaImage(ctx, ruin, 1);
+        const ember = st.players[m.owner].faction === 'magma';
+        const s = SHRINE[m.owner];
+        const p = this.worldToScreen(s.shotX, s.shotY);
+        this.drawRuinPlume(ctx, p.x, p.y, ember, 1.15);
+        this.emitRuinColumn(`p2-${m.owner}`, p.x, p.y, ember);
         continue;
       }
       if (m.shield > 0) {
@@ -1085,6 +1093,115 @@ export class Renderer {
     }
   }
 
+  /** Soft stacked smoke banks over a crumbled tower — always on, so a dead
+   *  wing / shrine reads as burning even between particle bursts. */
+  private drawRuinPlume(
+    ctx: CanvasRenderingContext2D, x: number, y: number, ember: boolean, scale = 1,
+  ): void {
+    const u = this.unit * scale;
+    const t = this.time;
+    const pulse = 0.78 + Math.sin(t * 1.12 + x * 0.02) * 0.14;
+    ctx.save();
+    const r = this.boardRect();
+    ctx.beginPath();
+    ctx.roundRect(r.left - 3, r.top - 3, r.w + 6, r.h + 6, 12);
+    ctx.clip();
+    if (ember) {
+      const heart = ctx.createRadialGradient(x, y + u * 0.15, 1, x, y + u * 0.15, u * 0.95);
+      heart.addColorStop(0, `hsla(28 92% 52% / ${0.22 * pulse})`);
+      heart.addColorStop(0.45, `hsla(18 80% 38% / ${0.12 * pulse})`);
+      heart.addColorStop(1, 'hsla(16 70% 30% / 0)');
+      ctx.fillStyle = heart;
+      ctx.fillRect(x - u * 1.1, y - u * 0.5, u * 2.2, u * 1.6);
+    }
+    const layers: Array<[number, number, number, number]> = [
+      [0.00, 0.00, 1.05, 0.40],
+      [-0.95, 0.16, 1.35, 0.28],
+      [-1.95, -0.12, 1.65, 0.18],
+      [-3.05, 0.22, 1.95, 0.10],
+      [-4.15, -0.08, 2.25, 0.05],
+    ];
+    for (const [oy, ox, rad, a] of layers) {
+      const drift = Math.sin(t * 0.62 + oy * 1.7 + x * 0.03) * u * 0.18;
+      const cx = x + drift + ox * u;
+      const cy = y + oy * u;
+      const rr = rad * u;
+      const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, rr);
+      if (ember) {
+        g.addColorStop(0, `hsla(16 22% 16% / ${a * pulse})`);
+        g.addColorStop(0.55, `hsla(12 18% 14% / ${a * pulse * 0.7})`);
+        g.addColorStop(1, 'hsla(10 16% 12% / 0)');
+      } else {
+        g.addColorStop(0, `hsla(210 10% 38% / ${a * pulse})`);
+        g.addColorStop(0.55, `hsla(205 8% 32% / ${a * pulse * 0.65})`);
+        g.addColorStop(1, 'hsla(200 8% 28% / 0)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+    }
+    ctx.restore();
+  }
+
+  /** Cadenced rising wisps from a ruin. Time-gated so the column is steady
+   *  without dumping the particle budget. */
+  private emitRuinColumn(key: string, x: number, y: number, ember: boolean): void {
+    const last = this.ruinSmokeAt.get(key) ?? -10;
+    if (this.time - last < 0.05) return;
+    this.ruinSmokeAt.set(key, this.time);
+    const u = this.unit;
+    for (let i = 0; i < 2; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.55,
+        y: y + (Math.random() - 0.5) * u * 0.16,
+        vx: (Math.random() - 0.5) * u * 0.28,
+        vy: -(u * 0.48 + Math.random() * u * 0.42),
+        life: 0,
+        maxLife: 1.5 + Math.random() * 0.95,
+        size: u * (0.16 + Math.random() * 0.26),
+        hue: ember ? 18 : 205,
+        sat: ember ? 16 : 8,
+        lit: ember ? 26 : 44,
+        kind: 'mist',
+        alpha: 0.9,
+        gravity: -u * 0.06,
+      });
+    }
+    if (Math.random() < 0.5) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.4,
+        y,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -(u * 0.32 + Math.random() * u * 0.22),
+        life: 0,
+        maxLife: 1.7 + Math.random() * 0.6,
+        size: 2.1 + Math.random() * 2.4,
+        hue: ember ? 24 : 32,
+        sat: ember ? 14 : 6,
+        lit: 22,
+        kind: 'ash',
+        alpha: 0.75,
+        gravity: -14,
+      });
+    }
+    if (ember && Math.random() < 0.32) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.3,
+        y: y + u * 0.08,
+        vx: (Math.random() - 0.5) * 18,
+        vy: -(u * 0.55 + Math.random() * u * 0.35),
+        life: 0,
+        maxLife: 0.7 + Math.random() * 0.45,
+        size: 1.6 + Math.random() * 1.4,
+        hue: 22 + Math.random() * 12,
+        sat: 90,
+        lit: 58,
+        kind: 'mote',
+        alpha: 1,
+        gravity: -20,
+      });
+    }
+  }
+
   /** One Phase-1 stronghold's walls. The ENEMY fortress (front painting) is
    *  drawn UNDER the field units, so attackers stand against its wall and
    *  its tunnellers are clipped to the painted openings — but OVER the
@@ -1165,13 +1282,15 @@ export class Renderer {
       }
     }
 
-    // Smoulder on fallen wings: light dust only — keep fighters readable.
+    // Persistent smoke column on each crumbled gatehouse — the living wing
+    // stays clean. Ember heart, rising ash; fighters stay readable.
     for (const [wing, down] of [[wl, downL], [wr, downR]] as const) {
       if (!down) continue;
       const wp = this.worldToScreen(wing.x, wing.y);
-      if (Math.random() < 0.06) {
-        this.burst(wp.x + (Math.random() - 0.5) * u * 2.4, baseY - h * (0.1 + Math.random() * 0.2), 1, 'ash', 25, 0.7);
-      }
+      const sx = wp.x;
+      const sy = baseY - h * 0.28;
+      this.drawRuinPlume(ctx, sx, sy, true, 1);
+      this.emitRuinColumn(`p1-${owner}-${wing.wing}`, sx, sy, true);
     }
 
     // The battered gatehouse blooms hot for a beat (environmental light).
