@@ -616,23 +616,31 @@ const GLOBAL_SFX = {
     voice({ type: 'triangle', freq: 340, freqEnd: 520, dur: 0.18, gain: 0.04 });
   },
   shrineShotEmber: () => {
-    // Launch: a short whoosh off the battlement. The boom lives on impact.
-    voice({ type: 'sawtooth', freq: 220, freqEnd: 90, dur: 0.16, gain: 0.12, filterFreq: 700 });
-    noise({ dur: 0.14, gain: 0.08, filterFreq: 1600, filterEnd: 400 });
+    // Muzzle crash — the explosion is the FIRE, not the landing.
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 96, freqEnd: 22, dur: 1.05, gain: 0.58 });
+    voice({ type: 'sawtooth', freq: 78, freqEnd: 26, dur: 0.72, gain: 0.34, filterFreq: 220 });
+    noise({ dur: 0.62, gain: 0.46, filterFreq: 3200, filterEnd: 70 });
+    noise({ dur: 0.22, gain: 0.22, filterFreq: 1800, filterType: 'bandpass' });
+    voice({ type: 'triangle', freq: 210, freqEnd: 70, dur: 0.28, gain: 0.12, when: t + 0.04 });
+    voice({ type: 'sine', freq: 48, freqEnd: 24, dur: 0.9, gain: 0.22, when: t + 0.08 });
   },
   shrineShotWater: () => {
-    voice({ type: 'sine', freq: 480, freqEnd: 180, dur: 0.16, gain: 0.10 });
-    noise({ dur: 0.12, gain: 0.07, filterFreq: 2400, filterType: 'bandpass' });
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 88, freqEnd: 24, dur: 1.0, gain: 0.54 });
+    voice({ type: 'sawtooth', freq: 70, freqEnd: 28, dur: 0.68, gain: 0.28, filterFreq: 200 });
+    noise({ dur: 0.58, gain: 0.42, filterFreq: 2800, filterEnd: 80 });
+    noise({ dur: 0.28, gain: 0.2, filterFreq: 2400, filterEnd: 500, filterType: 'bandpass' });
+    voice({ type: 'triangle', freq: 360, freqEnd: 90, dur: 0.26, gain: 0.1, when: t + 0.05 });
+    voice({ type: 'sine', freq: 46, freqEnd: 22, dur: 0.85, gain: 0.2, when: t + 0.08 });
   },
   shrineImpactEmber: () => {
-    voice({ type: 'sine', freq: 72, freqEnd: 28, dur: 0.55, gain: 0.42 });
-    voice({ type: 'sawtooth', freq: 160, freqEnd: 48, dur: 0.32, gain: 0.16, filterFreq: 380 });
-    noise({ dur: 0.38, gain: 0.22, filterFreq: 1400, filterEnd: 180 });
+    voice({ type: 'sine', freq: 70, freqEnd: 36, dur: 0.16, gain: 0.14 });
+    noise({ dur: 0.12, gain: 0.08, filterFreq: 700, filterEnd: 180 });
   },
   shrineImpactWater: () => {
-    voice({ type: 'sine', freq: 88, freqEnd: 32, dur: 0.48, gain: 0.36 });
-    voice({ type: 'triangle', freq: 420, freqEnd: 140, dur: 0.28, gain: 0.10 });
-    noise({ dur: 0.32, gain: 0.18, filterFreq: 2200, filterEnd: 280, filterType: 'bandpass' });
+    voice({ type: 'sine', freq: 78, freqEnd: 40, dur: 0.14, gain: 0.12 });
+    noise({ dur: 0.1, gain: 0.07, filterFreq: 1100, filterEnd: 260, filterType: 'bandpass' });
   },
   marbleHit: () => {
     voice({ type: 'sine', freq: 180, freqEnd: 70, dur: 0.22, gain: 0.2 });
@@ -916,15 +924,15 @@ export function handleGameEvents(events: GameEvent[]): void {
         GLOBAL_SFX.obeliskDown();
         break;
       case 'shrineShot':
-        if (!claim(2)) break;
+        if (!claim(6)) break;
         if (e.kind === 'ember') GLOBAL_SFX.shrineShotEmber();
         else GLOBAL_SFX.shrineShotWater();
+        playHaptic('heavy');
         break;
       case 'shrineImpact':
-        if (!claim(4)) break;
+        if (!claim(1)) break;
         if (e.kind === 'ember') GLOBAL_SFX.shrineImpactEmber();
         else GLOBAL_SFX.shrineImpactWater();
-        playHaptic('heavy');
         break;
       case 'marbleHit':
         if (!claim(1)) break;

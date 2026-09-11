@@ -303,7 +303,7 @@ export interface PlayerInput {
 export type GameEvent =
   | { type: 'spawn'; unitId: number; species: SpeciesId; owner: PlayerId; x: number; y: number }
   | { type: 'attack'; unitId: number; species: SpeciesId; owner: PlayerId; x: number; y: number; tx: number; ty: number; crit: boolean; air: boolean }
-  | { type: 'hit'; unitId: number; x: number; y: number; amount: number; kind: 'melee' | 'ranged' | 'burn' | 'vent' | 'lava' | 'reflect' | 'stomp' }
+  | { type: 'hit'; unitId: number; x: number; y: number; amount: number; kind: 'melee' | 'ranged' | 'burn' | 'vent' | 'lava' | 'reflect' | 'stomp' | 'cannon' }
   | { type: 'death'; unitId: number; species: SpeciesId; owner: PlayerId; x: number; y: number }
   | { type: 'heal'; x: number; y: number; amount: number }
   | { type: 'roar'; species: SpeciesId; x: number; y: number }
@@ -530,17 +530,17 @@ export const MARBLE_HP = 720;
 /** Footprint radius — matches the painted keep / temple, so units stop
  *  at the door instead of walking through the stone. */
 export const MARBLE_R = 1.48;
-/** Cannon bolt — same DPS as the old 28 / 1.2 s beam (~23 / s). */
-export const MARBLE_SHOT_DMG = 92;
+/** Cannon shell — 200 every 8 s. A landed hit deletes chaff and chunks a tank. */
+export const MARBLE_SHOT_DMG = 200;
 /** Melee/ranged hits on marble — the stone is the chapter, so those
  *  swings have to matter. Spells keep their own building pct. */
 export const MARBLE_SIEGE_MULT = 2.6;
-/** 13 ticks = 3.9 s. Less frequent, more powerful. */
-export const MARBLE_SHOT_INTERVAL = 13;
+/** 27 ticks = 8.1 s. Half the old cadence; the blast carries the power. */
+export const MARBLE_SHOT_INTERVAL = 27;
 /** Owns the friendly half. inMarbleHalf still forbids shooting across. */
 export const MARBLE_SHOT_RANGE = 7.4;
-/** World-units per tick. A 5–7 wu shot is on screen for ~0.6–0.9 s. */
-export const MARBLE_CANNON_SPEED = 2.6;
+/** World-units per tick. A 5–7 wu shot is on screen for ~0.5–0.7 s. */
+export const MARBLE_CANNON_SPEED = 3.0;
 /** Splash on units only. No acid pool, no buildings. */
 export const MARBLE_CANNON_SPLASH = 0.75;
 /** ~190 HP veil — a few tank swings — even after the HP retune. */

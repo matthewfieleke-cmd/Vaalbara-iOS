@@ -16,7 +16,7 @@
  *    tick, with visual catch-up interpolation for network corrections.
  * ========================================================================== */
 
-import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_SHOT_INTERVAL, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
+import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
 import { getAnim, getFortArt, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
@@ -214,6 +214,10 @@ export class Renderer {
     x0: number; y0: number; x1: number; y1: number;
     hue: number; life: number; maxLife: number;
   }> = [];
+  /** Muzzle fireball drawn on top of the departing shell. */
+  private muzzleBlasts: Array<{
+    x: number; y: number; hue: number; ember: boolean; life: number; maxLife: number;
+  }> = [];
   private ghosts: Ghost[] = [];
   private hitStop = 0;
   private lastHitDir = new Map<number, { x: number; y: number }>();
@@ -234,6 +238,8 @@ export class Renderer {
   padHint = false;
   /** Last emit time for each persistent ruin-smoke column (render-only). */
   private ruinSmokeAt = new Map<string, number>();
+  /** Last emit time for barrel-heat motes while a shrine charges. */
+  private barrelHeatAt = new Map<string, number>();
 
   // Layout.
   private unit = 40; // px per world unit
@@ -352,7 +358,10 @@ export class Renderer {
       case 'hit': {
         const p = this.worldToScreen(e.x, e.y);
         const hue = e.kind === 'burn' ? 20 : e.kind === 'lava' ? 8 : e.kind === 'vent' ? 55 : e.kind === 'reflect' ? 160 : 0;
-        this.burst(p.x, p.y, e.kind === 'lava' ? 18 : 5, e.kind === 'lava' ? 'spark' : 'flash', hue, 1.4);
+        // Cannon landings stay quiet — the explosion already happened at the muzzle.
+        if (e.kind !== 'cannon') {
+          this.burst(p.x, p.y, e.kind === 'lava' ? 18 : 5, e.kind === 'lava' ? 'spark' : 'flash', hue, 1.4);
+        }
         if (e.kind === 'melee' || e.kind === 'ranged' || e.kind === 'lava') {
           this.flashes.set(e.unitId, 0.22);
           const dir = this.recallHitDir(e.x, e.y) ?? { x: 0.7, y: 0.3 };
@@ -480,19 +489,23 @@ export class Renderer {
       }
       case 'shrineShot': {
         const a = this.worldToScreen(e.x, e.y);
-        const hue = e.kind === 'ember' ? 18 : 190;
-        this.burst(a.x, a.y, 14, 'spark', hue, 1.6);
-        this.burst(a.x, a.y, 3, 'flash', hue, 1.1);
-        this.shake = Math.max(this.shake, 3.5);
+        const ember = e.kind === 'ember';
+        const hue = ember ? 18 : 190;
+        this.burst(a.x, a.y, 36, ember ? 'spark' : 'flash', hue, 3.4);
+        this.burst(a.x, a.y, 8, 'shockwave', hue, 1.6);
+        this.burst(a.x, a.y, 22, 'ash', ember ? 22 : 200, 2.6);
+        this.burst(a.x, a.y, 16, 'mist', ember ? 18 : 195, 2.2);
+        this.burst(a.x, a.y, 4, 'flash', ember ? 40 : 188, 1.8);
+        this.muzzleBlasts.push({ x: a.x, y: a.y, hue, ember, life: 0, maxLife: 0.5 });
+        this.shake = Math.max(this.shake, 18);
+        this.hitStop = Math.max(this.hitStop, 0.07);
         break;
       }
       case 'shrineImpact': {
         const p = this.worldToScreen(e.x, e.y);
-        const hue = e.kind === 'ember' ? 18 : 192;
-        this.burst(p.x, p.y, 22, e.kind === 'ember' ? 'spark' : 'bubble', hue, 2.4);
-        this.burst(p.x, p.y, 6, 'shockwave', hue, 1.3);
-        this.burst(p.x, p.y, 10, e.kind === 'ember' ? 'ash' : 'mist', hue, 1.5);
-        this.shake = Math.max(this.shake, 11);
+        const hue = e.kind === 'ember' ? 24 : 200;
+        this.burst(p.x, p.y, 8, 'ash', hue, 1.1);
+        this.burst(p.x, p.y, 4, e.kind === 'ember' ? 'mist' : 'bubble', hue, 0.8);
         break;
       }
       case 'obeliskHit': {
@@ -642,6 +655,7 @@ export class Renderer {
       if (st.obelisks.length > 0) this.drawFortressWalls(ctx, st, this.localSeat);
       this.drawUnits(ctx, st, dt, now, 'over');
       this.drawProjectiles(ctx, st, now);
+      this.drawMuzzleBlasts(ctx, dt);
       this.drawShrineBeams(ctx, dt);
       this.drawZones(ctx, st, 'over');
       if (st.obelisks.length > 0) this.drawFortressBars(ctx, st);
@@ -984,21 +998,124 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255, 214, 90, 0.85)';
         ctx.fillRect(p.x - bw / 2, p.y + u * 0.18 - 3, ward, 2);
       }
-      // Cannon charge on the battlement / spire — builds until the bolt flies.
-      const muzzle = this.worldToScreen(s.shotX, s.shotY);
-      const charge = clamp(1 - m.atkTimer / MARBLE_SHOT_INTERVAL, 0, 1);
-      const hot = 0.22 + charge * 0.72;
-      const hue = st.players[m.owner].faction === 'magma' ? 22 : 192;
-      ctx.globalCompositeOperation = 'lighter';
-      const glow = ctx.createRadialGradient(muzzle.x, muzzle.y, 1, muzzle.x, muzzle.y, u * (0.55 + charge * 0.55));
-      glow.addColorStop(0, `hsla(${hue} 95% 72% / ${0.55 * hot})`);
-      glow.addColorStop(0.45, `hsla(${hue} 90% 55% / ${0.28 * hot})`);
-      glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(muzzle.x, muzzle.y, u * (0.55 + charge * 0.55), 0, Math.PI * 2);
-      ctx.fill();
+      this.drawCannonBarrel(ctx, st, m.owner, m.atkTimer);
       ctx.restore();
+    }
+  }
+
+  /** Iron mouth on the battlement / spire. Idle is a dark tube; the last
+   *  two seconds go white-hot so the blast is telegraphed, not a surprise. */
+  private drawCannonBarrel(
+    ctx: CanvasRenderingContext2D, st: GameState, owner: PlayerId, atkTimer: number,
+  ): void {
+    const s = SHRINE[owner];
+    const u = this.unit;
+    const muzzle = this.worldToScreen(s.shotX, s.shotY);
+    let aimX = s.shotX;
+    let aimY = owner === 0 ? s.shotY - 0.95 : s.shotY + 0.95;
+    let bestD = Infinity;
+    for (const unit of st.units) {
+      if (unit.hp <= 0 || unit.owner === owner) continue;
+      if (owner === 0 ? unit.y < WORLD_H * 0.5 : unit.y >= WORLD_H * 0.5) continue;
+      const d = Math.hypot(unit.x - s.shotX, unit.y - s.shotY);
+      if (d > MARBLE_SHOT_RANGE || d >= bestD) continue;
+      bestD = d;
+      aimX = unit.x;
+      aimY = unit.y;
+    }
+    const ahead = this.worldToScreen(aimX, aimY);
+    const ang = Math.atan2(ahead.y - muzzle.y, ahead.x - muzzle.x);
+    const raw = clamp(1 - atkTimer / MARBLE_SHOT_INTERVAL, 0, 1);
+    // First ~6 s stay iron. Last 7 ticks (~2.1 s) ramp to white-hot.
+    const heatTicks = 7;
+    const heat = atkTimer <= heatTicks ? 1 - atkTimer / heatTicks : 0;
+    const charge = atkTimer > heatTicks
+      ? 0.05 + raw * 0.12
+      : 0.18 + Math.pow(heat, 1.12) * 0.82;
+    const ember = st.players[owner].faction === 'magma';
+    const hue = ember ? 22 : 192;
+    const pulse = 0.8 + Math.sin(this.time * (3.4 + charge * 10)) * 0.2 * Math.max(0.15, charge);
+
+    ctx.save();
+    ctx.translate(muzzle.x, muzzle.y);
+    ctx.rotate(ang);
+    // Dark tube — reads as a barrel, not a floating light.
+    const len = u * 0.98;
+    const half = u * (0.2 + charge * 0.07);
+    ctx.fillStyle = 'rgba(6,5,8,0.82)';
+    ctx.beginPath();
+    ctx.roundRect(-len * 0.28, -half * 1.22, len * 1.22, half * 2.44, 4);
+    ctx.fill();
+    const tube = ctx.createLinearGradient(-len * 0.22, 0, len * 0.92, 0);
+    tube.addColorStop(0, `hsl(22 8% ${10 + charge * 10}%)`);
+    tube.addColorStop(0.55, `hsl(18 14% ${14 + charge * 14}%)`);
+    tube.addColorStop(1, `hsl(${hue} ${18 + charge * 55}% ${16 + charge * 28}%)`);
+    ctx.fillStyle = tube;
+    ctx.beginPath();
+    ctx.roundRect(-len * 0.2, -half, len, half * 2, 3);
+    ctx.fill();
+    // Bore — fills with heat as the shot comes up.
+    ctx.fillStyle = charge < 0.35
+      ? 'hsl(0 0% 5%)'
+      : `hsl(${ember ? 28 : 190} ${40 + charge * 50}% ${8 + charge * 42}%)`;
+    ctx.beginPath();
+    ctx.ellipse(len * 0.76, 0, half * 0.48, half * 0.98, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const rad = u * (0.55 + charge * 1.55) * pulse;
+    const glow = ctx.createRadialGradient(muzzle.x, muzzle.y, 1, muzzle.x, muzzle.y, rad);
+    glow.addColorStop(0, `hsla(${ember ? 44 : 186} 100% ${70 + charge * 22}% / ${0.22 + charge * 0.78})`);
+    glow.addColorStop(0.32, `hsla(${hue} 95% ${52 + charge * 16}% / ${0.16 + charge * 0.5})`);
+    glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(muzzle.x, muzzle.y, rad, 0, Math.PI * 2);
+    ctx.fill();
+    if (charge > 0.4) {
+      ctx.fillStyle = `hsla(${ember ? 48 : 186} 100% 97% / ${0.28 + (charge - 0.4) * 1.25})`;
+      ctx.beginPath();
+      ctx.arc(muzzle.x, muzzle.y, u * (0.1 + charge * 0.16), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    if (charge > 0.22) this.emitBarrelHeat(`barrel-${owner}`, muzzle.x, muzzle.y, ember, charge);
+  }
+
+  private emitBarrelHeat(key: string, x: number, y: number, ember: boolean, charge: number): void {
+    const last = this.barrelHeatAt.get(key) ?? -10;
+    const gap = charge > 0.78 ? 0.035 : 0.07;
+    if (this.time - last < gap) return;
+    this.barrelHeatAt.set(key, this.time);
+    const u = this.unit;
+    this.particles.push({
+      x: x + (Math.random() - 0.5) * u * 0.22,
+      y: y + (Math.random() - 0.5) * u * 0.12,
+      vx: (Math.random() - 0.5) * 14,
+      vy: -(u * 0.35 + Math.random() * u * 0.4),
+      life: 0,
+      maxLife: 0.45 + Math.random() * 0.35,
+      size: 1.4 + Math.random() * 1.8,
+      hue: ember ? 22 + Math.random() * 16 : 190,
+      sat: ember ? 90 : 70,
+      lit: 58,
+      kind: ember ? 'mote' : 'bubble',
+      alpha: 0.7 + charge * 0.3,
+      gravity: -18,
+    });
+    if (charge > 0.62 && Math.random() < 0.7) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.3,
+        y,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -(u * 0.2 + Math.random() * u * 0.18),
+        life: 0, maxLife: 0.7, size: u * (0.1 + Math.random() * 0.12),
+        hue: ember ? 18 : 205, sat: 12, lit: 28,
+        kind: 'mist', alpha: 0.55, gravity: -8,
+      });
     }
   }
 
@@ -1866,36 +1983,53 @@ export class Renderer {
       const flight = clamp(1 - (pr.ticksLeft - k) / Math.max(1, totalTicks), 0, 1);
       if (pr.kind === 'cannon') {
         const ember = pr.style !== 'water';
-        const hue = ember ? 22 : 192;
-        const arc = Math.sin(flight * Math.PI) * this.unit * 1.65;
+        // Flat shot, not a lobbed orb — just enough lift to read as airborne.
+        const arc = Math.sin(flight * Math.PI) * this.unit * 0.48;
         const y = p.y - arc;
-        const rad = this.unit * 0.38;
+        const prev = this.worldToScreen(pr.px, pr.py);
+        const ang = Math.atan2(p.y - prev.y, p.x - prev.x);
+        const rad = this.unit * 0.17;
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 1.8);
-        g.addColorStop(0, ember ? 'hsl(40 100% 92%)' : 'hsl(190 100% 92%)');
-        g.addColorStop(0.35, ember ? 'hsl(28 100% 62%)' : 'hsl(196 95% 62%)');
-        g.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
-        ctx.fillStyle = g;
+        ctx.translate(p.x, y);
+        ctx.rotate(ang);
+        // Iron shell: dark mass with a hard highlight, fuse spark at the rear.
+        const body = ctx.createRadialGradient(-rad * 0.35, -rad * 0.4, 1, 0, 0, rad * 1.35);
+        body.addColorStop(0, ember ? 'hsl(28 18% 38%)' : 'hsl(200 12% 40%)');
+        body.addColorStop(0.45, ember ? 'hsl(20 14% 18%)' : 'hsl(205 10% 20%)');
+        body.addColorStop(1, 'hsl(15 8% 8%)');
+        ctx.fillStyle = body;
         ctx.beginPath();
-        ctx.arc(p.x, y, rad * 1.8, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, rad * 1.35, rad * 0.95, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = ember ? 'hsl(48 100% 96%)' : 'hsl(188 100% 96%)';
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
         ctx.beginPath();
-        ctx.arc(p.x, y, rad * 0.42, 0, Math.PI * 2);
+        ctx.ellipse(-rad * 0.35, -rad * 0.32, rad * 0.32, rad * 0.18, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        if (Math.random() < 0.85) {
+        // Tiny fuse — the only light on the shot.
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const fuseX = p.x - Math.cos(ang) * rad * 1.2;
+        const fuseY = y - Math.sin(ang) * rad * 1.2;
+        ctx.fillStyle = ember ? 'hsla(38 100% 70% / 0.9)' : 'hsla(188 90% 78% / 0.85)';
+        ctx.beginPath();
+        ctx.arc(fuseX, fuseY, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        if (Math.random() < 0.9) {
           this.particles.push({
-            x: p.x, y, vx: (Math.random() - 0.5) * 18, vy: 8,
-            life: 0, maxLife: 0.35, size: ember ? 3.2 : 3.6,
-            hue, sat: 90, lit: 65,
-            kind: ember ? 'spark' : 'bubble', alpha: 0.8, gravity: -10,
+            x: fuseX, y: fuseY,
+            vx: -Math.cos(ang) * 22 + (Math.random() - 0.5) * 10,
+            vy: -Math.sin(ang) * 22 + 6,
+            life: 0, maxLife: 0.38 + Math.random() * 0.2,
+            size: 2.6 + Math.random() * 2.2,
+            hue: ember ? 22 : 30, sat: 8, lit: 22,
+            kind: 'ash', alpha: 0.7, gravity: -6,
           });
         }
-        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.fillStyle = 'rgba(0,0,0,0.38)';
         ctx.beginPath();
-        ctx.ellipse(p.x, p.y + 4, 9, 3.4, 0, 0, Math.PI * 2);
+        ctx.ellipse(p.x, p.y + 5, 7, 2.6, 0, 0, Math.PI * 2);
         ctx.fill();
         continue;
       }
@@ -1922,6 +2056,39 @@ export class Renderer {
       ctx.ellipse(p.x, p.y + 3, 6, 2.6, 0, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  private drawMuzzleBlasts(ctx: CanvasRenderingContext2D, dt: number): void {
+    const next = [];
+    for (const b of this.muzzleBlasts) {
+      b.life += dt;
+      if (b.life >= b.maxLife) continue;
+      const t = b.life / b.maxLife;
+      const fade = 1 - t;
+      const u = this.unit;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const rad = u * (0.85 + t * 2.6);
+      const g = ctx.createRadialGradient(b.x, b.y, 1, b.x, b.y, rad);
+      g.addColorStop(0, `hsla(${b.ember ? 48 : 186} 100% 97% / ${0.98 * fade})`);
+      g.addColorStop(0.2, `hsla(${b.hue} 100% 62% / ${0.78 * fade})`);
+      g.addColorStop(0.5, `hsla(${b.hue} 90% 48% / ${0.34 * fade})`);
+      g.addColorStop(1, `hsla(${b.hue} 80% 40% / 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, rad, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.save();
+      ctx.strokeStyle = `hsla(${b.hue} 30% 18% / ${0.45 * fade})`;
+      ctx.lineWidth = 4 * fade;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, u * (0.55 + t * 1.8), u * (0.36 + t * 1.15), 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      next.push(b);
+    }
+    this.muzzleBlasts = next;
   }
 
   private drawShrineBeams(ctx: CanvasRenderingContext2D, dt: number): void {

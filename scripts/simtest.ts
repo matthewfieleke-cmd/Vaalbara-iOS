@@ -183,7 +183,10 @@ console.log('scripted agency checks');
     { owner: 0, hp: 720, maxHp: 720, shield: 0, shieldMax: 0, x: MARBLE_POS[0].x, y: MARBLE_POS[0].y, r: MARBLE_R, atkTimer: 0 },
     { owner: 1, hp: 720, maxHp: 720, shield: 0, shieldMax: 0, x: MARBLE_POS[1].x, y: MARBLE_POS[1].y, r: MARBLE_R, atkTimer: 99 },
   ];
-  st.units.push(dummyUnit({ owner: 1, x: 4.5, y: 9.15, hp: 200, maxHp: 200 }));
+  st.units.push(dummyUnit({
+    owner: 1, x: 4.5, y: 9.15, hp: 400, maxHp: 400,
+    buffs: { stun: 99, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
+  }));
   const zonesAtLaunch = st.zones.length;
   const fired = advanceTick(st, []);
   const cannon = st.projectiles.some((p) => p.kind === 'cannon');
@@ -191,12 +194,18 @@ console.log('scripted agency checks');
   assert(st.zones.length === zonesAtLaunch, 'cannon launch does not spawn an acid pool');
   let impact = false;
   let pooled = false;
+  let landed = 0;
   for (let i = 0; i < 8; i++) {
     const { events } = advanceTick(st, []);
     if (events.some((e) => e.type === 'shrineImpact')) impact = true;
     if (st.zones.some((z) => z.kind === 'acidpool')) pooled = true;
+    for (const e of events) {
+      if (e.type === 'hit' && e.unitId === 9001 && e.kind === 'cannon') landed += e.amount;
+    }
   }
+  const victim = st.units.find((u) => u.id === 9001);
   assert(impact, 'cannon landing emits shrineImpact');
+  assert(landed === 200 && !!victim && victim.hp === 200, 'cannon hits for 200 on landing');
   assert(!pooled, 'cannon landing does not leave an acid pool');
 }
 

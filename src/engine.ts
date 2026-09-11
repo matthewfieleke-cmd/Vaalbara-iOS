@@ -395,7 +395,7 @@ function inStealthCover(st: GameState, u: UnitState): boolean {
 function dealDamage(
   st: GameState, ev: GameEvent[],
   attacker: RuntimeUnit | null, victim: UnitState, amount: number,
-  kind: 'melee' | 'ranged' | 'burn' | 'vent' | 'lava' | 'reflect' | 'stomp',
+  kind: 'melee' | 'ranged' | 'burn' | 'vent' | 'lava' | 'reflect' | 'stomp' | 'cannon',
 ): void {
   // HP is discrete — round at the boundary so multipliers (charge, bless,
   // splash) never leak fractional chips into state or floating combat text.
@@ -1045,7 +1045,7 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
         if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
-          dealDamage(st, ev, null, o, pr.dmg, 'ranged');
+          dealDamage(st, ev, null, o, pr.dmg, 'cannon');
           st.players[pr.owner].damageDealt += pr.dmg;
         }
       }
@@ -1769,17 +1769,21 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
     const style = faction === 'magma' ? 'ember' : 'water';
     const shot = SHRINE[m.owner];
     const d = Math.max(0.001, dist(shot.shotX, shot.shotY, best.x, best.y));
-    const speed = MARBLE_CANNON_SPEED;
+    // Land ON the aimed body. Constant speed overshoots whenever
+    // distance/speed is not an integer — a 2.2 wu shot at speed 3 would
+    // fly 3 wu and miss a 0.75 splash. At least two ticks so the shell
+    // is on screen as a flying projectile, not a teleport.
+    const ticks = Math.max(2, Math.ceil(d / MARBLE_CANNON_SPEED));
     st.projectiles.push({
       id: nextProjId++,
       owner: m.owner,
       kind: 'cannon',
       style,
       x: shot.shotX, y: shot.shotY, px: shot.shotX, py: shot.shotY,
-      vx: ((best.x - shot.shotX) / d) * speed,
-      vy: ((best.y - shot.shotY) / d) * speed,
+      vx: (best.x - shot.shotX) / ticks,
+      vy: (best.y - shot.shotY) / ticks,
       dmg: MARBLE_SHOT_DMG,
-      ticksLeft: Math.max(1, Math.ceil(d / speed)),
+      ticksLeft: ticks,
     });
     ev.push({
       type: 'shrineShot',
