@@ -486,8 +486,10 @@ export function basaltDefendAnchor(player: PlayerId, wing: 0 | 1): { x: number; 
 }
 
 export const AQUA_MAX = 10;
-/** Slow drip (1 aqua / ~3.75 s) keeps armies small: distinct duels, not mobs. */
-export const AQUA_PER_TICK_P1 = 0.08;
+/** 1 aqua / ~2.8 s — enough to answer a fight, not enough to mob. */
+export const AQUA_PER_TICK_P1 = 0.107;
+/** Last 40 s of Basalt: a short surge so the closing act can still spend. */
+export const AQUA_PER_TICK_P1_LATE = 0.13;
 export const AQUA_PER_TICK_P2 = 0.16; // doubles in the Oasis
 export const HAND_SIZE = 4;
 /** Absolute ceiling on living units per player. Early Phase 1 stays at
@@ -516,10 +518,10 @@ export function armyCap(phase: 'basalt' | 'transition' | 'oasis' | 'ended', basa
 export const CAPTURE_RATE = 1;
 /** Phase-1 objective: each seat's fortress has TWO gatehouse wings, each
  *  with its own HP. The Basalt Fields end only when a fortress loses both. */
-/** First-gate HP. The remaining wing hardens after its sister falls
- *  (see dealObeliskDamage) so clean sweeps stay rare — especially once
- *  staged army slots 7–8 add late siege pressure. */
-export const OBELISK_HP = 1680;
+/** First-gate HP. A won-bridge punish should SHOW; the remaining wing
+ *  still hardens after its sister falls (see dealObeliskDamage) so clean
+ *  sweeps stay rare. */
+export const OBELISK_HP = 1380;
 
 /** Phase-2 shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
  *  in 2:30; siege multiplier + this HP make a landed push crumble near

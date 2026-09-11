@@ -14,7 +14,7 @@
  * ========================================================================== */
 
 import {
-  ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_PER_TICK_P1, AQUA_PER_TICK_P2, BLESSING_MULT,
+  ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_PER_TICK_P1, AQUA_PER_TICK_P1_LATE, AQUA_PER_TICK_P2, BLESSING_MULT,
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
@@ -1829,7 +1829,10 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
 
   st.tick++;
 
-  const income = st.phase === 'oasis' ? AQUA_PER_TICK_P2 : AQUA_PER_TICK_P1;
+  let income = st.phase === 'oasis' ? AQUA_PER_TICK_P2 : AQUA_PER_TICK_P1;
+  if (st.phase === 'basalt' && st.phaseTicksLeft <= 133) {
+    income = AQUA_PER_TICK_P1_LATE;
+  }
   if (st.phase !== 'transition') {
     for (const p of st.players) p.aqua = Math.min(AQUA_MAX, p.aqua + income);
   }
