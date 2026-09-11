@@ -19,7 +19,7 @@ import {
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
-  MARBLE_SIEGE_MULT,
+  MARBLE_SIEGE_MULT, MARBLE_CANNON_SPEED, MARBLE_CANNON_SPLASH,
   MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
   SHRINE,
   RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
@@ -938,7 +938,7 @@ function trexStomp(st: GameState, ev: GameEvent[], u: RuntimeUnit): void {
 
 function tickProjectiles(st: GameState, ev: GameEvent[]): void {
   for (const pr of st.projectiles) {
-    if (pr.targetId != null) {
+    if (pr.kind === 'acid' && pr.targetId != null) {
       const tgt = st.units.find((u) => u.id === pr.targetId && u.hp > 0);
       if (tgt) {
         const dx = tgt.x - pr.x;
@@ -963,33 +963,51 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
     pr.x += pr.vx;
     pr.y += pr.vy;
     pr.ticksLeft--;
-    if (pr.ticksLeft <= 0) {
-      ev.push({ type: 'splash', x: pr.x, y: pr.y });
+    if (pr.ticksLeft > 0) continue;
+
+    if (pr.kind === 'cannon') {
+      ev.push({
+        type: 'shrineImpact',
+        owner: pr.owner,
+        x: pr.x, y: pr.y,
+        kind: pr.style === 'water' ? 'water' : 'ember',
+      });
+      const r2 = MARBLE_CANNON_SPLASH * MARBLE_CANNON_SPLASH;
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
-        if (dist2(o.x, o.y, pr.x, pr.y) <= MECHANICS.acidSplashRadius ** 2) {
+        if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
           dealDamage(st, ev, null, o, pr.dmg, 'ranged');
           st.players[pr.owner].damageDealt += pr.dmg;
         }
       }
-      for (const ob of st.obelisks) {
-        if (ob.owner === pr.owner || ob.hp <= 0) continue;
-        if (dist2(ob.x, ob.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + ob.r) ** 2) {
-          dealObeliskDamage(st, ev, pr.owner, ob, pr.dmg);
-        }
-      }
-      for (const m of st.marbles) {
-        if (m.owner === pr.owner || m.hp <= 0) continue;
-        if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
-          dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
-        }
-      }
-      st.zones.push({
-        id: nextZoneId++, kind: 'acidpool', owner: pr.owner,
-        x: pr.x, y: pr.y, r: SPELL_BALANCE.acidpool.radius,
-        ticksLeft: SPELL_BALANCE.acidpool.duration,
-      });
+      continue;
     }
+
+    ev.push({ type: 'splash', x: pr.x, y: pr.y });
+    for (const o of st.units) {
+      if (o.hp <= 0 || o.owner === pr.owner) continue;
+      if (dist2(o.x, o.y, pr.x, pr.y) <= MECHANICS.acidSplashRadius ** 2) {
+        dealDamage(st, ev, null, o, pr.dmg, 'ranged');
+        st.players[pr.owner].damageDealt += pr.dmg;
+      }
+    }
+    for (const ob of st.obelisks) {
+      if (ob.owner === pr.owner || ob.hp <= 0) continue;
+      if (dist2(ob.x, ob.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + ob.r) ** 2) {
+        dealObeliskDamage(st, ev, pr.owner, ob, pr.dmg);
+      }
+    }
+    for (const m of st.marbles) {
+      if (m.owner === pr.owner || m.hp <= 0) continue;
+      if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
+        dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
+      }
+    }
+    st.zones.push({
+      id: nextZoneId++, kind: 'acidpool', owner: pr.owner,
+      x: pr.x, y: pr.y, r: SPELL_BALANCE.acidpool.radius,
+      ticksLeft: SPELL_BALANCE.acidpool.duration,
+    });
   }
   st.projectiles = st.projectiles.filter((p) => p.ticksLeft > 0);
 }
@@ -1679,13 +1697,27 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
       continue;
     }
     const faction = st.players[m.owner].faction;
+    const style = faction === 'magma' ? 'ember' : 'water';
+    const shot = SHRINE[m.owner];
+    const d = Math.max(0.001, dist(shot.shotX, shot.shotY, best.x, best.y));
+    const speed = MARBLE_CANNON_SPEED;
+    st.projectiles.push({
+      id: nextProjId++,
+      owner: m.owner,
+      kind: 'cannon',
+      style,
+      x: shot.shotX, y: shot.shotY, px: shot.shotX, py: shot.shotY,
+      vx: ((best.x - shot.shotX) / d) * speed,
+      vy: ((best.y - shot.shotY) / d) * speed,
+      dmg: MARBLE_SHOT_DMG,
+      ticksLeft: Math.max(1, Math.ceil(d / speed)),
+    });
     ev.push({
       type: 'shrineShot',
       owner: m.owner,
-      x: SHRINE[m.owner].shotX, y: SHRINE[m.owner].shotY, tx: best.x, ty: best.y,
-      kind: faction === 'magma' ? 'ember' : 'water',
+      x: shot.shotX, y: shot.shotY, tx: best.x, ty: best.y,
+      kind: style,
     });
-    dealDamage(st, ev, null, best, MARBLE_SHOT_DMG, 'ranged');
     m.atkTimer = MARBLE_SHOT_INTERVAL;
   }
 }

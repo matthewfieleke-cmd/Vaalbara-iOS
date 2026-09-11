@@ -16,7 +16,7 @@
  *    tick, with visual catch-up interpolation for network corrections.
  * ========================================================================== */
 
-import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
+import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_SHOT_INTERVAL, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
 import { getAnim, getFortArt, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
@@ -480,11 +480,19 @@ export class Renderer {
       }
       case 'shrineShot': {
         const a = this.worldToScreen(e.x, e.y);
-        const b = this.worldToScreen(e.tx, e.ty);
         const hue = e.kind === 'ember' ? 18 : 190;
-        this.burst(a.x, a.y, 8, 'spark', hue, 1.1);
-        this.burst(b.x, b.y, 6, e.kind === 'ember' ? 'spark' : 'bubble', hue, 0.9);
-        this.shrineBeams.push({ x0: a.x, y0: a.y, x1: b.x, y1: b.y, hue, life: 0, maxLife: 0.28 });
+        this.burst(a.x, a.y, 14, 'spark', hue, 1.6);
+        this.burst(a.x, a.y, 3, 'flash', hue, 1.1);
+        this.shake = Math.max(this.shake, 3.5);
+        break;
+      }
+      case 'shrineImpact': {
+        const p = this.worldToScreen(e.x, e.y);
+        const hue = e.kind === 'ember' ? 18 : 192;
+        this.burst(p.x, p.y, 22, e.kind === 'ember' ? 'spark' : 'bubble', hue, 2.4);
+        this.burst(p.x, p.y, 6, 'shockwave', hue, 1.3);
+        this.burst(p.x, p.y, 10, e.kind === 'ember' ? 'ash' : 'mist', hue, 1.5);
+        this.shake = Math.max(this.shake, 11);
         break;
       }
       case 'obeliskHit': {
@@ -962,6 +970,20 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255, 214, 90, 0.85)';
         ctx.fillRect(p.x - bw / 2, p.y + u * 0.18 - 3, ward, 2);
       }
+      // Cannon charge on the battlement / spire — builds until the bolt flies.
+      const muzzle = this.worldToScreen(s.shotX, s.shotY);
+      const charge = clamp(1 - m.atkTimer / MARBLE_SHOT_INTERVAL, 0, 1);
+      const hot = 0.22 + charge * 0.72;
+      const hue = st.players[m.owner].faction === 'magma' ? 22 : 192;
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(muzzle.x, muzzle.y, 1, muzzle.x, muzzle.y, u * (0.55 + charge * 0.55));
+      glow.addColorStop(0, `hsla(${hue} 95% 72% / ${0.55 * hot})`);
+      glow.addColorStop(0.45, `hsla(${hue} 90% 55% / ${0.28 * hot})`);
+      glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(muzzle.x, muzzle.y, u * (0.55 + charge * 0.55), 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -1826,12 +1848,46 @@ export class Renderer {
       const wx = lerp(pr.px, pr.x, k);
       const wy = lerp(pr.py, pr.y, k);
       const p = this.worldToScreen(wx, wy);
-      // Ballistic arc: rises then falls over remaining flight.
       const totalTicks = pr.ticksLeft + 1;
       const flight = clamp(1 - (pr.ticksLeft - k) / Math.max(1, totalTicks), 0, 1);
+      if (pr.kind === 'cannon') {
+        const ember = pr.style !== 'water';
+        const hue = ember ? 22 : 192;
+        const arc = Math.sin(flight * Math.PI) * this.unit * 1.65;
+        const y = p.y - arc;
+        const rad = this.unit * 0.38;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 1.8);
+        g.addColorStop(0, ember ? 'hsl(40 100% 92%)' : 'hsl(190 100% 92%)');
+        g.addColorStop(0.35, ember ? 'hsl(28 100% 62%)' : 'hsl(196 95% 62%)');
+        g.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, y, rad * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = ember ? 'hsl(48 100% 96%)' : 'hsl(188 100% 96%)';
+        ctx.beginPath();
+        ctx.arc(p.x, y, rad * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        if (Math.random() < 0.85) {
+          this.particles.push({
+            x: p.x, y, vx: (Math.random() - 0.5) * 18, vy: 8,
+            life: 0, maxLife: 0.35, size: ember ? 3.2 : 3.6,
+            hue, sat: 90, lit: 65,
+            kind: ember ? 'spark' : 'bubble', alpha: 0.8, gravity: -10,
+          });
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + 4, 9, 3.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      // Glowing acid glob with a vapor trail.
       const arc = Math.sin(flight * Math.PI) * this.unit * 1.1;
       const y = p.y - arc;
-      // Glowing acid glob with a vapor trail.
       const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, 9);
       g.addColorStop(0, 'hsl(85 100% 75%)');
       g.addColorStop(0.5, 'hsl(90 95% 55%)');
@@ -1847,7 +1903,6 @@ export class Renderer {
           kind: 'mist', alpha: 0.6, gravity: -8,
         });
       }
-      // Target shadow.
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 3, 6, 2.6, 0, 0, Math.PI * 2);

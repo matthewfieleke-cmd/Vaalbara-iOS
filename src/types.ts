@@ -175,13 +175,15 @@ export interface UnitState {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Projectiles (visible artillery: the beetle's acid jet)                     */
+/* Projectiles (beetle acid jet, shrine cannon)                               */
 /* ------------------------------------------------------------------------ */
 
 export interface ProjectileState {
   readonly id: number;
   readonly owner: PlayerId;
-  readonly kind: 'acid';
+  readonly kind: 'acid' | 'cannon';
+  /** Cannon bolt livery — unused on acid jets. */
+  style?: 'ember' | 'water';
   x: number;
   y: number;
   px: number;
@@ -191,7 +193,7 @@ export interface ProjectileState {
   vy: number;
   dmg: number;
   ticksLeft: number;
-  /** Homing lock — acid jets steer toward this unit each tick. */
+  /** Homing lock — acid jets steer toward this unit each tick. Cannons fly true. */
   targetId?: number;
 }
 
@@ -318,6 +320,7 @@ export type GameEvent =
   | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
   | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
   | { type: 'shrineShot'; owner: PlayerId; x: number; y: number; tx: number; ty: number; kind: 'ember' | 'water' }
+  | { type: 'shrineImpact'; owner: PlayerId; x: number; y: number; kind: 'ember' | 'water' }
   | { type: 'shieldBreak'; owner: PlayerId; x: number; y: number }
   | { type: 'thicketRustle'; owner: PlayerId; x: number; y: number }
   | { type: 'pondClaimed'; player: PlayerId }
@@ -501,14 +504,19 @@ export const MARBLE_HP = 720;
 /** Footprint radius — matches the painted keep / temple, so units stop
  *  at the door instead of walking through the stone. */
 export const MARBLE_R = 1.48;
-export const MARBLE_SHOT_DMG = 28;
+/** Cannon bolt — same DPS as the old 28 / 1.2 s beam (~23 / s). */
+export const MARBLE_SHOT_DMG = 92;
 /** Melee/ranged hits on marble — the stone is the chapter, so those
  *  swings have to matter. Spells keep their own building pct. */
 export const MARBLE_SIEGE_MULT = 2.6;
-/** Beats the sim owns — 4 ticks = 1.2 s. The band plays this grid. */
-export const MARBLE_SHOT_INTERVAL = 4;
+/** 13 ticks = 3.9 s. Less frequent, more powerful. */
+export const MARBLE_SHOT_INTERVAL = 13;
 /** Owns the friendly half. inMarbleHalf still forbids shooting across. */
 export const MARBLE_SHOT_RANGE = 7.4;
+/** World-units per tick. A 5–7 wu shot is on screen for ~0.6–0.9 s. */
+export const MARBLE_CANNON_SPEED = 2.6;
+/** Splash on units only. No acid pool, no buildings. */
+export const MARBLE_CANNON_SPLASH = 0.75;
 /** ~190 HP veil — a few tank swings — even after the HP retune. */
 export const MARBLE_SHIELD_PCT = 0.26;
 

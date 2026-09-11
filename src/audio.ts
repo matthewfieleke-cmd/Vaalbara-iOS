@@ -616,12 +616,23 @@ const GLOBAL_SFX = {
     voice({ type: 'triangle', freq: 340, freqEnd: 520, dur: 0.18, gain: 0.04 });
   },
   shrineShotEmber: () => {
-    voice({ type: 'sawtooth', freq: 310, freqEnd: 140, dur: 0.22, gain: 0.14, filterFreq: 900 });
-    noise({ dur: 0.2, gain: 0.1, filterFreq: 1400, filterEnd: 400 });
+    // Launch: a short whoosh off the battlement. The boom lives on impact.
+    voice({ type: 'sawtooth', freq: 220, freqEnd: 90, dur: 0.16, gain: 0.12, filterFreq: 700 });
+    noise({ dur: 0.14, gain: 0.08, filterFreq: 1600, filterEnd: 400 });
   },
   shrineShotWater: () => {
-    voice({ type: 'sine', freq: 620, freqEnd: 240, dur: 0.24, gain: 0.12 });
-    noise({ dur: 0.18, gain: 0.08, filterFreq: 2800, filterType: 'bandpass' });
+    voice({ type: 'sine', freq: 480, freqEnd: 180, dur: 0.16, gain: 0.10 });
+    noise({ dur: 0.12, gain: 0.07, filterFreq: 2400, filterType: 'bandpass' });
+  },
+  shrineImpactEmber: () => {
+    voice({ type: 'sine', freq: 72, freqEnd: 28, dur: 0.55, gain: 0.42 });
+    voice({ type: 'sawtooth', freq: 160, freqEnd: 48, dur: 0.32, gain: 0.16, filterFreq: 380 });
+    noise({ dur: 0.38, gain: 0.22, filterFreq: 1400, filterEnd: 180 });
+  },
+  shrineImpactWater: () => {
+    voice({ type: 'sine', freq: 88, freqEnd: 32, dur: 0.48, gain: 0.36 });
+    voice({ type: 'triangle', freq: 420, freqEnd: 140, dur: 0.28, gain: 0.10 });
+    noise({ dur: 0.32, gain: 0.18, filterFreq: 2200, filterEnd: 280, filterType: 'bandpass' });
   },
   marbleHit: () => {
     voice({ type: 'sine', freq: 180, freqEnd: 70, dur: 0.22, gain: 0.2 });
@@ -820,6 +831,7 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'obeliskDown':
       case 'marbleDown':
       case 'shrineShot':
+      case 'shrineImpact':
         return 1;
       default:
         return 2;
@@ -907,6 +919,12 @@ export function handleGameEvents(events: GameEvent[]): void {
         if (!claim(2)) break;
         if (e.kind === 'ember') GLOBAL_SFX.shrineShotEmber();
         else GLOBAL_SFX.shrineShotWater();
+        break;
+      case 'shrineImpact':
+        if (!claim(4)) break;
+        if (e.kind === 'ember') GLOBAL_SFX.shrineImpactEmber();
+        else GLOBAL_SFX.shrineImpactWater();
+        playHaptic('heavy');
         break;
       case 'marbleHit':
         if (!claim(1)) break;
