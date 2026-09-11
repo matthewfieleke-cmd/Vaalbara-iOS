@@ -14,16 +14,17 @@
  * ========================================================================== */
 
 import {
-  ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_PER_TICK_P1, AQUA_PER_TICK_P2, BLESSING_MULT,
+  ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_PER_TICK_P1, AQUA_PER_TICK_P1_LATE, AQUA_PER_TICK_P2, BLESSING_MULT,
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
-  MARBLE_SIEGE_MULT,
+  MARBLE_SIEGE_MULT, MARBLE_CANNON_SPEED, MARBLE_CANNON_SPLASH,
   MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
   SHRINE,
   RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
   WORLD_H, WORLD_W, armyCap, fortPads, inOwnHalf, inWorld,
+  inBasaltDefendZone, isGateMarchTap, basaltDefendAnchor,
 } from './types';
 import type {
   BotStrength, CardId, FactionId, GameEvent, GameState, MarbleState, ObeliskState, PhaseConfig, PlayerId,
@@ -262,8 +263,75 @@ export function preferDeployLane(
   return null;
 }
 
+/** Enemy on our home bridge / bank — the bot should field-drop, not tunnel. */
+function homeBridgeThreat(st: GameState, seat: PlayerId): 0 | 1 | null {
+  const river = RIVER_BANDS[seat];
+  const lanes = FORT_LANES[seat];
+  let bestWing: 0 | 1 | null = null;
+  let bestScore = 0;
+  for (const u of st.units) {
+    if (u.hp <= 0 || u.owner === seat) continue;
+    if (!inBasaltDefendZone(seat, u.y) && !(
+      u.y >= river.y0 - 0.35 && u.y <= river.y1 + 0.55
+    )) continue;
+    const wing: 0 | 1 = Math.abs(u.x - lanes[0]) < Math.abs(u.x - lanes[1]) ? 0 : 1;
+    const nearLane = Math.abs(u.x - lanes[wing]) <= 1.5;
+    const onBridge = u.y >= river.y0 - 0.4 && u.y <= river.y1 + 0.65;
+    if (!nearLane && !onBridge) continue;
+    const onHomeApproach = seat === 0 ? u.y >= river.y0 - 1.15 : u.y <= river.y1 + 1.15;
+    if (!onHomeApproach) continue;
+    const score = (onBridge ? 2.2 : 1) + (speciesDef(u.species).stats!.heavy ? 0.6 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestWing = wing;
+    }
+  }
+  return bestWing;
+}
+
 function groundOpen(st: GameState, x: number, y: number): boolean {
   return inWorld(x, y) && walkableAt(worldOf(st), x, y);
+}
+
+/** Snap a Phase-1 field drop onto walkable dirt in the defend zone. */
+export function snapBasaltFieldDrop(
+  st: GameState, player: PlayerId, x: number, y: number, flying: boolean,
+): { x: number; y: number } | null {
+  const ok = (sx: number, sy: number) =>
+    inWorld(sx, sy) && inBasaltDefendZone(player, sy) && (flying || groundOpen(st, sx, sy));
+  if (ok(x, y)) return { x, y };
+  for (let r = 0.25; r <= 1.6; r += 0.25) {
+    for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]] as const) {
+      if (ok(x + dx, y + dy)) return { x: x + dx, y: y + dy };
+    }
+  }
+  return null;
+}
+
+/** Short step from a field drop toward the nearest threat (or your bridge). */
+function fieldDropWaypoint(st: GameState, player: PlayerId, sx: number, sy: number): Vec2 {
+  let threat: UnitState | null = null;
+  let best = Infinity;
+  for (const u of st.units) {
+    if (u.hp <= 0 || u.owner === player) continue;
+    const d = dist2(u.x, u.y, sx, sy);
+    if (d < best) {
+      best = d;
+      threat = u;
+    }
+  }
+  const dirY = player === 0 ? -1 : 1;
+  if (threat) {
+    const d = Math.max(0.001, dist(sx, sy, threat.x, threat.y));
+    const step = Math.min(2.15, d * 0.55);
+    return {
+      x: Math.max(0.4, Math.min(WORLD_W - 0.4, sx + ((threat.x - sx) / d) * step)),
+      y: Math.max(0.4, Math.min(WORLD_H - 0.4, sy + ((threat.y - sy) / d) * step)),
+    };
+  }
+  const lanes = FORT_LANES[player];
+  const lx = Math.abs(sx - lanes[0]) < Math.abs(sx - lanes[1]) ? lanes[0] : lanes[1];
+  return { x: lx, y: sy + dirY * 1.55 };
 }
 
 /** Global march pace. The plodding gait animation reads the ACTUAL speed,
@@ -466,44 +534,44 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
     let sy = a.y;
     let wp: Vec2;
     let homeWing: 0 | 1 = laneWingOf(input.player, a.x);
+    let gateMarch = false;
 
     if (st.phase === 'basalt') {
-      // Fortress siege: units enter the field THROUGH one of your two
-      // gates. The touch snaps to the nearest gate lane, but the warrior
-      // materialises at the FAR end of the arch corridor — outside the
-      // fortress — and marches the whole tunnel before emerging onto the
-      // field, so every deployment reads as a gate sortie.
-      // Lane soft-cap: if the tapped gate is already crowded with ground
-      // troops, snap to the emptier corridor so individual duels stay readable.
-      const pads = fortPads(input.player);
-      const tapped = pads.reduce((best, cur) =>
-        Math.abs(cur.x - a.x) < Math.abs(best.x - a.x) ? cur : best);
-      const lanes = FORT_LANES[input.player];
-      const tappedWing: 0 | 1 = Math.abs(tapped.x - lanes[0]) < Math.abs(tapped.x - lanes[1]) ? 0 : 1;
-      const wing = preferDeployLane(st, input.player, tappedWing, !!stats.flying, stats.count);
-      if (wing === null) return; // both ground lanes soft-full
-      homeWing = wing;
-      const pad = pads[wing];
-      sx = pad.x;
-      const ownGate = st.obelisks.find((o) => o.owner === input.player && o.wing === wing);
-      const ownRazed = !!ownGate && ownGate.hp <= 0;
-      if (ownRazed) {
-        // Own gate down: materialise on the rear apron (NOT on the field) so
-        // the warrior marches a couple steps, then scrambles over the rubble
-        // pile before entering the battlefield. It stays IN ITS LANE for the
-        // whole crossing — threats at the other gate are engaged only after
-        // it has climbed over the mound, from the battlefield side.
+      if (isGateMarchTap(input.player, a.x, a.y)) {
+        // Tap a gate: materialise on the rear apron and walk the whole
+        // tunnel (or scramble the rubble) before emerging onto that lane.
+        const pads = fortPads(input.player);
+        const tapped = pads.reduce((best, cur) =>
+          Math.abs(cur.x - a.x) < Math.abs(best.x - a.x) ? cur : best);
+        const lanes = FORT_LANES[input.player];
+        const tappedWing: 0 | 1 = Math.abs(tapped.x - lanes[0]) < Math.abs(tapped.x - lanes[1]) ? 0 : 1;
+        const wing = preferDeployLane(st, input.player, tappedWing, !!stats.flying, stats.count);
+        if (wing === null) return; // both ground lanes soft-full
+        homeWing = wing;
+        const pad = pads[wing];
+        sx = pad.x;
         sy = FORT_SPAWN_Y[input.player];
-        wp = { x: pad.x, y: input.player === 0 ? 10.85 : 4.15 };
-      } else {
-        sy = FORT_SPAWN_Y[input.player];
-        // March to the CENTRAL plateau (pulled toward mid-field from the
-        // gate lane): both armies converge there and clash before anyone
-        // pushes on down a lane toward the enemy walls.
         wp = {
-          x: pad.x + (WORLD_W / 2 - pad.x) * 0.5,
-          y: input.player === 0 ? 7.6 : 7.4,
+          x: pad.x,
+          y: input.player === 0 ? FORT_WALL_FRONT[0] - 0.8 : FORT_WALL_FRONT[1] + 0.8,
         };
+        gateMarch = true;
+      } else if (inBasaltDefendZone(input.player, a.y)) {
+        // Drop on your dirt: appear on the bank / path / plateau and take
+        // a short step toward the threat. No tunnel.
+        const snap = snapBasaltFieldDrop(st, input.player, a.x, a.y, !!stats.flying);
+        if (!snap) return;
+        sx = snap.x;
+        sy = snap.y;
+        homeWing = laneWingOf(input.player, sx);
+        wp = fieldDropWaypoint(st, input.player, sx, sy);
+        if (!stats.flying) {
+          for (let k = 0; k < 6 && !groundOpen(st, wp.x, wp.y); k++) {
+            wp = { x: (wp.x + sx) * 0.5, y: (wp.y + sy) * 0.5 };
+          }
+        }
+      } else {
+        return;
       }
     } else {
       // Oasis: your half — sand and water. Drag is the first charge.
@@ -541,17 +609,18 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
     p.aqua -= def.cost;
     cycleCard(p, handIdx);
 
-    // Inside the arch corridors multi-unit cards fall into COLUMN file — the
-    // tunnel is only as wide as the painted opening, so packs march through
-    // single file, each a step ahead of the next. On the open oasis baseline
-    // they fan out side by side as before.
-    const columnFile = st.phase === 'basalt';
-    // Column steps advance toward the field (deeper index = closer to exit).
+    // Gate marches file through the painted arch. Field drops stay in a
+    // short column toward the fight so ants don't fan into lava. Oasis
+    // still fans side by side on the baseline.
+    const columnFile = gateMarch;
+    const fieldFile = st.phase === 'basalt' && !gateMarch;
     const stepY = input.player === 0 ? -0.55 : 0.55;
     const at = (i: number, n: number, spread: number): { x: number; y: number } =>
       columnFile
         ? { x: sx, y: sy + i * stepY }
-        : { x: sx + (i - (n - 1) / 2) * spread, y: sy };
+        : fieldFile
+          ? { x: sx, y: sy + i * stepY * 0.5 }
+          : { x: sx + (i - (n - 1) / 2) * spread, y: sy };
     const spawned: UnitState[] = [];
     if (stats.formation === 'line' && stats.count > 1) {
       for (let i = 0; i < stats.count; i++) {
@@ -938,7 +1007,7 @@ function trexStomp(st: GameState, ev: GameEvent[], u: RuntimeUnit): void {
 
 function tickProjectiles(st: GameState, ev: GameEvent[]): void {
   for (const pr of st.projectiles) {
-    if (pr.targetId != null) {
+    if (pr.kind === 'acid' && pr.targetId != null) {
       const tgt = st.units.find((u) => u.id === pr.targetId && u.hp > 0);
       if (tgt) {
         const dx = tgt.x - pr.x;
@@ -963,33 +1032,51 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
     pr.x += pr.vx;
     pr.y += pr.vy;
     pr.ticksLeft--;
-    if (pr.ticksLeft <= 0) {
-      ev.push({ type: 'splash', x: pr.x, y: pr.y });
+    if (pr.ticksLeft > 0) continue;
+
+    if (pr.kind === 'cannon') {
+      ev.push({
+        type: 'shrineImpact',
+        owner: pr.owner,
+        x: pr.x, y: pr.y,
+        kind: pr.style === 'water' ? 'water' : 'ember',
+      });
+      const r2 = MARBLE_CANNON_SPLASH * MARBLE_CANNON_SPLASH;
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
-        if (dist2(o.x, o.y, pr.x, pr.y) <= MECHANICS.acidSplashRadius ** 2) {
+        if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
           dealDamage(st, ev, null, o, pr.dmg, 'ranged');
           st.players[pr.owner].damageDealt += pr.dmg;
         }
       }
-      for (const ob of st.obelisks) {
-        if (ob.owner === pr.owner || ob.hp <= 0) continue;
-        if (dist2(ob.x, ob.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + ob.r) ** 2) {
-          dealObeliskDamage(st, ev, pr.owner, ob, pr.dmg);
-        }
-      }
-      for (const m of st.marbles) {
-        if (m.owner === pr.owner || m.hp <= 0) continue;
-        if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
-          dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
-        }
-      }
-      st.zones.push({
-        id: nextZoneId++, kind: 'acidpool', owner: pr.owner,
-        x: pr.x, y: pr.y, r: SPELL_BALANCE.acidpool.radius,
-        ticksLeft: SPELL_BALANCE.acidpool.duration,
-      });
+      continue;
     }
+
+    ev.push({ type: 'splash', x: pr.x, y: pr.y });
+    for (const o of st.units) {
+      if (o.hp <= 0 || o.owner === pr.owner) continue;
+      if (dist2(o.x, o.y, pr.x, pr.y) <= MECHANICS.acidSplashRadius ** 2) {
+        dealDamage(st, ev, null, o, pr.dmg, 'ranged');
+        st.players[pr.owner].damageDealt += pr.dmg;
+      }
+    }
+    for (const ob of st.obelisks) {
+      if (ob.owner === pr.owner || ob.hp <= 0) continue;
+      if (dist2(ob.x, ob.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + ob.r) ** 2) {
+        dealObeliskDamage(st, ev, pr.owner, ob, pr.dmg);
+      }
+    }
+    for (const m of st.marbles) {
+      if (m.owner === pr.owner || m.hp <= 0) continue;
+      if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
+        dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
+      }
+    }
+    st.zones.push({
+      id: nextZoneId++, kind: 'acidpool', owner: pr.owner,
+      x: pr.x, y: pr.y, r: SPELL_BALANCE.acidpool.radius,
+      ticksLeft: SPELL_BALANCE.acidpool.duration,
+    });
   }
   st.projectiles = st.projectiles.filter((p) => p.ticksLeft > 0);
 }
@@ -1679,13 +1766,27 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
       continue;
     }
     const faction = st.players[m.owner].faction;
+    const style = faction === 'magma' ? 'ember' : 'water';
+    const shot = SHRINE[m.owner];
+    const d = Math.max(0.001, dist(shot.shotX, shot.shotY, best.x, best.y));
+    const speed = MARBLE_CANNON_SPEED;
+    st.projectiles.push({
+      id: nextProjId++,
+      owner: m.owner,
+      kind: 'cannon',
+      style,
+      x: shot.shotX, y: shot.shotY, px: shot.shotX, py: shot.shotY,
+      vx: ((best.x - shot.shotX) / d) * speed,
+      vy: ((best.y - shot.shotY) / d) * speed,
+      dmg: MARBLE_SHOT_DMG,
+      ticksLeft: Math.max(1, Math.ceil(d / speed)),
+    });
     ev.push({
       type: 'shrineShot',
       owner: m.owner,
-      x: SHRINE[m.owner].shotX, y: SHRINE[m.owner].shotY, tx: best.x, ty: best.y,
-      kind: faction === 'magma' ? 'ember' : 'water',
+      x: shot.shotX, y: shot.shotY, tx: best.x, ty: best.y,
+      kind: style,
     });
-    dealDamage(st, ev, null, best, MARBLE_SHOT_DMG, 'ranged');
     m.atkTimer = MARBLE_SHOT_INTERVAL;
   }
 }
@@ -1728,7 +1829,10 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
 
   st.tick++;
 
-  const income = st.phase === 'oasis' ? AQUA_PER_TICK_P2 : AQUA_PER_TICK_P1;
+  let income = st.phase === 'oasis' ? AQUA_PER_TICK_P2 : AQUA_PER_TICK_P1;
+  if (st.phase === 'basalt' && st.phaseTicksLeft <= 133) {
+    income = AQUA_PER_TICK_P1_LATE;
+  }
   if (st.phase !== 'transition') {
     for (const p of st.players) p.aqua = Math.min(AQUA_MAX, p.aqua + income);
   }
@@ -2116,6 +2220,15 @@ export class BotBrain {
 
     const dirY = this.seat === 0 ? -1 : 1;
     if (st.phase === 'basalt') {
+      const threatWing = homeBridgeThreat(st, this.seat);
+      if (threatWing !== null) {
+        const drop = basaltDefendAnchor(this.seat, threatWing);
+        const flying = !!def.stats?.flying;
+        const snap = snapBasaltFieldDrop(st, this.seat, drop.x, drop.y, flying) ?? drop;
+        this.lastLane = threatWing;
+        this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
+        return { type: 'deploy', card: pick, x: snap.x, y: snap.y, dirX: 0, dirY };
+      }
       const pads = fortPads(this.seat);
       const wings = st.obelisks.filter((o) => o.owner !== this.seat && o.hp > 0);
       // Default: counter-siege the emptier lane so both fortresses take

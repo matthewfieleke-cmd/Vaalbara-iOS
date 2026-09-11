@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LAVA_RAIN_CARD, PHASE1_TICKS, PHASE2_TICKS, PHASE_SPELL_CARD, TICK_MS, WORLD_H, WORLD_W,
-  armyCap, fortPads, inOwnHalf,
+  armyCap, fortPads, inOwnHalf, GATE_MARCH_RADIUS, inBasaltDefendZone,
 } from '../types';
 import type { BotStrength, CardId, GameEvent, GameState, PlayerId, SpeciesId } from '../types';
 import { cardDef, speciesDef } from '../data';
-import { BotBrain, TickDriver, preferDeployLane } from '../engine';
+import { BotBrain, TickDriver, preferDeployLane, snapBasaltFieldDrop } from '../engine';
 import { Renderer } from '../render';
 import { handleGameEvents, music, playUi } from '../audio';
 import { playHaptic } from '../haptics';
@@ -131,6 +131,7 @@ export function GameScreen({
   const selectedRef = useRef<CardId | null>(null);
   selectedRef.current = selectedCard;
   const endedRef = useRef(false);
+  const didCoachDeploy = useRef(false);
 
   const showToast = useCallback((text: string) => {
     setToast({ id: Date.now(), text });
@@ -305,7 +306,7 @@ export function GameScreen({
     setBanner({
       id: Date.now(),
       title: 'Phase I — Raze Their Fortress',
-      body: 'Tap a gate to deploy. Bring down both enemy gatehouses.',
+      body: 'Drop on your side to stop them. Tap a gate to march.',
       color: '#ffab7a',
     });
 
@@ -357,31 +358,43 @@ export function GameScreen({
       return;
     }
 
-    // Phase 1: tap one of your two GATES — the warrior spawns in the arch
-    // and marches out through it, over that lane's bridge.
+    // Phase 1: tap a GATE to march the tunnel, or drop on YOUR DIRT to
+    // answer a bridge fight. Same army-cap and lane-full rules either way.
     if (st.phase === 'basalt') {
       const pads = fortPads(seat);
       const pad = pads.reduce((best, cur) =>
         Math.hypot(cur.x - gx, cur.y - gy) < Math.hypot(best.x - gx, best.y - gy) ? cur : best);
-      if (Math.hypot(pad.x - gx, pad.y - gy) > 2.6) {
-        showToast('Tap one of your gates to deploy');
-        playUi('error');
+      if (Math.hypot(pad.x - gx, pad.y - gy) <= GATE_MARCH_RADIUS) {
+        const tappedWing: 0 | 1 = pads[0] === pad ? 0 : 1;
+        const wing = preferDeployLane(st, seat, tappedWing, !!def.stats?.flying, def.stats?.count ?? 1);
+        if (wing === null) {
+          showToast('Both lanes full — wait for a fighter to fall');
+          playUi('error');
+          return;
+        }
+        if (wing !== tappedWing) {
+          showToast('Lane full — reinforcing the other gate');
+        }
+        const dest = pads[wing];
+        driver.submit(seat, { type: 'deploy', card, x: dest.x, y: dest.y, dirX: 0, dirY: seat === 0 ? -1 : 1 });
+        setSelectedCard(null);
+        playUi('deploy');
         return;
       }
-      const tappedWing: 0 | 1 = pads[0] === pad ? 0 : 1;
-      const wing = preferDeployLane(st, seat, tappedWing, !!def.stats?.flying, def.stats?.count ?? 1);
-      if (wing === null) {
-        showToast('Both lanes full — wait for a fighter to fall');
-        playUi('error');
+      if (inBasaltDefendZone(seat, gy)) {
+        const snap = snapBasaltFieldDrop(st, seat, gx, gy, !!def.stats?.flying);
+        if (!snap) {
+          showToast('Drop on your dirt — or tap a gate to march');
+          playUi('error');
+          return;
+        }
+        driver.submit(seat, { type: 'deploy', card, x: snap.x, y: snap.y, dirX: 0, dirY: seat === 0 ? -1 : 1 });
+        setSelectedCard(null);
+        playUi('deploy');
         return;
       }
-      if (wing !== tappedWing) {
-        showToast('Lane full — reinforcing the other gate');
-      }
-      const dest = pads[wing];
-      driver.submit(seat, { type: 'deploy', card, x: dest.x, y: dest.y, dirX: 0, dirY: seat === 0 ? -1 : 1 });
-      setSelectedCard(null);
-      playUi('deploy');
+      showToast('Drop on your side to stop them, or tap a gate to march');
+      playUi('error');
       return;
     }
 
@@ -519,6 +532,10 @@ export function GameScreen({
         rendererRef.current.telegraph.kind = next === LAVA_RAIN_CARD ? 'lavarain' : 'spell';
       }
       if (next === LAVA_RAIN_CARD) showToast('Drag over the arena — sky falls where you release');
+      else if (next && ui.phase === 'basalt' && def.kind === 'unit' && !didCoachDeploy.current) {
+        didCoachDeploy.current = true;
+        showToast('Drop on your side to stop them. Tap a gate to march.');
+      }
       return next;
     });
     playUi('tap');

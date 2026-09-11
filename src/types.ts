@@ -175,13 +175,15 @@ export interface UnitState {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Projectiles (visible artillery: the beetle's acid jet)                     */
+/* Projectiles (beetle acid jet, shrine cannon)                               */
 /* ------------------------------------------------------------------------ */
 
 export interface ProjectileState {
   readonly id: number;
   readonly owner: PlayerId;
-  readonly kind: 'acid';
+  readonly kind: 'acid' | 'cannon';
+  /** Cannon bolt livery — unused on acid jets. */
+  style?: 'ember' | 'water';
   x: number;
   y: number;
   px: number;
@@ -191,7 +193,7 @@ export interface ProjectileState {
   vy: number;
   dmg: number;
   ticksLeft: number;
-  /** Homing lock — acid jets steer toward this unit each tick. */
+  /** Homing lock — acid jets steer toward this unit each tick. Cannons fly true. */
   targetId?: number;
 }
 
@@ -318,6 +320,7 @@ export type GameEvent =
   | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
   | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
   | { type: 'shrineShot'; owner: PlayerId; x: number; y: number; tx: number; ty: number; kind: 'ember' | 'water' }
+  | { type: 'shrineImpact'; owner: PlayerId; x: number; y: number; kind: 'ember' | 'water' }
   | { type: 'shieldBreak'; owner: PlayerId; x: number; y: number }
   | { type: 'thicketRustle'; owner: PlayerId; x: number; y: number }
   | { type: 'pondClaimed'; player: PlayerId }
@@ -458,9 +461,35 @@ export const FORT_SPAWN_Y: Record<PlayerId, number> = { 0: 14.7, 1: 0.55 };
 export const fortPads = (seat: PlayerId): Array<{ x: number; y: number }> =>
   FORT_LANES[seat].map((x) => ({ x, y: FORT_PAD_Y[seat] }));
 
+/** Tap this close to a gate pad = march through the tunnel. */
+export const GATE_MARCH_RADIUS = 2.6;
+
+export function isGateMarchTap(player: PlayerId, x: number, y: number): boolean {
+  return fortPads(player).some((p) => Math.hypot(p.x - x, p.y - y) <= GATE_MARCH_RADIUS);
+}
+
+/** Own half of the field, in front of your wall: bank, paths, plateau,
+ *  near the end of your bridges. Not the fortress interior. */
+export function inBasaltDefendZone(player: PlayerId, y: number): boolean {
+  if (!inOwnHalf(player, y)) return false;
+  return player === 0
+    ? y <= FORT_WALL_FRONT[0] + 0.12
+    : y >= FORT_WALL_FRONT[1] - 0.12;
+}
+
+/** Dirt behind your river choke — where a save should land, then walk onto the wood. */
+export function basaltDefendAnchor(player: PlayerId, wing: 0 | 1): { x: number; y: number } {
+  const x = FORT_LANES[player][wing];
+  const river = RIVER_BANDS[player];
+  const y = player === 0 ? river.y1 + 0.38 : river.y1 + 0.38;
+  return { x, y };
+}
+
 export const AQUA_MAX = 10;
-/** Slow drip (1 aqua / ~3.75 s) keeps armies small: distinct duels, not mobs. */
-export const AQUA_PER_TICK_P1 = 0.08;
+/** 1 aqua / ~2.8 s — enough to answer a fight, not enough to mob. */
+export const AQUA_PER_TICK_P1 = 0.107;
+/** Last 40 s of Basalt: a short surge so the closing act can still spend. */
+export const AQUA_PER_TICK_P1_LATE = 0.13;
 export const AQUA_PER_TICK_P2 = 0.16; // doubles in the Oasis
 export const HAND_SIZE = 4;
 /** Absolute ceiling on living units per player. Early Phase 1 stays at
@@ -489,10 +518,10 @@ export function armyCap(phase: 'basalt' | 'transition' | 'oasis' | 'ended', basa
 export const CAPTURE_RATE = 1;
 /** Phase-1 objective: each seat's fortress has TWO gatehouse wings, each
  *  with its own HP. The Basalt Fields end only when a fortress loses both. */
-/** First-gate HP. The remaining wing hardens after its sister falls
- *  (see dealObeliskDamage) so clean sweeps stay rare — especially once
- *  staged army slots 7–8 add late siege pressure. */
-export const OBELISK_HP = 1680;
+/** First-gate HP. A won-bridge punish should SHOW; the remaining wing
+ *  still hardens after its sister falls (see dealObeliskDamage) so clean
+ *  sweeps stay rare. */
+export const OBELISK_HP = 1380;
 
 /** Phase-2 shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
  *  in 2:30; siege multiplier + this HP make a landed push crumble near
@@ -501,14 +530,19 @@ export const MARBLE_HP = 720;
 /** Footprint radius — matches the painted keep / temple, so units stop
  *  at the door instead of walking through the stone. */
 export const MARBLE_R = 1.48;
-export const MARBLE_SHOT_DMG = 28;
+/** Cannon bolt — same DPS as the old 28 / 1.2 s beam (~23 / s). */
+export const MARBLE_SHOT_DMG = 92;
 /** Melee/ranged hits on marble — the stone is the chapter, so those
  *  swings have to matter. Spells keep their own building pct. */
 export const MARBLE_SIEGE_MULT = 2.6;
-/** Beats the sim owns — 4 ticks = 1.2 s. The band plays this grid. */
-export const MARBLE_SHOT_INTERVAL = 4;
+/** 13 ticks = 3.9 s. Less frequent, more powerful. */
+export const MARBLE_SHOT_INTERVAL = 13;
 /** Owns the friendly half. inMarbleHalf still forbids shooting across. */
 export const MARBLE_SHOT_RANGE = 7.4;
+/** World-units per tick. A 5–7 wu shot is on screen for ~0.6–0.9 s. */
+export const MARBLE_CANNON_SPEED = 2.6;
+/** Splash on units only. No acid pool, no buildings. */
+export const MARBLE_CANNON_SPLASH = 0.75;
 /** ~190 HP veil — a few tank swings — even after the HP retune. */
 export const MARBLE_SHIELD_PCT = 0.26;
 

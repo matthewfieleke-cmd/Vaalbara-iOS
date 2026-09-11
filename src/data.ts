@@ -5,7 +5,9 @@
  * Balance philosophy (tick = 300 ms, continuous world, aqua caps at 10):
  *  - Cheap swarm (2 aqua) trades up vs single big targets but melts to AOE.
  *  - Tanks (6 aqua) anchor lanes; they survive ~15 s of mid-tier focus.
- *  - Income of 1 aqua / ~3.75 s (faster in the Oasis) plus a staged army
+ *  - Income of 1 aqua / ~2.8 s (faster in the Oasis, with a late-Basalt
+ *    surge) plus a staged army cap on the 3:00 clock (6 → 7 at 1:30 → 8
+ *    at 2:30) keeps the field a handful of readable duels, not a mob.
  *    cap on the 3:00 clock (6 → 7 at 1:30 → 8 at 2:30) keeps the field a
  *    handful of readable duels, not a mob.
  *  - HP curves run generous so every engagement plays out long enough to
@@ -66,7 +68,7 @@ export const MAGMA_CARDS: CardDef[] = [
   },
   {
     id: 'fireants', name: 'Fire Ants', title: 'The Crawling Pyre', cost: 2, kind: 'unit', species: 'fireants',
-    stats: U({ hp: 54, dmg: 9, speed: 0.2, atkCd: 4, radius: 0.24, count: 3, formation: 'line' }),
+    stats: U({ hp: 42, dmg: 9, speed: 0.2, atkCd: 4, radius: 0.24, count: 3, formation: 'line' }),
     blurb: 'Cheap swarm deployed as three ants, each with its own life. Bites stack a burning acid debuff that eats through armour.',
     hue: 15,
   },

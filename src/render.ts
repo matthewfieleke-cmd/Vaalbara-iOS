@@ -16,7 +16,7 @@
  *    tick, with visual catch-up interpolation for network corrections.
  * ========================================================================== */
 
-import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
+import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_SHOT_INTERVAL, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
 import { getAnim, getFortArt, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
@@ -229,8 +229,11 @@ export class Renderer {
   drag: DragOverlay = { active: false, fromX: 0, fromY: 0, toX: 0, toY: 0, valid: false, hue: 0 };
   telegraph: TelegraphOverlay = { active: false, x: 0, y: 0, kind: 'spell' };
   /** True while the player has a unit card armed in Phase 1 — the two gate
-   *  pads pulse hard so "tap a gate" is unmissable. */
+   *  pads pulse hard so "tap a gate" is unmissable, and the friendly half
+   *  glows so a field drop is equally obvious. */
   padHint = false;
+  /** Last emit time for each persistent ruin-smoke column (render-only). */
+  private ruinSmokeAt = new Map<string, number>();
 
   // Layout.
   private unit = 40; // px per world unit
@@ -477,11 +480,19 @@ export class Renderer {
       }
       case 'shrineShot': {
         const a = this.worldToScreen(e.x, e.y);
-        const b = this.worldToScreen(e.tx, e.ty);
         const hue = e.kind === 'ember' ? 18 : 190;
-        this.burst(a.x, a.y, 8, 'spark', hue, 1.1);
-        this.burst(b.x, b.y, 6, e.kind === 'ember' ? 'spark' : 'bubble', hue, 0.9);
-        this.shrineBeams.push({ x0: a.x, y0: a.y, x1: b.x, y1: b.y, hue, life: 0, maxLife: 0.28 });
+        this.burst(a.x, a.y, 14, 'spark', hue, 1.6);
+        this.burst(a.x, a.y, 3, 'flash', hue, 1.1);
+        this.shake = Math.max(this.shake, 3.5);
+        break;
+      }
+      case 'shrineImpact': {
+        const p = this.worldToScreen(e.x, e.y);
+        const hue = e.kind === 'ember' ? 18 : 192;
+        this.burst(p.x, p.y, 22, e.kind === 'ember' ? 'spark' : 'bubble', hue, 2.4);
+        this.burst(p.x, p.y, 6, 'shockwave', hue, 1.3);
+        this.burst(p.x, p.y, 10, e.kind === 'ember' ? 'ash' : 'mist', hue, 1.5);
+        this.shake = Math.max(this.shake, 11);
         break;
       }
       case 'obeliskHit': {
@@ -563,7 +574,7 @@ export class Renderer {
         gravity: kind === 'spark' ? 130 : kind === 'ash' ? 12 : kind === 'mote' ? -30 : kind === 'petal' ? 24 : 0,
       });
     }
-    if (this.particles.length > 700) this.particles.splice(0, this.particles.length - 700);
+    if (this.particles.length > 900) this.particles.splice(0, this.particles.length - 900);
   }
 
   /* ------------------------------ main loop ----------------------------- */
@@ -876,7 +887,8 @@ export class Renderer {
 
     if (world === 'oasis') this.drawOasisOverlays(ctx, st);
 
-    // Deploy-band glow — Oasis only; Phase 1 deploys at the gate pads.
+    // Deploy-band glow — Oasis: your half. Phase 1: your dirt (mid → wall)
+    // plus the pulsing gate pads, so field-drop vs march is unmissable.
     if (st.phase === 'oasis') {
       const bandTopWorld = this.localSeat === 0 ? WORLD_H * 0.5 : 0;
       const p0 = this.worldToScreen(0, this.localSeat === 0 ? bandTopWorld : WORLD_H * 0.5);
@@ -889,6 +901,19 @@ export class Renderer {
       glow.addColorStop(0, 'hsla(190 90% 60% / 0)');
       glow.addColorStop(1, `hsla(190 90% 60% / ${pulse * 2})`);
       ctx.fillStyle = glow;
+      ctx.fillRect(r.left, yTop, r.w, yBot - yTop);
+    } else if (st.phase === 'basalt' && this.padHint) {
+      const pMid = this.worldToScreen(0, WORLD_H * 0.5);
+      const pWall = this.worldToScreen(0, FORT_WALL_FRONT[this.localSeat]);
+      const y0 = pMid.y;
+      const y1 = pWall.y;
+      const glow = ctx.createLinearGradient(0, y0, 0, y1);
+      const pulse = 0.08 + Math.sin(t * 2.5) * 0.035;
+      glow.addColorStop(0, 'hsla(190 90% 60% / 0)');
+      glow.addColorStop(1, `hsla(190 90% 62% / ${pulse * 2.15})`);
+      ctx.fillStyle = glow;
+      const yTop = Math.min(y0, y1);
+      const yBot = Math.max(y0, y1);
       ctx.fillRect(r.left, yTop, r.w, yBot - yTop);
     }
   }
@@ -919,6 +944,11 @@ export class Renderer {
       if (m.hp <= 0) {
         const ruin = getOasisOverlay(`crumble-${side}`);
         if (ruin) this.drawArenaImage(ctx, ruin, 1);
+        const ember = st.players[m.owner].faction === 'magma';
+        const s = SHRINE[m.owner];
+        const p = this.worldToScreen(s.shotX, s.shotY);
+        this.drawRuinPlume(ctx, p.x, p.y, ember, 1.15);
+        this.emitRuinColumn(`p2-${m.owner}`, p.x, p.y, ember);
         continue;
       }
       if (m.shield > 0) {
@@ -954,6 +984,20 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255, 214, 90, 0.85)';
         ctx.fillRect(p.x - bw / 2, p.y + u * 0.18 - 3, ward, 2);
       }
+      // Cannon charge on the battlement / spire — builds until the bolt flies.
+      const muzzle = this.worldToScreen(s.shotX, s.shotY);
+      const charge = clamp(1 - m.atkTimer / MARBLE_SHOT_INTERVAL, 0, 1);
+      const hot = 0.22 + charge * 0.72;
+      const hue = st.players[m.owner].faction === 'magma' ? 22 : 192;
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(muzzle.x, muzzle.y, 1, muzzle.x, muzzle.y, u * (0.55 + charge * 0.55));
+      glow.addColorStop(0, `hsla(${hue} 95% 72% / ${0.55 * hot})`);
+      glow.addColorStop(0.45, `hsla(${hue} 90% 55% / ${0.28 * hot})`);
+      glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(muzzle.x, muzzle.y, u * (0.55 + charge * 0.55), 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -1085,6 +1129,115 @@ export class Renderer {
     }
   }
 
+  /** Soft stacked smoke banks over a crumbled tower — always on, so a dead
+   *  wing / shrine reads as burning even between particle bursts. */
+  private drawRuinPlume(
+    ctx: CanvasRenderingContext2D, x: number, y: number, ember: boolean, scale = 1,
+  ): void {
+    const u = this.unit * scale;
+    const t = this.time;
+    const pulse = 0.78 + Math.sin(t * 1.12 + x * 0.02) * 0.14;
+    ctx.save();
+    const r = this.boardRect();
+    ctx.beginPath();
+    ctx.roundRect(r.left - 3, r.top - 3, r.w + 6, r.h + 6, 12);
+    ctx.clip();
+    if (ember) {
+      const heart = ctx.createRadialGradient(x, y + u * 0.15, 1, x, y + u * 0.15, u * 0.95);
+      heart.addColorStop(0, `hsla(28 92% 52% / ${0.22 * pulse})`);
+      heart.addColorStop(0.45, `hsla(18 80% 38% / ${0.12 * pulse})`);
+      heart.addColorStop(1, 'hsla(16 70% 30% / 0)');
+      ctx.fillStyle = heart;
+      ctx.fillRect(x - u * 1.1, y - u * 0.5, u * 2.2, u * 1.6);
+    }
+    const layers: Array<[number, number, number, number]> = [
+      [0.00, 0.00, 1.05, 0.40],
+      [-0.95, 0.16, 1.35, 0.28],
+      [-1.95, -0.12, 1.65, 0.18],
+      [-3.05, 0.22, 1.95, 0.10],
+      [-4.15, -0.08, 2.25, 0.05],
+    ];
+    for (const [oy, ox, rad, a] of layers) {
+      const drift = Math.sin(t * 0.62 + oy * 1.7 + x * 0.03) * u * 0.18;
+      const cx = x + drift + ox * u;
+      const cy = y + oy * u;
+      const rr = rad * u;
+      const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, rr);
+      if (ember) {
+        g.addColorStop(0, `hsla(16 22% 16% / ${a * pulse})`);
+        g.addColorStop(0.55, `hsla(12 18% 14% / ${a * pulse * 0.7})`);
+        g.addColorStop(1, 'hsla(10 16% 12% / 0)');
+      } else {
+        g.addColorStop(0, `hsla(210 10% 38% / ${a * pulse})`);
+        g.addColorStop(0.55, `hsla(205 8% 32% / ${a * pulse * 0.65})`);
+        g.addColorStop(1, 'hsla(200 8% 28% / 0)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+    }
+    ctx.restore();
+  }
+
+  /** Cadenced rising wisps from a ruin. Time-gated so the column is steady
+   *  without dumping the particle budget. */
+  private emitRuinColumn(key: string, x: number, y: number, ember: boolean): void {
+    const last = this.ruinSmokeAt.get(key) ?? -10;
+    if (this.time - last < 0.05) return;
+    this.ruinSmokeAt.set(key, this.time);
+    const u = this.unit;
+    for (let i = 0; i < 2; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.55,
+        y: y + (Math.random() - 0.5) * u * 0.16,
+        vx: (Math.random() - 0.5) * u * 0.28,
+        vy: -(u * 0.48 + Math.random() * u * 0.42),
+        life: 0,
+        maxLife: 1.5 + Math.random() * 0.95,
+        size: u * (0.16 + Math.random() * 0.26),
+        hue: ember ? 18 : 205,
+        sat: ember ? 16 : 8,
+        lit: ember ? 26 : 44,
+        kind: 'mist',
+        alpha: 0.9,
+        gravity: -u * 0.06,
+      });
+    }
+    if (Math.random() < 0.5) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.4,
+        y,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -(u * 0.32 + Math.random() * u * 0.22),
+        life: 0,
+        maxLife: 1.7 + Math.random() * 0.6,
+        size: 2.1 + Math.random() * 2.4,
+        hue: ember ? 24 : 32,
+        sat: ember ? 14 : 6,
+        lit: 22,
+        kind: 'ash',
+        alpha: 0.75,
+        gravity: -14,
+      });
+    }
+    if (ember && Math.random() < 0.32) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * u * 0.3,
+        y: y + u * 0.08,
+        vx: (Math.random() - 0.5) * 18,
+        vy: -(u * 0.55 + Math.random() * u * 0.35),
+        life: 0,
+        maxLife: 0.7 + Math.random() * 0.45,
+        size: 1.6 + Math.random() * 1.4,
+        hue: 22 + Math.random() * 12,
+        sat: 90,
+        lit: 58,
+        kind: 'mote',
+        alpha: 1,
+        gravity: -20,
+      });
+    }
+  }
+
   /** One Phase-1 stronghold's walls. The ENEMY fortress (front painting) is
    *  drawn UNDER the field units, so attackers stand against its wall and
    *  its tunnellers are clipped to the painted openings — but OVER the
@@ -1165,13 +1318,15 @@ export class Renderer {
       }
     }
 
-    // Smoulder on fallen wings: light dust only — keep fighters readable.
+    // Persistent smoke column on each crumbled gatehouse — the living wing
+    // stays clean. Ember heart, rising ash; fighters stay readable.
     for (const [wing, down] of [[wl, downL], [wr, downR]] as const) {
       if (!down) continue;
       const wp = this.worldToScreen(wing.x, wing.y);
-      if (Math.random() < 0.06) {
-        this.burst(wp.x + (Math.random() - 0.5) * u * 2.4, baseY - h * (0.1 + Math.random() * 0.2), 1, 'ash', 25, 0.7);
-      }
+      const sx = wp.x;
+      const sy = baseY - h * 0.28;
+      this.drawRuinPlume(ctx, sx, sy, true, 1);
+      this.emitRuinColumn(`p1-${owner}-${wing.wing}`, sx, sy, true);
     }
 
     // The battered gatehouse blooms hot for a beat (environmental light).
@@ -1707,12 +1862,46 @@ export class Renderer {
       const wx = lerp(pr.px, pr.x, k);
       const wy = lerp(pr.py, pr.y, k);
       const p = this.worldToScreen(wx, wy);
-      // Ballistic arc: rises then falls over remaining flight.
       const totalTicks = pr.ticksLeft + 1;
       const flight = clamp(1 - (pr.ticksLeft - k) / Math.max(1, totalTicks), 0, 1);
+      if (pr.kind === 'cannon') {
+        const ember = pr.style !== 'water';
+        const hue = ember ? 22 : 192;
+        const arc = Math.sin(flight * Math.PI) * this.unit * 1.65;
+        const y = p.y - arc;
+        const rad = this.unit * 0.38;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 1.8);
+        g.addColorStop(0, ember ? 'hsl(40 100% 92%)' : 'hsl(190 100% 92%)');
+        g.addColorStop(0.35, ember ? 'hsl(28 100% 62%)' : 'hsl(196 95% 62%)');
+        g.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, y, rad * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = ember ? 'hsl(48 100% 96%)' : 'hsl(188 100% 96%)';
+        ctx.beginPath();
+        ctx.arc(p.x, y, rad * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        if (Math.random() < 0.85) {
+          this.particles.push({
+            x: p.x, y, vx: (Math.random() - 0.5) * 18, vy: 8,
+            life: 0, maxLife: 0.35, size: ember ? 3.2 : 3.6,
+            hue, sat: 90, lit: 65,
+            kind: ember ? 'spark' : 'bubble', alpha: 0.8, gravity: -10,
+          });
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + 4, 9, 3.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      // Glowing acid glob with a vapor trail.
       const arc = Math.sin(flight * Math.PI) * this.unit * 1.1;
       const y = p.y - arc;
-      // Glowing acid glob with a vapor trail.
       const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, 9);
       g.addColorStop(0, 'hsl(85 100% 75%)');
       g.addColorStop(0.5, 'hsl(90 95% 55%)');
@@ -1728,7 +1917,6 @@ export class Renderer {
           kind: 'mist', alpha: 0.6, gravity: -8,
         });
       }
-      // Target shadow.
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.beginPath();
       ctx.ellipse(p.x, p.y + 3, 6, 2.6, 0, 0, Math.PI * 2);
