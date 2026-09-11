@@ -511,6 +511,22 @@ export class Renderer {
         this.burst(p.x, p.y, 4, e.kind === 'ember' ? 'mist' : 'bubble', hue, 0.8);
         break;
       }
+      case 'gateShot': {
+        const a = this.worldToScreen(e.x, e.y);
+        const hue = e.owner === this.localSeat ? 190 : 22;
+        this.burst(a.x, a.y - this.unit * 0.15, 6, 'spark', hue, 1.1);
+        this.obeliskFlash.set(e.owner * 2 + e.wing, 0.16);
+        break;
+      }
+      case 'bridgeThreat': {
+        const p = this.worldToScreen(e.x, e.y);
+        const mine = e.owner === this.localSeat;
+        this.burst(p.x, p.y, 10, mine ? 'flash' : 'spark', mine ? 18 : 40, 1.6);
+        this.burst(p.x, p.y, 2, 'shockwave', mine ? 16 : 38, 0.8);
+        this.obeliskFlash.set(e.owner * 2 + e.wing, 0.4);
+        if (mine) this.shake = Math.max(this.shake, 7);
+        break;
+      }
       case 'obeliskHit': {
         const p = this.worldToScreen(e.x, e.y);
         const mine = e.owner === this.localSeat;
@@ -2020,6 +2036,28 @@ export class Renderer {
       const p = this.worldToScreen(wx, wy);
       const totalTicks = pr.ticksLeft + 1;
       const flight = clamp(1 - (pr.ticksLeft - k) / Math.max(1, totalTicks), 0, 1);
+      if (pr.kind === 'gate') {
+        const ember = pr.style !== 'water';
+        const arc = Math.sin(flight * Math.PI) * this.unit * 0.22;
+        const y = p.y - arc;
+        const rad = this.unit * 0.11;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 2.4);
+        g.addColorStop(0, ember ? 'hsla(38 100% 78% / 0.95)' : 'hsla(188 90% 80% / 0.9)');
+        g.addColorStop(0.45, ember ? 'hsla(18 95% 52% / 0.7)' : 'hsla(195 80% 50% / 0.55)');
+        g.addColorStop(1, 'hsla(20 80% 40% / 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, y, rad * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = ember ? 'hsl(22 18% 22%)' : 'hsl(200 12% 24%)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, y, rad * 1.15, rad * 0.85, 0, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
       if (pr.kind === 'cannon') {
         const ember = pr.style !== 'water';
         // Flat shot, not a lobbed orb — just enough lift to read as airborne.

@@ -252,6 +252,9 @@ export function GameScreen({
           });
         } else if (e.type === 'shieldBreak') {
           playHaptic('medium');
+        } else if (e.type === 'bridgeThreat' && e.owner === seat) {
+          playHaptic('warning');
+          showToast('They\'re on your bridge!');
         } else if (e.type === 'obeliskDown') {
           playHaptic('heavy');
           const razed = state.obelisks

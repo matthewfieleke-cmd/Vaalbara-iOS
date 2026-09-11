@@ -638,6 +638,17 @@ const GLOBAL_SFX = {
     voice({ type: 'sine', freq: 70, freqEnd: 36, dur: 0.16, gain: 0.14 });
     noise({ dur: 0.12, gain: 0.08, filterFreq: 700, filterEnd: 180 });
   },
+  gateShot: () => {
+    voice({ type: 'triangle', freq: 420, freqEnd: 160, dur: 0.09, gain: 0.07 });
+    noise({ dur: 0.08, gain: 0.06, filterFreq: 1800, filterEnd: 400 });
+  },
+  bridgeThreat: () => {
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 110, freqEnd: 55, dur: 0.38, gain: 0.22 });
+    voice({ type: 'sawtooth', freq: 82, freqEnd: 40, dur: 0.32, gain: 0.1, filterFreq: 180 });
+    noise({ dur: 0.22, gain: 0.1, filterFreq: 900, filterEnd: 220 });
+    voice({ type: 'triangle', freq: 330, freqEnd: 180, dur: 0.16, gain: 0.05, when: t + 0.04 });
+  },
   shrineImpactWater: () => {
     voice({ type: 'sine', freq: 78, freqEnd: 40, dur: 0.14, gain: 0.12 });
     noise({ dur: 0.1, gain: 0.07, filterFreq: 1100, filterEnd: 260, filterType: 'bandpass' });
@@ -840,6 +851,7 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'marbleDown':
       case 'shrineShot':
       case 'shrineImpact':
+      case 'bridgeThreat':
         return 1;
       default:
         return 2;
@@ -914,6 +926,14 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'blessing':
         if (!claim(7)) break;
         GLOBAL_SFX.blessing();
+        break;
+      case 'gateShot':
+        if (!claim(1)) break;
+        GLOBAL_SFX.gateShot();
+        break;
+      case 'bridgeThreat':
+        if (!claim(3)) break;
+        GLOBAL_SFX.bridgeThreat();
         break;
       case 'obeliskHit':
         if (!claim(2)) break;
@@ -1285,7 +1305,7 @@ class MusicDirector {
       const pos = MusicDirector.ladderPos(this.basaltElapsed);
       const army = Math.min(1, opts.unitCount / 18);
       this.armyHeat += (army - this.armyHeat) * 0.15;
-      this.intensityTarget = Math.min(1, MusicDirector.lerpTab([0.5, 0.55, 0.72, 0.84, 0.94], pos) + army * 0.14);
+      this.intensityTarget = Math.min(1, MusicDirector.lerpTab([0.64, 0.7, 0.8, 0.88, 0.96], pos) + army * 0.14);
       this.volumeTarget = this.actVolume(pos);
       this.rideSfxBus(MusicDirector.lerpTab([0.9, 0.94, 1.0, 1.06, 1.14], pos));
       this.rideReverb(MusicDirector.lerpTab([0.42, 0.45, 0.48, 0.54, 0.6], pos));
@@ -1349,7 +1369,7 @@ class MusicDirector {
    */
   private static ladderPos(elapsedSec: number): number {
     const m = Math.min(4, Math.floor(elapsedSec / 60));
-    if (m === 0) return 0;
+    if (m === 0) return 0.4 + 0.6 * Math.min(1, elapsedSec / 28);
     return Math.min(4, (m - 1) + Math.min(1, (elapsedSec % 60) / 8));
   }
 
@@ -1363,7 +1383,7 @@ class MusicDirector {
 
   /** Volume curve along the ladder — minutes 4–5 climb harder (TSO crest). */
   private actVolume(pos: number): number {
-    const v = MusicDirector.lerpTab([1.06, 1.14, 1.22, 1.32, 1.42], pos);
+    const v = MusicDirector.lerpTab([1.14, 1.18, 1.26, 1.34, 1.42], pos);
     if (this.basaltElapsed >= 290 && this.allowClimax) return Math.min(1.45, v + 0.03);
     return v;
   }
@@ -2207,7 +2227,7 @@ class MusicDirector {
         // The DRUMMER: a full rock kit that bleeds in from ~3:30 and owns
         // minute 5 — relentless drive, verse and chorus alike. Only the
         // phrase-aligned suckout ever cuts him off.
-        const drummer = Math.min(1, Math.max(0, (elapsedAtT - 210) / 38));
+        const drummer = Math.min(1, Math.max(0, (elapsedAtT - 132) / 36));
 
         // --- Minute-boundary craft --------------------------------------
         if (s16 === 0) {
