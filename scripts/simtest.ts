@@ -132,6 +132,7 @@ function dummyUnit(partial: Pick<UnitState, 'owner' | 'x' | 'y'> & Partial<UnitS
     struckTargets: [], waypoint: null, stall: 0, stallRef: Infinity, unstick: 0,
     buffs: { stun: 0, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
     stealthed: false, action: 'idle', targetId: null, homeWing: 0,
+    bridgeWarned: false,
     ...partial,
   };
 }
@@ -171,6 +172,22 @@ console.log('scripted agency checks');
   st.players[0].hand[0] = 'lion';
   advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x: 4.5, y: 3.0, dirX: 0, dirY: -1 } }]);
   assert(st.units.filter((u) => u.species === 'lion').length === 0, 'enemy-half drop is rejected');
+}
+
+{
+  resetIds();
+  const st = createGame(5, ['magma', 'oasis']);
+  for (const o of st.obelisks) {
+    if (o.owner === 0 && o.wing === 0) o.atkTimer = 0;
+  }
+  st.units.push(dummyUnit({
+    owner: 1, x: 1.75, y: 9.5, hp: 400, maxHp: 400,
+    buffs: { stun: 99, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
+  }));
+  const volley = advanceTick(st, []);
+  const chip = st.projectiles.some((p) => p.kind === 'gate');
+  assert(volley.events.some((e) => e.type === 'gateShot') && chip, 'living gate fires a chip');
+  assert(volley.events.some((e) => e.type === 'bridgeThreat' && e.owner === 0), 'enemy on your bridge raises an alarm');
 }
 
 {

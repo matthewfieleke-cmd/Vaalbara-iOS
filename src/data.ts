@@ -5,11 +5,9 @@
  * Balance philosophy (tick = 300 ms, continuous world, aqua caps at 10):
  *  - Cheap swarm (2 aqua) trades up vs single big targets but melts to AOE.
  *  - Tanks (6 aqua) anchor lanes; they survive ~15 s of mid-tier focus.
- *  - Income of 1 aqua / ~2.8 s (faster in the Oasis, with a late-Basalt
- *    surge) plus a staged army cap on the 3:00 clock (6 → 7 at 1:30 → 8
- *    at 2:30) keeps the field a handful of readable duels, not a mob.
- *    cap on the 3:00 clock (6 → 7 at 1:30 → 8 at 2:30) keeps the field a
- *    handful of readable duels, not a mob.
+ *  - Income of 1 aqua / ~2.6 s (faster in the Oasis, with a last-minute
+ *    Basalt surge) plus a staged army cap on the 3:00 clock (6 → 7 at 1:00
+ *    → 8 at 2:00) keeps the field a handful of readable duels, not a mob.
  *  - HP curves run generous so every engagement plays out long enough to
  *    watch, react to and counter.
  * ========================================================================== */

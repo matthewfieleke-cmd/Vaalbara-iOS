@@ -172,6 +172,8 @@ export interface UnitState {
   /** Gate lane this warrior sortied from (0/1). Soft-cap and readability
    *  count by home wing so midfield drift doesn't invent a sixth body in one corridor. */
   homeWing: 0 | 1;
+  /** True after this unit first stepped onto the enemy bridge. */
+  bridgeWarned: boolean;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -181,7 +183,7 @@ export interface UnitState {
 export interface ProjectileState {
   readonly id: number;
   readonly owner: PlayerId;
-  readonly kind: 'acid' | 'cannon';
+  readonly kind: 'acid' | 'cannon' | 'gate';
   /** Cannon bolt livery — unused on acid jets. */
   style?: 'ember' | 'water';
   x: number;
@@ -249,6 +251,7 @@ export interface ObeliskState {
   readonly x: number;
   readonly y: number;
   readonly r: number;
+  atkTimer: number;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -317,6 +320,8 @@ export type GameEvent =
   | { type: 'lotusBurst'; x: number; y: number }
   | { type: 'obeliskHit'; owner: PlayerId; amount: number; x: number; y: number }
   | { type: 'obeliskDown'; owner: PlayerId; x: number; y: number }
+  | { type: 'gateShot'; owner: PlayerId; wing: 0 | 1; x: number; y: number; tx: number; ty: number }
+  | { type: 'bridgeThreat'; owner: PlayerId; wing: 0 | 1; x: number; y: number }
   | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
   | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
   | { type: 'shrineShot'; owner: PlayerId; x: number; y: number; tx: number; ty: number; kind: 'ember' | 'water' }
@@ -486,15 +491,18 @@ export function basaltDefendAnchor(player: PlayerId, wing: 0 | 1): { x: number; 
 }
 
 export const AQUA_MAX = 10;
-/** 1 aqua / ~2.8 s — enough to answer a fight, not enough to mob. */
-export const AQUA_PER_TICK_P1 = 0.107;
-/** Last 40 s of Basalt: a short surge so the closing act can still spend. */
-export const AQUA_PER_TICK_P1_LATE = 0.13;
+/** Opening purse — a 4-cost lands on tick 1, with a 2-cost still in the pocket. */
+export const AQUA_START = 6;
+/** 1 aqua / ~2.6 s — always about to afford the next answer. */
+export const AQUA_PER_TICK_P1 = 0.115;
+/** Last 60 s of Basalt: the closing act can still spend. */
+export const AQUA_PER_TICK_P1_LATE = 0.15;
 export const AQUA_PER_TICK_P2 = 0.16; // doubles in the Oasis
+/** Last-minute surge window (ticks). */
+export const AQUA_P1_LATE_TICKS = 200;
 export const HAND_SIZE = 4;
 /** Absolute ceiling on living units per player. Early Phase 1 stays at
- *  ARMY_BASE_CAP; slots 7–8 unlock with the minute-4 / minute-5 acts so the
- *  field never opens as a mob. See armyCap(). */
+ *  ARMY_BASE_CAP; slots 7–8 unlock so the field never opens as a mob. */
 export const MAX_ARMY = 8;
 /** Readable early-game army size — about three fighters per siege lane. */
 export const ARMY_BASE_CAP = 6;
@@ -504,17 +512,26 @@ export const LANE_SOFT_CAP = 4;
 
 /**
  * Staged army cap from Basalt elapsed time (seconds) on a 3:00 clock.
- *  - First 90 s: 6
- *  - 1:30: 7
- *  - 2:30: 8
+ *  - First 60 s: 6
+ *  - 1:00: 7
+ *  - 2:00: 8
  * Oasis / transition keep the ceiling so leftover armies plus answers still fit.
  */
 export function armyCap(phase: 'basalt' | 'transition' | 'oasis' | 'ended', basaltElapsedSec = 0): number {
   if (phase !== 'basalt') return MAX_ARMY;
-  if (basaltElapsedSec < 90) return ARMY_BASE_CAP;
-  if (basaltElapsedSec < 150) return 7;
+  if (basaltElapsedSec < 60) return ARMY_BASE_CAP;
+  if (basaltElapsedSec < 120) return 7;
   return MAX_ARMY;
 }
+
+/** Gatehouse volley — the Phase-1 metronome. Chips a swarm, a tank walks through. */
+export const GATE_SHOT_DMG = 16;
+/** 4 ticks = 1.2 s. Frequent enough to pulse, not enough to drown the kit. */
+export const GATE_SHOT_INTERVAL = 4;
+/** Covers that wing's bridge and a bite of mid. */
+export const GATE_SHOT_RANGE = 4.4;
+export const GATE_SHOT_SPEED = 3.2;
+export const GATE_SHOT_SPLASH = 0.42;
 export const CAPTURE_RATE = 1;
 /** Phase-1 objective: each seat's fortress has TWO gatehouse wings, each
  *  with its own HP. The Basalt Fields end only when a fortress loses both. */

@@ -14,7 +14,9 @@
  * ========================================================================== */
 
 import {
-  ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_PER_TICK_P1, AQUA_PER_TICK_P1_LATE, AQUA_PER_TICK_P2, BLESSING_MULT,
+  ACID_DMG, AGGRO_RANGE, AQUA_MAX, AQUA_START, AQUA_PER_TICK_P1, AQUA_PER_TICK_P1_LATE, AQUA_PER_TICK_P2,
+  AQUA_P1_LATE_TICKS, BLESSING_MULT, GATE_SHOT_DMG, GATE_SHOT_INTERVAL, GATE_SHOT_RANGE, GATE_SHOT_SPEED,
+  GATE_SHOT_SPLASH,
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
@@ -85,6 +87,7 @@ function makeObelisks(): ObeliskState[] {
         owner, wing: wing as 0 | 1,
         hp: OBELISK_HP, maxHp: OBELISK_HP,
         x, y: FORT_WING_Y[owner], r: FORT_WING_R,
+        atkTimer: 2,
       });
     });
   }
@@ -169,7 +172,7 @@ export function createGame(
     }
     return {
       faction,
-      aqua: 5,
+      aqua: AQUA_START,
       hand: deck.slice(0, HAND_SIZE),
       queue: deck.slice(HAND_SIZE),
       damageDealt: 0,
@@ -336,7 +339,10 @@ function fieldDropWaypoint(st: GameState, player: PlayerId, sx: number, sy: numb
 
 /** Global march pace. The plodding gait animation reads the ACTUAL speed,
  *  so a small lift here quickens the stride without breaking foot contact. */
-const MARCH_PACE = 1.20;
+/** Basalt stride. A mid unit should reach the far river in ~10–12 s so
+ *  the walk is a fuse, not a commute. Oasis keeps the older gait. */
+const BASALT_MARCH = 1.50;
+const OASIS_MARCH = 1.20;
 
 /** Is this ground position on a collapsed gatehouse's rubble mound? Razed
  *  lanes stay open, but crossing the debris is a scramble, not a march. */
@@ -357,7 +363,7 @@ export function onRubble(st: GameState, x: number, y: number): boolean {
 }
 
 function effSpeed(st: GameState, u: RuntimeUnit): number {
-  let s = u.stats.speed * MARCH_PACE;
+  let s = u.stats.speed * (st.phase === 'basalt' ? BASALT_MARCH : OASIS_MARCH);
   if (u.buffs.blessed) s *= BLESSING_MULT;
   if (u.buffs.slowTicks > 0 && !u.buffs.berserk) s *= u.buffs.slowMult;
   // Pond drag: enough to feel the water, not enough to die on the wade.
@@ -459,6 +465,7 @@ function spawnUnit(
     action: 'spawn',
     targetId: null,
     homeWing,
+    bridgeWarned: false,
   };
   // Temple Ward is a marble veil, not a unit buff. Do not snowball combat.
   st.units.push(u);
@@ -1034,18 +1041,22 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
     pr.ticksLeft--;
     if (pr.ticksLeft > 0) continue;
 
-    if (pr.kind === 'cannon') {
-      ev.push({
-        type: 'shrineImpact',
-        owner: pr.owner,
-        x: pr.x, y: pr.y,
-        kind: pr.style === 'water' ? 'water' : 'ember',
-      });
-      const r2 = MARBLE_CANNON_SPLASH * MARBLE_CANNON_SPLASH;
+    if (pr.kind === 'cannon' || pr.kind === 'gate') {
+      if (pr.kind === 'cannon') {
+        ev.push({
+          type: 'shrineImpact',
+          owner: pr.owner,
+          x: pr.x, y: pr.y,
+          kind: pr.style === 'water' ? 'water' : 'ember',
+        });
+      }
+      const splash = pr.kind === 'gate' ? GATE_SHOT_SPLASH : MARBLE_CANNON_SPLASH;
+      const r2 = splash * splash;
+      const hitKind = pr.kind === 'cannon' ? 'cannon' : 'ranged';
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
         if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
-          dealDamage(st, ev, null, o, pr.dmg, 'cannon');
+          dealDamage(st, ev, null, o, pr.dmg, hitKind);
           st.players[pr.owner].damageDealt += pr.dmg;
         }
       }
@@ -1743,6 +1754,75 @@ function attackMarble(st: GameState, ev: GameEvent[], u: RuntimeUnit, m: MarbleS
   dealMarbleDamage(st, ev, u.owner, m, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
 }
 
+function gateMouth(ob: ObeliskState): Vec2 {
+  const front = FORT_WALL_FRONT[ob.owner];
+  return { x: ob.x, y: ob.owner === 0 ? front - 0.12 : front + 0.12 };
+}
+
+function tickGates(st: GameState, ev: GameEvent[]): void {
+  if (st.phase !== 'basalt') return;
+  for (const ob of st.obelisks) {
+    if (ob.hp <= 0) continue;
+    if (ob.atkTimer > 0) ob.atkTimer--;
+    if (ob.atkTimer > 0) continue;
+    const mouth = gateMouth(ob);
+    let best: UnitState | null = null;
+    let bestScore = Infinity;
+    for (const u of st.units) {
+      if (u.hp <= 0 || u.owner === ob.owner) continue;
+      if (!isCombatVisible(st, u)) continue;
+      const d = dist(mouth.x, mouth.y, u.x, u.y);
+      if (d > GATE_SHOT_RANGE) continue;
+      const offLane = Math.abs(u.x - ob.x) > 2.2 ? 2 : 0;
+      const score = d + offLane;
+      if (score < bestScore) {
+        bestScore = score;
+        best = u;
+      }
+    }
+    if (!best) {
+      ob.atkTimer = 1;
+      continue;
+    }
+    const d = Math.max(0.001, dist(mouth.x, mouth.y, best.x, best.y));
+    const ticks = Math.max(1, Math.ceil(d / GATE_SHOT_SPEED));
+    const style = st.players[ob.owner].faction === 'magma' ? 'ember' : 'water';
+    st.projectiles.push({
+      id: nextProjId++,
+      owner: ob.owner,
+      kind: 'gate',
+      style,
+      x: mouth.x, y: mouth.y, px: mouth.x, py: mouth.y,
+      vx: (best.x - mouth.x) / ticks,
+      vy: (best.y - mouth.y) / ticks,
+      dmg: GATE_SHOT_DMG,
+      ticksLeft: ticks,
+    });
+    ev.push({
+      type: 'gateShot',
+      owner: ob.owner,
+      wing: ob.wing,
+      x: mouth.x, y: mouth.y, tx: best.x, ty: best.y,
+    });
+    ob.atkTimer = GATE_SHOT_INTERVAL;
+  }
+}
+
+function tickBridgeAlerts(st: GameState, ev: GameEvent[]): void {
+  if (st.phase !== 'basalt') return;
+  for (const u of st.units) {
+    if (u.hp <= 0 || u.bridgeWarned) continue;
+    const foe = (1 - u.owner) as PlayerId;
+    const band = RIVER_BANDS[foe];
+    if (u.y < band.y0 - 0.06 || u.y > band.y1 + 0.06) continue;
+    const lanes = FORT_LANES[foe];
+    const wing = Math.abs(u.x - lanes[0]) < Math.abs(u.x - lanes[1]) ? 0 : 1;
+    if (Math.abs(u.x - lanes[wing]) > BRIDGE_HALF_W + 0.4) continue;
+    u.bridgeWarned = true;
+    ev.push({ type: 'bridgeThreat', owner: foe, wing, x: u.x, y: u.y });
+  }
+}
+
 function tickShrines(st: GameState, ev: GameEvent[]): void {
   if (st.phase !== 'oasis') return;
   for (const m of st.marbles) {
@@ -1834,7 +1914,7 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
   st.tick++;
 
   let income = st.phase === 'oasis' ? AQUA_PER_TICK_P2 : AQUA_PER_TICK_P1;
-  if (st.phase === 'basalt' && st.phaseTicksLeft <= 133) {
+  if (st.phase === 'basalt' && st.phaseTicksLeft <= AQUA_P1_LATE_TICKS) {
     income = AQUA_PER_TICK_P1_LATE;
   }
   if (st.phase !== 'transition') {
@@ -1871,6 +1951,10 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
   st.units = st.units.filter((u) => u.hp > 0);
 
   if (st.phase === 'basalt') scoreTerritory(st);
+  if (st.phase === 'basalt') {
+    tickGates(st, ev);
+    tickBridgeAlerts(st, ev);
+  }
   if (st.phase === 'oasis') tickShrines(st, ev);
 
   // The Basalt Fields end only when a fortress has lost BOTH gatehouses —
@@ -2105,11 +2189,11 @@ export class BotBrain {
     const punishing = st.tick < this.punishUntil;
 
     if (st.tick < this.nextActionTick) return null;
+    const me = st.players[this.seat];
     // Act on OWN-priority ticks (input ordering alternates seat priority by
     // tick parity — acting off-parity donated every contested army-cap and
-    // lane-cap slot to the opponent). Punish windows override the wait.
-    if (!strong && !punishing && st.tick % 2 !== this.seat % 2) return null;
-    const me = st.players[this.seat];
+    // lane-cap slot to the opponent). Flush and punish override the wait.
+    if (!strong && !punishing && me.aqua < 5.2 && st.tick % 2 !== this.seat % 2) return null;
     // Near the aqua cap every idle beat wastes income — spend with urgency.
     const flush = me.aqua >= (strong ? 6.25 : 7);
 
