@@ -6,8 +6,11 @@
  * ========================================================================== */
 
 import { BotBrain, advanceTick, createGame, resetIds } from '../src/engine';
-import type { GameState, PlayerInput } from '../src/types';
-import { PHASE1_TICKS, PHASE2_TICKS, TRANSITION_TICKS } from '../src/types';
+import type { GameState, PlayerInput, UnitState } from '../src/types';
+import {
+  FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_POS, MARBLE_R,
+  PHASE1_TICKS, PHASE2_TICKS, TRANSITION_TICKS,
+} from '../src/types';
 
 const MAX_TICKS = PHASE1_TICKS + TRANSITION_TICKS + PHASE2_TICKS + 5;
 
@@ -108,6 +111,95 @@ function determinismCheck(seed: number): boolean {
 console.log('— Vaalbara headless simulation suite —\n');
 
 let failures = 0;
+
+function assert(cond: boolean, msg: string): void {
+  if (!cond) {
+    failures++;
+    console.error(`FAIL ${msg}`);
+  } else {
+    console.log(`OK   ${msg}`);
+  }
+}
+
+function dummyUnit(partial: Pick<UnitState, 'owner' | 'x' | 'y'> & Partial<UnitState>): UnitState {
+  return {
+    id: partial.id ?? 9001,
+    owner: partial.owner,
+    species: partial.species ?? 'wolves',
+    x: partial.x, y: partial.y, px: partial.x, py: partial.y,
+    hp: partial.hp ?? 152, maxHp: partial.maxHp ?? 152,
+    facing: 1, atkTimer: 3, traveled: 0, stompBank: 0,
+    struckTargets: [], waypoint: null, stall: 0, stallRef: Infinity, unstick: 0,
+    buffs: { stun: 0, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
+    stealthed: false, action: 'idle', targetId: null, homeWing: 0,
+    ...partial,
+  };
+}
+
+console.log('scripted agency checks');
+{
+  resetIds();
+  const st = createGame(1, ['magma', 'oasis']);
+  st.players[0].aqua = 10;
+  st.players[0].hand[0] = 'lion';
+  const gx = FORT_LANES[0][0];
+  const gy = FORT_PAD_Y[0];
+  advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x: gx, y: gy, dirX: 0, dirY: -1 } }]);
+  const lion = st.units.find((u) => u.species === 'lion');
+  assert(!!lion && Math.abs(lion.y - FORT_SPAWN_Y[0]) < 0.08, 'gate march spawns on the rear apron');
+  assert(!!lion?.waypoint && Math.abs(lion.waypoint.x - gx) < 0.05, 'gate march waypoint holds the lane x');
+}
+
+{
+  resetIds();
+  const st = createGame(2, ['magma', 'oasis']);
+  st.players[0].aqua = 10;
+  st.players[0].hand[0] = 'lion';
+  const x = FORT_LANES[0][0];
+  const y = 11.05;
+  advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x, y, dirX: 0, dirY: -1 } }]);
+  const drop = st.units.find((u) => u.species === 'lion');
+  assert(!!drop && drop.y < FORT_WALL_FRONT[0] + 0.25 && drop.y > 9.8, 'field drop appears on dirt, not in the tunnel');
+  assert(!!drop && Math.abs(drop.y - FORT_SPAWN_Y[0]) > 2, 'field drop is not a gate spawn');
+}
+
+{
+  resetIds();
+  const st = createGame(3, ['magma', 'oasis']);
+  st.players[0].aqua = 10;
+  st.players[0].hand[0] = 'lion';
+  advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x: 4.5, y: 3.0, dirX: 0, dirY: -1 } }]);
+  assert(st.units.filter((u) => u.species === 'lion').length === 0, 'enemy-half drop is rejected');
+}
+
+{
+  resetIds();
+  const st = createGame(4, ['magma', 'oasis']);
+  st.phase = 'oasis';
+  st.phaseTicksLeft = 200;
+  st.obelisks = [];
+  st.marbles = [
+    { owner: 0, hp: 720, maxHp: 720, shield: 0, shieldMax: 0, x: MARBLE_POS[0].x, y: MARBLE_POS[0].y, r: MARBLE_R, atkTimer: 0 },
+    { owner: 1, hp: 720, maxHp: 720, shield: 0, shieldMax: 0, x: MARBLE_POS[1].x, y: MARBLE_POS[1].y, r: MARBLE_R, atkTimer: 99 },
+  ];
+  st.units.push(dummyUnit({ owner: 1, x: 4.5, y: 9.15, hp: 200, maxHp: 200 }));
+  const zonesAtLaunch = st.zones.length;
+  const fired = advanceTick(st, []);
+  const cannon = st.projectiles.some((p) => p.kind === 'cannon');
+  assert(fired.events.some((e) => e.type === 'shrineShot') && cannon, 'living shrine fires a cannon bolt');
+  assert(st.zones.length === zonesAtLaunch, 'cannon launch does not spawn an acid pool');
+  let impact = false;
+  let pooled = false;
+  for (let i = 0; i < 8; i++) {
+    const { events } = advanceTick(st, []);
+    if (events.some((e) => e.type === 'shrineImpact')) impact = true;
+    if (st.zones.some((z) => z.kind === 'acidpool')) pooled = true;
+  }
+  assert(impact, 'cannon landing emits shrineImpact');
+  assert(!pooled, 'cannon landing does not leave an acid pool');
+}
+
+console.log('');
 const wins: Record<string, number> = { '0': 0, '1': 0, tie: 0 };
 const factionWins: Record<string, number> = { magma: 0, oasis: 0, tie: 0 };
 
