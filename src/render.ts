@@ -887,7 +887,8 @@ export class Renderer {
 
     if (world === 'oasis') this.drawOasisOverlays(ctx, st);
 
-    // Deploy-band glow — Oasis only; Phase 1 deploys at the gate pads.
+    // Deploy-band glow — Oasis: your half. Phase 1: your dirt (mid → wall)
+    // plus the pulsing gate pads, so field-drop vs march is unmissable.
     if (st.phase === 'oasis') {
       const bandTopWorld = this.localSeat === 0 ? WORLD_H * 0.5 : 0;
       const p0 = this.worldToScreen(0, this.localSeat === 0 ? bandTopWorld : WORLD_H * 0.5);
@@ -900,6 +901,19 @@ export class Renderer {
       glow.addColorStop(0, 'hsla(190 90% 60% / 0)');
       glow.addColorStop(1, `hsla(190 90% 60% / ${pulse * 2})`);
       ctx.fillStyle = glow;
+      ctx.fillRect(r.left, yTop, r.w, yBot - yTop);
+    } else if (st.phase === 'basalt' && this.padHint) {
+      const pMid = this.worldToScreen(0, WORLD_H * 0.5);
+      const pWall = this.worldToScreen(0, FORT_WALL_FRONT[this.localSeat]);
+      const y0 = pMid.y;
+      const y1 = pWall.y;
+      const glow = ctx.createLinearGradient(0, y0, 0, y1);
+      const pulse = 0.08 + Math.sin(t * 2.5) * 0.035;
+      glow.addColorStop(0, 'hsla(190 90% 60% / 0)');
+      glow.addColorStop(1, `hsla(190 90% 62% / ${pulse * 2.15})`);
+      ctx.fillStyle = glow;
+      const yTop = Math.min(y0, y1);
+      const yBot = Math.max(y0, y1);
       ctx.fillRect(r.left, yTop, r.w, yBot - yTop);
     }
   }

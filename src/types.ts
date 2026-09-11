@@ -461,6 +461,30 @@ export const FORT_SPAWN_Y: Record<PlayerId, number> = { 0: 14.7, 1: 0.55 };
 export const fortPads = (seat: PlayerId): Array<{ x: number; y: number }> =>
   FORT_LANES[seat].map((x) => ({ x, y: FORT_PAD_Y[seat] }));
 
+/** Tap this close to a gate pad = march through the tunnel. */
+export const GATE_MARCH_RADIUS = 2.6;
+
+export function isGateMarchTap(player: PlayerId, x: number, y: number): boolean {
+  return fortPads(player).some((p) => Math.hypot(p.x - x, p.y - y) <= GATE_MARCH_RADIUS);
+}
+
+/** Own half of the field, in front of your wall: bank, paths, plateau,
+ *  near the end of your bridges. Not the fortress interior. */
+export function inBasaltDefendZone(player: PlayerId, y: number): boolean {
+  if (!inOwnHalf(player, y)) return false;
+  return player === 0
+    ? y <= FORT_WALL_FRONT[0] + 0.12
+    : y >= FORT_WALL_FRONT[1] - 0.12;
+}
+
+/** Dirt behind your river choke — where a save should land, then walk onto the wood. */
+export function basaltDefendAnchor(player: PlayerId, wing: 0 | 1): { x: number; y: number } {
+  const x = FORT_LANES[player][wing];
+  const river = RIVER_BANDS[player];
+  const y = player === 0 ? river.y1 + 0.38 : river.y1 + 0.38;
+  return { x, y };
+}
+
 export const AQUA_MAX = 10;
 /** Slow drip (1 aqua / ~3.75 s) keeps armies small: distinct duels, not mobs. */
 export const AQUA_PER_TICK_P1 = 0.08;

@@ -24,6 +24,7 @@ import {
   SHRINE,
   RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
   WORLD_H, WORLD_W, armyCap, fortPads, inOwnHalf, inWorld,
+  inBasaltDefendZone, isGateMarchTap, basaltDefendAnchor,
 } from './types';
 import type {
   BotStrength, CardId, FactionId, GameEvent, GameState, MarbleState, ObeliskState, PhaseConfig, PlayerId,
@@ -262,8 +263,75 @@ export function preferDeployLane(
   return null;
 }
 
+/** Enemy on our home bridge / bank — the bot should field-drop, not tunnel. */
+function homeBridgeThreat(st: GameState, seat: PlayerId): 0 | 1 | null {
+  const river = RIVER_BANDS[seat];
+  const lanes = FORT_LANES[seat];
+  let bestWing: 0 | 1 | null = null;
+  let bestScore = 0;
+  for (const u of st.units) {
+    if (u.hp <= 0 || u.owner === seat) continue;
+    if (!inBasaltDefendZone(seat, u.y) && !(
+      u.y >= river.y0 - 0.35 && u.y <= river.y1 + 0.55
+    )) continue;
+    const wing: 0 | 1 = Math.abs(u.x - lanes[0]) < Math.abs(u.x - lanes[1]) ? 0 : 1;
+    const nearLane = Math.abs(u.x - lanes[wing]) <= 1.5;
+    const onBridge = u.y >= river.y0 - 0.4 && u.y <= river.y1 + 0.65;
+    if (!nearLane && !onBridge) continue;
+    const onHomeApproach = seat === 0 ? u.y >= river.y0 - 1.15 : u.y <= river.y1 + 1.15;
+    if (!onHomeApproach) continue;
+    const score = (onBridge ? 2.2 : 1) + (speciesDef(u.species).stats!.heavy ? 0.6 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestWing = wing;
+    }
+  }
+  return bestWing;
+}
+
 function groundOpen(st: GameState, x: number, y: number): boolean {
   return inWorld(x, y) && walkableAt(worldOf(st), x, y);
+}
+
+/** Snap a Phase-1 field drop onto walkable dirt in the defend zone. */
+export function snapBasaltFieldDrop(
+  st: GameState, player: PlayerId, x: number, y: number, flying: boolean,
+): { x: number; y: number } | null {
+  const ok = (sx: number, sy: number) =>
+    inWorld(sx, sy) && inBasaltDefendZone(player, sy) && (flying || groundOpen(st, sx, sy));
+  if (ok(x, y)) return { x, y };
+  for (let r = 0.25; r <= 1.6; r += 0.25) {
+    for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, r], [r, -r], [-r, -r]] as const) {
+      if (ok(x + dx, y + dy)) return { x: x + dx, y: y + dy };
+    }
+  }
+  return null;
+}
+
+/** Short step from a field drop toward the nearest threat (or your bridge). */
+function fieldDropWaypoint(st: GameState, player: PlayerId, sx: number, sy: number): Vec2 {
+  let threat: UnitState | null = null;
+  let best = Infinity;
+  for (const u of st.units) {
+    if (u.hp <= 0 || u.owner === player) continue;
+    const d = dist2(u.x, u.y, sx, sy);
+    if (d < best) {
+      best = d;
+      threat = u;
+    }
+  }
+  const dirY = player === 0 ? -1 : 1;
+  if (threat) {
+    const d = Math.max(0.001, dist(sx, sy, threat.x, threat.y));
+    const step = Math.min(2.15, d * 0.55);
+    return {
+      x: Math.max(0.4, Math.min(WORLD_W - 0.4, sx + ((threat.x - sx) / d) * step)),
+      y: Math.max(0.4, Math.min(WORLD_H - 0.4, sy + ((threat.y - sy) / d) * step)),
+    };
+  }
+  const lanes = FORT_LANES[player];
+  const lx = Math.abs(sx - lanes[0]) < Math.abs(sx - lanes[1]) ? lanes[0] : lanes[1];
+  return { x: lx, y: sy + dirY * 1.55 };
 }
 
 /** Global march pace. The plodding gait animation reads the ACTUAL speed,
@@ -466,33 +534,45 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
     let sy = a.y;
     let wp: Vec2;
     let homeWing: 0 | 1 = laneWingOf(input.player, a.x);
+    let gateMarch = false;
 
     if (st.phase === 'basalt') {
-      // Fortress siege: units enter the field THROUGH one of your two
-      // gates. The touch snaps to the nearest gate lane, but the warrior
-      // materialises at the FAR end of the arch corridor — outside the
-      // fortress — and marches the whole tunnel before emerging onto the
-      // field, so every deployment reads as a gate sortie.
-      // Lane soft-cap: if the tapped gate is already crowded with ground
-      // troops, snap to the emptier corridor so individual duels stay readable.
-      const pads = fortPads(input.player);
-      const tapped = pads.reduce((best, cur) =>
-        Math.abs(cur.x - a.x) < Math.abs(best.x - a.x) ? cur : best);
-      const lanes = FORT_LANES[input.player];
-      const tappedWing: 0 | 1 = Math.abs(tapped.x - lanes[0]) < Math.abs(tapped.x - lanes[1]) ? 0 : 1;
-      const wing = preferDeployLane(st, input.player, tappedWing, !!stats.flying, stats.count);
-      if (wing === null) return; // both ground lanes soft-full
-      homeWing = wing;
-      const pad = pads[wing];
-      sx = pad.x;
-      sy = FORT_SPAWN_Y[input.player];
-      // Stay in this lane: through the tunnel (or over rubble), over this
-      // bridge, then that gatehouse. Mid is a fight that happens when both
-      // armies sent the same corridor — not a rally point.
-      wp = {
-        x: pad.x,
-        y: input.player === 0 ? FORT_WALL_FRONT[0] - 0.8 : FORT_WALL_FRONT[1] + 0.8,
-      };
+      if (isGateMarchTap(input.player, a.x, a.y)) {
+        // Tap a gate: materialise on the rear apron and walk the whole
+        // tunnel (or scramble the rubble) before emerging onto that lane.
+        const pads = fortPads(input.player);
+        const tapped = pads.reduce((best, cur) =>
+          Math.abs(cur.x - a.x) < Math.abs(best.x - a.x) ? cur : best);
+        const lanes = FORT_LANES[input.player];
+        const tappedWing: 0 | 1 = Math.abs(tapped.x - lanes[0]) < Math.abs(tapped.x - lanes[1]) ? 0 : 1;
+        const wing = preferDeployLane(st, input.player, tappedWing, !!stats.flying, stats.count);
+        if (wing === null) return; // both ground lanes soft-full
+        homeWing = wing;
+        const pad = pads[wing];
+        sx = pad.x;
+        sy = FORT_SPAWN_Y[input.player];
+        wp = {
+          x: pad.x,
+          y: input.player === 0 ? FORT_WALL_FRONT[0] - 0.8 : FORT_WALL_FRONT[1] + 0.8,
+        };
+        gateMarch = true;
+      } else if (inBasaltDefendZone(input.player, a.y)) {
+        // Drop on your dirt: appear on the bank / path / plateau and take
+        // a short step toward the threat. No tunnel.
+        const snap = snapBasaltFieldDrop(st, input.player, a.x, a.y, !!stats.flying);
+        if (!snap) return;
+        sx = snap.x;
+        sy = snap.y;
+        homeWing = laneWingOf(input.player, sx);
+        wp = fieldDropWaypoint(st, input.player, sx, sy);
+        if (!stats.flying) {
+          for (let k = 0; k < 6 && !groundOpen(st, wp.x, wp.y); k++) {
+            wp = { x: (wp.x + sx) * 0.5, y: (wp.y + sy) * 0.5 };
+          }
+        }
+      } else {
+        return;
+      }
     } else {
       // Oasis: your half — sand and water. Drag is the first charge.
       if (!inOwnHalf(input.player, a.y)) return;
@@ -529,17 +609,18 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
     p.aqua -= def.cost;
     cycleCard(p, handIdx);
 
-    // Inside the arch corridors multi-unit cards fall into COLUMN file — the
-    // tunnel is only as wide as the painted opening, so packs march through
-    // single file, each a step ahead of the next. On the open oasis baseline
-    // they fan out side by side as before.
-    const columnFile = st.phase === 'basalt';
-    // Column steps advance toward the field (deeper index = closer to exit).
+    // Gate marches file through the painted arch. Field drops stay in a
+    // short column toward the fight so ants don't fan into lava. Oasis
+    // still fans side by side on the baseline.
+    const columnFile = gateMarch;
+    const fieldFile = st.phase === 'basalt' && !gateMarch;
     const stepY = input.player === 0 ? -0.55 : 0.55;
     const at = (i: number, n: number, spread: number): { x: number; y: number } =>
       columnFile
         ? { x: sx, y: sy + i * stepY }
-        : { x: sx + (i - (n - 1) / 2) * spread, y: sy };
+        : fieldFile
+          ? { x: sx, y: sy + i * stepY * 0.5 }
+          : { x: sx + (i - (n - 1) / 2) * spread, y: sy };
     const spawned: UnitState[] = [];
     if (stats.formation === 'line' && stats.count > 1) {
       for (let i = 0; i < stats.count; i++) {
@@ -2136,6 +2217,15 @@ export class BotBrain {
 
     const dirY = this.seat === 0 ? -1 : 1;
     if (st.phase === 'basalt') {
+      const threatWing = homeBridgeThreat(st, this.seat);
+      if (threatWing !== null) {
+        const drop = basaltDefendAnchor(this.seat, threatWing);
+        const flying = !!def.stats?.flying;
+        const snap = snapBasaltFieldDrop(st, this.seat, drop.x, drop.y, flying) ?? drop;
+        this.lastLane = threatWing;
+        this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
+        return { type: 'deploy', card: pick, x: snap.x, y: snap.y, dirX: 0, dirY };
+      }
       const pads = fortPads(this.seat);
       const wings = st.obelisks.filter((o) => o.owner !== this.seat && o.hp > 0);
       // Default: counter-siege the emptier lane so both fortresses take
