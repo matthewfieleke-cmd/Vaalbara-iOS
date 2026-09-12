@@ -324,6 +324,8 @@ export type GameEvent =
   | { type: 'bridgeThreat'; owner: PlayerId; wing: 0 | 1; x: number; y: number }
   | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
   | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
+  | { type: 'cannonHit'; owner: PlayerId; amount: number; x: number; y: number }
+  | { type: 'cannonDown'; owner: PlayerId; x: number; y: number }
   | { type: 'shrineShot'; owner: PlayerId; x: number; y: number; tx: number; ty: number; kind: 'ember' | 'water' }
   | { type: 'shrineImpact'; owner: PlayerId; x: number; y: number; kind: 'ember' | 'water' }
   | { type: 'shieldBreak'; owner: PlayerId; x: number; y: number }
@@ -356,12 +358,18 @@ export interface GameState {
   obelisks: ObeliskState[];
   /** Phase-2 marble shrines. Empty in Basalt. */
   marbles: MarbleState[];
+  /** Phase-2 siege guns. Empty in Basalt. A living gun makes its shrine immune. */
+  cannons: CannonState[];
   pendingLava: PendingLavaRain[];
   players: [PlayerBoardState, PlayerBoardState];
   /** Kept for replay/UI; Phase 2 no longer wins by pond claim. */
   captureMeter: number;
   /** Shrine damage this chapter, used for the 2:30 tie and same-tick crumble. */
   marbleDamage: [number, number];
+  /** Cannon damage this chapter — breaks a shrine-damage tie. */
+  cannonDamage: [number, number];
+  /** Tick each owner's gun fell, or null if it still stands. Earlier topple wins a remaining tie. */
+  cannonFellTick: [number | null, number | null];
   winner: PlayerId | 'tie' | null;
   dominanceP0: number;
 }
@@ -540,13 +548,16 @@ export const CAPTURE_RATE = 1;
  *  sweeps stay rare. */
 export const OBELISK_HP = 1380;
 
-/** Phase-2 shrine. Bot-vs-bot dwell on the stone is ~10–20 hits
- *  in 2:30; siege multiplier + this HP make a landed push crumble near
- *  2:00 while a stalled mid still goes to the clock. */
-export const MARBLE_HP = 720;
+/** Phase-2 shrine. The gun must fall first; this HP is the real clock.
+ *  Veil still sits on the stone only. */
+export const MARBLE_HP = 800;
 /** Footprint radius — matches the painted keep / temple, so units stop
  *  at the door instead of walking through the stone. */
 export const MARBLE_R = 1.48;
+/** Separate grass-pad gun. Equal for both seats — no veil. */
+export const CANNON_HP = 500;
+/** Collision radius of the painted pad, not the keep. */
+export const CANNON_R = 0.72;
 /** Cannon shell — 200 every 8 s. A landed hit deletes chaff and chunks a tank. */
 export const MARBLE_SHOT_DMG = 200;
 /** Melee/ranged hits on marble — the stone is the chapter, so those
@@ -563,10 +574,10 @@ export const MARBLE_CANNON_SPLASH = 0.75;
 /** ~190 HP veil — a few tank swings — even after the HP retune. */
 export const MARBLE_SHIELD_PCT = 0.26;
 
-/** Painted shrines on Oasis.png. Seat 0 is the keep (south); seat 1 is
- *  the temple (north). Footprints are the masonry mass — not a loose AABB —
+/** Painted shrines on the Oasis floor. Seat 0 is the keep (south); seat 1
+ *  is the temple (north). Footprints are the masonry mass — not a loose AABB —
  *  so units walk the grass to the pond-facing door instead of through stone.
- *  Shots leave the keep's front battlement / the temple spire. */
+ *  The shrine never shoots; the grass-pad gun does. */
 export const SHRINE: Record<PlayerId, {
   x: number; y: number;
   shotX: number; shotY: number;
@@ -581,6 +592,19 @@ export const MARBLE_POS: Record<PlayerId, { x: number; y: number }> = {
   1: { x: SHRINE[1].x, y: SHRINE[1].y },
 };
 
+/** Separate siege guns on the grass. Seat 0's gun sits left of the keep,
+ *  seat 1's sits right of the temple — not mirrored. `padX/Y` is where a
+ *  siege stands; `shotX/Y` is the painted barrel mouth toward the pond. */
+export const CANNON: Record<PlayerId, {
+  x: number; y: number;
+  shotX: number; shotY: number;
+  padX: number; padY: number;
+  hw: number; hh: number;
+}> = {
+  0: { x: 1.91, y: 10.07, shotX: 1.91, shotY: 9.58, padX: 1.91, padY: 9.42, hw: 0.72, hh: 0.58 },
+  1: { x: 7.20, y:  4.07, shotX: 7.20, shotY: 4.58, padX: 7.20, padY: 4.70, hw: 0.72, hh: 0.58 },
+};
+
 export interface MarbleState {
   readonly owner: PlayerId;
   hp: number;
@@ -588,6 +612,17 @@ export interface MarbleState {
   /** Extra life from winning Phase 1; 0 if they did not win the chapter. */
   shield: number;
   shieldMax: number;
+  readonly x: number;
+  readonly y: number;
+  readonly r: number;
+  /** Unused — the shrine no longer fires. Kept so old fixtures stay typed. */
+  atkTimer: number;
+}
+
+export interface CannonState {
+  readonly owner: PlayerId;
+  hp: number;
+  maxHp: number;
   readonly x: number;
   readonly y: number;
   readonly r: number;

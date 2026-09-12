@@ -126,6 +126,15 @@ export function getPhaseArt(world: 'basalt' | 'oasis'): HTMLImageElement | null 
   return arenaArt[world];
 }
 
+/** Full-bleed Oasis floors keyed to which grass-pad guns still stand. */
+export type OasisFloorKey = 'living' | 'top-down' | 'bottom-down' | 'both-down';
+const oasisFloors = new Map<OasisFloorKey, HTMLImageElement>();
+
+export function getOasisFloor(key: OasisFloorKey): HTMLImageElement | null {
+  if (key === 'living') return oasisFloors.get('living') ?? arenaArt.oasis;
+  return oasisFloors.get(key) ?? arenaArt.oasis;
+}
+
 /** Full-board transparent overlays for the Oasis painting: the Phase-1
  *  winner's lightning veil, and (when authored) a crumbled keep / temple. */
 export type OasisOverlayKey = 'forcefield-bottom' | 'forcefield-top' | 'crumble-bottom' | 'crumble-top';
@@ -921,10 +930,22 @@ export function loadSprites(baseUrl = './art/'): Promise<void> {
       (async () => {
         try {
           arenaArt.oasis = await loadImage(`${baseUrl}oasis.webp`);
+          oasisFloors.set('living', arenaArt.oasis);
         } catch {
           arenaArt.oasis = null;
         }
       })(),
+      ...([
+        ['top-down', 'oasis-cannon-top-down.webp'],
+        ['bottom-down', 'oasis-cannon-bottom-down.webp'],
+        ['both-down', 'oasis-cannons-down.webp'],
+      ] as const).map(async ([key, file]) => {
+        try {
+          oasisFloors.set(key, await loadImage(`${baseUrl}${file}`));
+        } catch {
+          oasisFloors.delete(key);
+        }
+      }),
       ...(['forcefield-bottom', 'forcefield-top', 'crumble-bottom', 'crumble-top'] as const).map(async (k) => {
         try {
           oasisOverlays.set(k, await loadImage(`${baseUrl}${k}.webp`));

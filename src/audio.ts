@@ -663,6 +663,16 @@ const GLOBAL_SFX = {
     noise({ dur: 1.5, gain: 0.32, filterFreq: 1600, filterEnd: 70 });
     voice({ type: 'triangle', freq: 440, freqEnd: 180, dur: 0.7, gain: 0.08, when: t + 0.12 });
   },
+  cannonDown: () => {
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 88, freqEnd: 36, dur: 0.7, gain: 0.32 });
+    noise({ dur: 0.65, gain: 0.2, filterFreq: 1400, filterEnd: 90 });
+    voice({ type: 'triangle', freq: 280, freqEnd: 120, dur: 0.35, gain: 0.06, when: t + 0.06 });
+  },
+  cannonHit: () => {
+    voice({ type: 'sine', freq: 160, freqEnd: 70, dur: 0.16, gain: 0.16 });
+    noise({ dur: 0.12, gain: 0.08, filterFreq: 900, filterEnd: 240 });
+  },
   shieldBreak: () => {
     voice({ type: 'triangle', freq: 720, freqEnd: 220, dur: 0.35, gain: 0.1 });
     noise({ dur: 0.28, gain: 0.08, filterFreq: 2400, filterEnd: 600 });
@@ -849,6 +859,7 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'lavaStrike':
       case 'obeliskDown':
       case 'marbleDown':
+      case 'cannonDown':
       case 'shrineShot':
       case 'shrineImpact':
       case 'bridgeThreat':
@@ -958,9 +969,17 @@ export function handleGameEvents(events: GameEvent[]): void {
         if (!claim(1)) break;
         GLOBAL_SFX.marbleHit();
         break;
+      case 'cannonHit':
+        if (!claim(1)) break;
+        GLOBAL_SFX.cannonHit();
+        break;
       case 'marbleDown':
         if (!claim(6)) break;
         GLOBAL_SFX.marbleDown();
+        break;
+      case 'cannonDown':
+        if (!claim(4)) break;
+        GLOBAL_SFX.cannonDown();
         break;
       case 'shieldBreak':
         if (!claim(3)) break;

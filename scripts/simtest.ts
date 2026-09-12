@@ -5,12 +5,14 @@
  *   npm run sim            # quick suite: 12 seeded matches + determinism
  * ========================================================================== */
 
-import { BotBrain, advanceTick, createGame, resetIds } from '../src/engine';
-import type { GameState, PlayerInput, UnitState } from '../src/types';
+import { BotBrain, advanceTick, createGame, oasisWinner, resetIds, shrineGuarded } from '../src/engine';
+import type { CannonState, GameState, MarbleState, PlayerId, PlayerInput, UnitState } from '../src/types';
 import {
-  FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_POS, MARBLE_R,
-  PHASE1_TICKS, PHASE2_TICKS, TRANSITION_TICKS,
+  CANNON, CANNON_HP, CANNON_R, FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT,
+  LAVA_RAIN_CARD, MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SIEGE_MULT,
+  PHASE1_TICKS, PHASE2_TICKS, SHRINE, TRANSITION_TICKS,
 } from '../src/types';
+import { LAVA_RAIN } from '../src/data';
 
 const MAX_TICKS = PHASE1_TICKS + TRANSITION_TICKS + PHASE2_TICKS + 5;
 
@@ -190,24 +192,54 @@ console.log('scripted agency checks');
   assert(volley.events.some((e) => e.type === 'bridgeThreat' && e.owner === 0), 'enemy on your bridge raises an alarm');
 }
 
-{
-  resetIds();
-  const st = createGame(4, ['magma', 'oasis']);
+function livingMarble(owner: PlayerId, extra: Partial<MarbleState> = {}): MarbleState {
+  return {
+    owner,
+    hp: MARBLE_HP, maxHp: MARBLE_HP,
+    shield: 0, shieldMax: 0,
+    x: MARBLE_POS[owner].x, y: MARBLE_POS[owner].y, r: MARBLE_R,
+    atkTimer: 99,
+    ...extra,
+  };
+}
+
+function livingCannon(owner: PlayerId, extra: Partial<CannonState> = {}): CannonState {
+  const g = CANNON[owner];
+  return {
+    owner,
+    hp: CANNON_HP, maxHp: CANNON_HP,
+    x: g.x, y: g.y, r: CANNON_R,
+    atkTimer: 99,
+    ...extra,
+  };
+}
+
+function enterOasis(st: GameState): void {
   st.phase = 'oasis';
   st.phaseTicksLeft = 200;
   st.obelisks = [];
-  st.marbles = [
-    { owner: 0, hp: 720, maxHp: 720, shield: 0, shieldMax: 0, x: MARBLE_POS[0].x, y: MARBLE_POS[0].y, r: MARBLE_R, atkTimer: 0 },
-    { owner: 1, hp: 720, maxHp: 720, shield: 0, shieldMax: 0, x: MARBLE_POS[1].x, y: MARBLE_POS[1].y, r: MARBLE_R, atkTimer: 99 },
-  ];
+  st.marbles = [livingMarble(0), livingMarble(1)];
+  st.cannons = [livingCannon(0), livingCannon(1)];
+  st.marbleDamage = [0, 0];
+  st.cannonDamage = [0, 0];
+  st.cannonFellTick = [null, null];
+}
+
+{
+  resetIds();
+  const st = createGame(4, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[0].atkTimer = 0;
   st.units.push(dummyUnit({
-    owner: 1, x: 4.5, y: 9.15, hp: 400, maxHp: 400,
+    owner: 1, x: CANNON[0].x, y: CANNON[0].padY, hp: 400, maxHp: 400,
     buffs: { stun: 99, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
   }));
   const zonesAtLaunch = st.zones.length;
   const fired = advanceTick(st, []);
-  const cannon = st.projectiles.some((p) => p.kind === 'cannon');
-  assert(fired.events.some((e) => e.type === 'shrineShot') && cannon, 'living shrine fires a cannon bolt');
+  const shot = fired.events.find((e) => e.type === 'shrineShot');
+  const bolt = st.projectiles.find((p) => p.kind === 'cannon');
+  assert(!!shot && !!bolt, 'living gun fires a cannon bolt');
+  assert(!!shot && Math.abs(shot.x - CANNON[0].shotX) < 0.02 && Math.abs(shot.y - CANNON[0].shotY) < 0.02, 'bolt leaves the painted muzzle');
   assert(st.zones.length === zonesAtLaunch, 'cannon launch does not spawn an acid pool');
   let impact = false;
   let pooled = false;
@@ -224,6 +256,177 @@ console.log('scripted agency checks');
   assert(impact, 'cannon landing emits shrineImpact');
   assert(landed === 200 && !!victim && victim.hp === 200, 'cannon hits for 200 on landing');
   assert(!pooled, 'cannon landing does not leave an acid pool');
+}
+
+{
+  resetIds();
+  const st = createGame(6, ['magma', 'oasis']);
+  enterOasis(st);
+  st.players[1].aqua = 10;
+  st.players[1].hand[0] = LAVA_RAIN_CARD;
+  const keepHp = st.marbles[0].hp;
+  // East of the keep, outside the gun's rain rim, still on the shrine mass.
+  advanceTick(st, [{
+    seq: 1, player: 1, tick: 1,
+    action: { type: 'spell', card: LAVA_RAIN_CARD, x: 5.7, y: 12.55 },
+  }]);
+  for (let i = 0; i < 6; i++) advanceTick(st, []);
+  assert(st.marbles[0].hp === keepHp, 'Lava Rain on the keep deals 0 while the gun lives');
+  assert(shrineGuarded(st, 0), 'south shrine stays guarded');
+}
+
+{
+  resetIds();
+  const st = createGame(7, ['magma', 'oasis']);
+  enterOasis(st);
+  st.players[1].aqua = 10;
+  st.players[1].hand[0] = LAVA_RAIN_CARD;
+  const keepHp = st.marbles[0].hp;
+  advanceTick(st, [{
+    seq: 1, player: 1, tick: 1,
+    action: { type: 'spell', card: LAVA_RAIN_CARD, x: CANNON[0].x, y: CANNON[0].y },
+  }]);
+  for (let i = 0; i < 6; i++) advanceTick(st, []);
+  const expected = Math.round(LAVA_RAIN.centerDmg * LAVA_RAIN.buildingPct);
+  assert(st.cannons[0].hp === CANNON_HP - expected, 'Lava Rain chips the gun at building pct');
+  assert(st.marbles[0].hp === keepHp, 'rain on the gun does not scratch the guarded shrine');
+}
+
+{
+  resetIds();
+  const st = createGame(8, ['magma', 'oasis']);
+  enterOasis(st);
+  const keepHp = st.marbles[0].hp;
+  st.units.push(dummyUnit({
+    owner: 1, species: 'lion', x: SHRINE[0].doorX, y: SHRINE[0].doorY, hp: 400, maxHp: 400,
+  }));
+  for (let i = 0; i < 6; i++) advanceTick(st, []);
+  assert(st.marbles[0].hp === keepHp, 'melee on the door deals 0 while the gun lives');
+  assert(st.cannons[0].hp < CANNON_HP || st.units.some((u) => u.owner === 1 && u.waypoint), 'siege walks the gun, not the stone');
+}
+
+{
+  resetIds();
+  const st = createGame(9, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[0].hp = 0;
+  st.cannonFellTick[0] = 1;
+  assert(!shrineGuarded(st, 0), 'toppled gun exposes the shrine');
+  st.units.push(dummyUnit({
+    id: 9101, owner: 1, species: 'lion', x: SHRINE[0].doorX, y: SHRINE[0].doorY, hp: 400, maxHp: 400, atkTimer: 0,
+  }));
+  let hit = false;
+  for (let i = 0; i < 8; i++) {
+    const { events } = advanceTick(st, []);
+    if (events.some((e) => e.type === 'marbleHit' && e.owner === 0)) hit = true;
+  }
+  assert(hit && st.marbles[0].hp < MARBLE_HP, 'after the gun falls the shrine takes siege hits');
+}
+
+{
+  resetIds();
+  const st = createGame(10, ['magma', 'oasis']);
+  enterOasis(st);
+  st.units.push(dummyUnit({
+    owner: 0, species: 'lion', x: 6.55, y: 6.15, hp: 240, maxHp: 240,
+  }));
+  for (let i = 0; i < 12; i++) advanceTick(st, []);
+  const walker = st.units.find((u) => u.owner === 0);
+  const pad = CANNON[1];
+  const door = SHRINE[1];
+  assert(!!walker, 'oasis walker is alive');
+  if (walker) {
+    const dPad = Math.hypot(walker.x - pad.padX, walker.y - pad.padY);
+    const dDoor = Math.hypot(walker.x - door.doorX, walker.y - door.doorY);
+    assert(dPad + 0.35 < dDoor, 'units hard-walk the enemy cannon pad, not the shrine door');
+    assert(walker.x > 6.2, 'the march stays on the temple-right gun, not the temple door');
+  }
+}
+
+{
+  resetIds();
+  const st = createGame(11, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[1].hp = 1;
+  const pad = CANNON[1];
+  st.units.push(dummyUnit({
+    id: 9201, owner: 0, species: 'lion', x: pad.padX, y: pad.padY, hp: 240, maxHp: 240, atkTimer: 0,
+  }));
+  let toppled = false;
+  for (let i = 0; i < 4; i++) {
+    const { events } = advanceTick(st, []);
+    if (events.some((e) => e.type === 'cannonDown' && e.owner === 1)) toppled = true;
+  }
+  assert(toppled && st.cannons[1].hp <= 0, 'pad siege topples the gun');
+  st.units.push(dummyUnit({
+    id: 9202, owner: 1, species: 'lion', x: pad.x - 0.4, y: pad.y, hp: 240, maxHp: 240,
+  }));
+  for (let i = 0; i < 5; i++) advanceTick(st, []);
+  const attacker = st.units.find((u) => u.id === 9201);
+  const defender = st.units.find((u) => u.id === 9202);
+  assert(!!attacker && !!defender, 'both pad fighters still live');
+  const dDoor = attacker ? Math.hypot(attacker.x - SHRINE[1].doorX, attacker.y - SHRINE[1].doorY) : 99;
+  const dFoe = attacker && defender ? Math.hypot(attacker.x - defender.x, attacker.y - defender.y) : 99;
+  assert(dFoe < dDoor, 'after topple they finish the pad brawl instead of peeling to the door');
+}
+
+{
+  resetIds();
+  const st = createGame(14, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[1].hp = 0;
+  st.cannonFellTick[1] = 1;
+  const pad = CANNON[1];
+  const door = SHRINE[1];
+  st.units.push(dummyUnit({
+    owner: 0, species: 'eagle', x: 6.55, y: 6.80, hp: 108, maxHp: 108,
+    waypoint: { x: pad.padX, y: pad.padY },
+  }));
+  for (let i = 0; i < 16; i++) advanceTick(st, []);
+  const walker = st.units.find((u) => u.owner === 0);
+  assert(!!walker, 'door march walker is alive');
+  if (walker) {
+    const dPad = Math.hypot(walker.x - pad.padX, walker.y - pad.padY);
+    const dDoor = Math.hypot(walker.x - door.doorX, walker.y - door.doorY);
+    assert(walker.x < 6.2, 'turns west toward the temple, not east to the empty gun');
+    assert(dDoor + 0.25 < dPad, 'after topple with no pad fight, a leftover pad waypoint walks the shrine door');
+  }
+}
+
+{
+  resetIds();
+  const st = createGame(12, ['magma', 'oasis']);
+  enterOasis(st);
+  st.marbleDamage = [0, 0];
+  st.cannonDamage = [180, 40];
+  st.cannonFellTick = [null, 40];
+  assert(oasisWinner(st) === 0, 'untouched stone: more cannon damage wins the clock');
+  st.cannonDamage = [100, 100];
+  st.cannonFellTick = [80, 40];
+  assert(oasisWinner(st) === 0, 'equal cannon damage: who toppled first wins');
+  st.marbles[1].hp = MARBLE_HP - 50;
+  st.marbleDamage = [50, 0];
+  st.cannonDamage = [0, 500];
+  assert(oasisWinner(st) === 0, 'shrine damage still beats cannon damage');
+}
+
+{
+  resetIds();
+  const st = createGame(13, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[0].hp = 20;
+  st.units.push(dummyUnit({
+    owner: 1, species: 'lion', x: CANNON[0].padX, y: CANNON[0].padY, hp: 400, maxHp: 400, atkTimer: 0,
+  }));
+  let down = false;
+  for (let i = 0; i < 6; i++) {
+    const { events } = advanceTick(st, []);
+    if (events.some((e) => e.type === 'cannonDown' && e.owner === 0)) down = true;
+  }
+  assert(down && st.cannons[0].hp <= 0, 'cannonDown fires when the gun topples');
+  assert(st.winner == null && st.phase === 'oasis', 'toppling a gun does not end the match');
+  const siege = Math.round(35 * MARBLE_SIEGE_MULT);
+  assert(st.cannonDamage[1] >= siege, 'melee on the gun uses the shrine siege multiplier');
 }
 
 console.log('');
