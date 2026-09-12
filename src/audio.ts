@@ -958,7 +958,7 @@ export function handleGameEvents(events: GameEvent[]): void {
         if (!claim(6)) break;
         if (e.kind === 'ember') GLOBAL_SFX.shrineShotEmber();
         else GLOBAL_SFX.shrineShotWater();
-        playHaptic('heavy');
+        playHaptic('medium');
         break;
       case 'shrineImpact':
         if (!claim(1)) break;
