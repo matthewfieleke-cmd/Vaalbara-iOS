@@ -372,6 +372,29 @@ function enterOasis(st: GameState): void {
 
 {
   resetIds();
+  const st = createGame(14, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[1].hp = 0;
+  st.cannonFellTick[1] = 1;
+  const pad = CANNON[1];
+  const door = SHRINE[1];
+  st.units.push(dummyUnit({
+    owner: 0, species: 'eagle', x: 6.55, y: 6.80, hp: 108, maxHp: 108,
+    waypoint: { x: pad.padX, y: pad.padY },
+  }));
+  for (let i = 0; i < 16; i++) advanceTick(st, []);
+  const walker = st.units.find((u) => u.owner === 0);
+  assert(!!walker, 'door march walker is alive');
+  if (walker) {
+    const dPad = Math.hypot(walker.x - pad.padX, walker.y - pad.padY);
+    const dDoor = Math.hypot(walker.x - door.doorX, walker.y - door.doorY);
+    assert(walker.x < 6.2, 'turns west toward the temple, not east to the empty gun');
+    assert(dDoor + 0.25 < dPad, 'after topple with no pad fight, a leftover pad waypoint walks the shrine door');
+  }
+}
+
+{
+  resetIds();
   const st = createGame(12, ['magma', 'oasis']);
   enterOasis(st);
   st.marbleDamage = [0, 0];

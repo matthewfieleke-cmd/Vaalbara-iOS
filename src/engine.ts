@@ -1613,6 +1613,14 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
 
   // Oasis: hard-walk the enemy gun until it falls, then the shrine door.
   // A pad brawl after a topple finishes first — no peel mid-swing.
+  // Survivors still carry a pad waypoint from beginOasis; drop it once
+  // the gun is gone so they do not walk an empty shore.
+  if (st.phase === 'oasis' && !cannon && !padBrawl && u.waypoint) {
+    const foePad = CANNON[(1 - u.owner) as PlayerId];
+    if (dist2(u.waypoint.x, u.waypoint.y, foePad.padX, foePad.padY) <= 0.25) {
+      u.waypoint = marbleExposed ? shrineDoor(marble!.owner) : null;
+    }
+  }
 
   let goal: Vec2;
   if (target && u.unstick === 0) {
@@ -1989,7 +1997,8 @@ function tickCannons(st: GameState, ev: GameEvent[]): void {
     for (const u of st.units) {
       if (u.hp <= 0 || u.owner === c.owner) continue;
       if (!inCannonHalf(c, u.y)) continue;
-      const d = dist(u.x, u.y, c.x, c.y);
+      const pad = CANNON[c.owner];
+      const d = dist(u.x, u.y, pad.padX, pad.padY);
       if (d > MARBLE_SHOT_RANGE) continue;
       if (d < bestD) {
         bestD = d;
