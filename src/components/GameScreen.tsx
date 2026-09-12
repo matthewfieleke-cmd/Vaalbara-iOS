@@ -188,12 +188,16 @@ export function GameScreen({
         // Soundtrack: five-minute additive ladder (hard cuts); army tints
         // presence beds. Transition still settles buses into Oasis.
         const elapsed = basaltElapsedSec(state);
-        const oasisDanger = state.marbles.length === 0
+        const shrineDanger = state.marbles.length === 0
           ? 0
           : Math.max(...state.marbles.map((m) => {
             const max = m.maxHp + m.shieldMax;
             return max > 0 ? 1 - (m.hp + m.shield) / max : 0;
           }));
+        const gunDanger = state.cannons.length === 0
+          ? 0
+          : Math.max(...state.cannons.map((c) => (c.maxHp > 0 ? 1 - c.hp / c.maxHp : 0)));
+        const oasisDanger = Math.max(shrineDanger, gunDanger * 0.55);
         music.setBattlePulse({
           phase: state.phase,
           basaltElapsedSec: elapsed,
@@ -237,8 +241,18 @@ export function GameScreen({
           setBanner({
             id: Date.now(),
             title: 'Phase II — The Last Shrines',
-            body: 'Cross the pond. Crumble their shrine. First stone to fall wins.',
+            body: 'Topple their cannon. Then crumble their shrine. First stone to fall wins.',
             color: '#4fd8ff',
+          });
+        } else if (e.type === 'cannonDown') {
+          playHaptic(e.owner === seat ? 'warning' : 'success');
+          setBanner({
+            id: Date.now(),
+            title: e.owner === seat ? 'Your cannon falls' : 'Their cannon falls',
+            body: e.owner === seat
+              ? 'The shore is open — hold the stone.'
+              : 'Their shore is naked. Finish the fight, then walk the door.',
+            color: e.owner === seat ? '#ff7d6d' : '#ffc94d',
           });
         } else if (e.type === 'marbleDown') {
           playHaptic(e.owner === seat ? 'warning' : 'success');
@@ -605,7 +619,7 @@ export function GameScreen({
             ? '⛨ Raze both enemy gatehouses — defend your fortress'
             : phase === 'transition'
               ? 'The armies march to the last water…'
-              : '❖ First shrine to crumble wins'}
+              : '❖ Topple their cannon, then the shrine'}
         </div>
         {me?.blessed && <div className="blessing-tag">✦ Temple Ward ✦</div>}
       </div>

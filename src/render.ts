@@ -16,10 +16,11 @@
  *    tick, with visual catch-up interpolation for network corrections.
  * ========================================================================== */
 
-import { FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
+import { CANNON, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
-import { getAnim, getFortArt, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
+import { getAnim, getFortArt, getOasisFloor, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
+import type { OasisFloorKey } from './sprites';
 import type { Sprite } from './sprites';
 import { CELL, cellAt } from './navmask';
 import type { WorldId } from './navmask';
@@ -27,6 +28,18 @@ import { drawSpecies } from './vector-art';
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+function oasisFloorOf(st: GameState): OasisFloorKey {
+  if (st.cannons.length === 0) return 'living';
+  const c0 = st.cannons.find((c) => c.owner === 0);
+  const c1 = st.cannons.find((c) => c.owner === 1);
+  const d0 = !c0 || c0.hp <= 0;
+  const d1 = !c1 || c1.hp <= 0;
+  if (d0 && d1) return 'both-down';
+  if (d1) return 'top-down';
+  if (d0) return 'bottom-down';
+  return 'living';
+}
 
 /** Painted gate geometry, measured from the processed fortress art: gate
  *  centres as fractions of image width, opening half-width (fraction of
@@ -484,6 +497,29 @@ export class Renderer {
         this.shake = 16;
         break;
       }
+      case 'cannonHit': {
+        const g = CANNON[e.owner];
+        const p = this.worldToScreen(g.padX, g.padY);
+        this.burst(p.x, p.y - this.unit * 0.1, 8, 'spark', 190, 1.3);
+        this.shake = Math.max(this.shake, 4);
+        const shown = Math.round(e.amount);
+        this.floats.push({
+          x: p.x + (Math.random() - 0.5) * 10, y: p.y - this.unit * 0.35,
+          text: `-${shown}`, life: 0, maxLife: 0.9,
+          color: e.owner === this.localSeat ? '#ff8f6d' : '#ffe08a',
+          size: clamp(11 + shown * 0.08, 11, 18),
+        });
+        break;
+      }
+      case 'cannonDown': {
+        const g = CANNON[e.owner];
+        const p = this.worldToScreen(g.x, g.y);
+        this.burst(p.x, p.y, 22, 'spark', 28, 2.1);
+        this.burst(p.x, p.y, 12, 'ash', 22, 1.7);
+        this.burst(p.x, p.y, 4, 'shockwave', 30, 1.0);
+        this.shake = Math.max(this.shake, 10);
+        break;
+      }
       case 'shieldBreak': {
         const p = this.worldToScreen(e.x, e.y);
         this.burst(p.x, p.y - this.unit * 0.4, 22, 'mote', 48, 2);
@@ -673,7 +709,7 @@ export class Renderer {
       // rear tunnel mouths / the ground beyond its front crest.
       if (st.obelisks.length > 0) this.drawFortressWalls(ctx, st, this.localSeat);
       this.drawUnits(ctx, st, dt, now, 'over');
-      if (st.phase === 'oasis' || st.phase === 'ended') this.drawCannonBarrels(ctx, st);
+      if (st.phase === 'oasis' || st.phase === 'ended') this.drawCannonHeat(ctx, st);
       this.drawProjectiles(ctx, st, now);
       this.drawMuzzleBlasts(ctx, dt);
       this.drawShrineBeams(ctx, dt);
@@ -769,7 +805,7 @@ export class Renderer {
 
   private drawArena(ctx: CanvasRenderingContext2D, st: GameState): void {
     const world: WorldId = st.phase === 'oasis' || st.phase === 'ended' ? 'oasis' : 'basalt';
-    const art = getPhaseArt(world);
+    const art = world === 'oasis' ? (getOasisFloor(oasisFloorOf(st)) ?? getPhaseArt('oasis')) : getPhaseArt(world);
     const r = this.boardRect();
     const t = this.time;
 
@@ -985,10 +1021,21 @@ export class Renderer {
       const side = m.owner === 0 ? 'bottom' : 'top';
       if (m.hp <= 0) {
         const ruin = getOasisOverlay(`crumble-${side}`);
-        if (ruin) this.drawArenaImage(ctx, ruin, 1);
+        if (ruin) {
+          // Mask rubble to the shrine mass so the wrecked gun from the
+          // topple floor stays visible beside the crumbled keep / temple.
+          const s = SHRINE[m.owner];
+          const c = this.worldToScreen(s.x, s.y);
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(c.x, c.y, s.hw * this.unit * 1.18, s.hh * this.unit * 1.22, 0, 0, Math.PI * 2);
+          ctx.clip();
+          this.drawArenaImage(ctx, ruin, 1);
+          ctx.restore();
+        }
         const ember = st.players[m.owner].faction === 'magma';
         const s = SHRINE[m.owner];
-        const p = this.worldToScreen(s.shotX, s.shotY);
+        const p = this.worldToScreen(s.doorX, s.doorY);
         this.drawRuinPlume(ctx, p.x, p.y, ember, 1.15);
         this.emitRuinColumn(`p2-${m.owner}`, p.x, p.y, ember);
         continue;
@@ -996,9 +1043,9 @@ export class Renderer {
       if (m.shield > 0) {
         const field = getOasisOverlay(`forcefield-${side}`);
         if (field) {
-          // Slow breathe, clearly visible — never fades all the way out.
-          const pulse = 0.38 + 0.52 * (0.5 + 0.5 * Math.sin(this.time * 2.02));
-          this.drawArenaImage(ctx, field, pulse, 0, 'lighter');
+          // Steady veil + a slow shimmer. No additive bloom, no brightness pulse.
+          const shimmer = 0.68 + 0.10 * Math.sin(this.time * 1.15);
+          this.drawArenaImage(ctx, field, shimmer);
         }
       }
     }
@@ -1028,116 +1075,61 @@ export class Renderer {
       }
       ctx.restore();
     }
-  }
-
-  private drawCannonBarrels(ctx: CanvasRenderingContext2D, st: GameState): void {
-    for (const m of st.marbles) {
-      if (m.hp <= 0) continue;
-      this.drawCannonBarrel(ctx, st, m.owner, m.atkTimer);
+    for (const c of st.cannons) {
+      if (c.hp <= 0) continue;
+      const g = CANNON[c.owner];
+      const p = this.worldToScreen(g.padX, g.padY);
+      const u = this.unit;
+      const mine = c.owner === this.localSeat;
+      const life = c.hp / c.maxHp;
+      ctx.save();
+      const bw = u * 0.95;
+      const bh = 4;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(p.x - bw / 2, p.y + u * 0.16, bw, bh);
+      ctx.fillStyle = mine ? '#6de5ff' : '#ff8a7a';
+      ctx.fillRect(p.x - bw / 2, p.y + u * 0.16, bw * Math.max(0, life), bh);
+      ctx.restore();
     }
   }
 
-  /** Iron siege gun on the battlement / spire. Idle is cold metal; the last
-   *  two seconds go white-hot so the blast is telegraphed, not a surprise. */
-  private drawCannonBarrel(
-    ctx: CanvasRenderingContext2D, st: GameState, owner: PlayerId, atkTimer: number,
-  ): void {
-    const s = SHRINE[owner];
-    const u = this.unit;
-    const muzzle = this.worldToScreen(s.shotX, s.shotY);
-    let aimX = s.shotX;
-    let aimY = owner === 0 ? s.shotY - 0.95 : s.shotY + 0.95;
-    let bestD = Infinity;
-    for (const unit of st.units) {
-      if (unit.hp <= 0 || unit.owner === owner) continue;
-      if (owner === 0 ? unit.y < WORLD_H * 0.5 : unit.y >= WORLD_H * 0.5) continue;
-      const d = Math.hypot(unit.x - s.shotX, unit.y - s.shotY);
-      if (d > MARBLE_SHOT_RANGE || d >= bestD) continue;
-      bestD = d;
-      aimX = unit.x;
-      aimY = unit.y;
-    }
-    const rest = this.worldToScreen(s.shotX, owner === 0 ? s.shotY - 1 : s.shotY + 1);
-    const restAng = Math.atan2(rest.y - muzzle.y, rest.x - muzzle.x);
-    const aimed = this.worldToScreen(aimX, aimY);
-    const aimAng = Math.atan2(aimed.y - muzzle.y, aimed.x - muzzle.x);
-    let delta = aimAng - restAng;
-    while (delta > Math.PI) delta -= Math.PI * 2;
-    while (delta < -Math.PI) delta += Math.PI * 2;
-    // Slight 3/4 yaw so the snout reads as a barrel, not a bore facing us.
-    const side = owner === this.localSeat ? 0.22 : -0.22;
-    const ang = restAng + clamp(delta, -0.35, 0.35) + side;
-    const raw = clamp(1 - atkTimer / MARBLE_SHOT_INTERVAL, 0, 1);
-    const heatTicks = 7;
-    const heat = atkTimer <= heatTicks ? 1 - atkTimer / heatTicks : 0;
-    const charge = atkTimer > heatTicks
-      ? 0.04 + raw * 0.08
-      : 0.16 + Math.pow(heat, 1.05) * 0.84;
-    const ember = st.players[owner].faction === 'magma';
-    const hue = ember ? 22 : 192;
-    const pulse = 0.8 + Math.sin(this.time * (3.8 + charge * 12)) * 0.2 * Math.max(0.15, charge);
-    const len = u * (0.48 + charge * 0.38);
-    const half = u * (0.09 + charge * 0.03);
-    const tipX = muzzle.x + Math.cos(ang) * len * 0.88;
-    const tipY = muzzle.y + Math.sin(ang) * len * 0.88;
-
-    // Roof mount — a short iron gun, not a floating sausage.
-    ctx.save();
-    ctx.translate(muzzle.x, muzzle.y);
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.beginPath();
-    ctx.ellipse(0, u * 0.08, u * 0.28, u * 0.11, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const mount = ctx.createRadialGradient(-u * 0.06, -u * 0.05, 1, 0, 0, u * 0.26);
-    mount.addColorStop(0, `hsl(22 10% ${18 + charge * 14}%)`);
-    mount.addColorStop(1, `hsl(18 8% ${8 + charge * 6}%)`);
-    ctx.fillStyle = mount;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, u * 0.24, u * 0.17, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(muzzle.x, muzzle.y);
-    ctx.rotate(ang);
-    const tube = ctx.createLinearGradient(0, 0, len, 0);
-    tube.addColorStop(0, `hsl(20 8% ${12 + charge * 8}%)`);
-    tube.addColorStop(0.65, `hsl(18 12% ${14 + charge * 12}%)`);
-    tube.addColorStop(1, `hsl(${hue} ${14 + charge * 58}% ${12 + charge * 26}%)`);
-    ctx.fillStyle = tube;
-    ctx.beginPath();
-    ctx.roundRect(-u * 0.04, -half, len, half * 2, 2);
-    ctx.fill();
-    ctx.fillStyle = `hsl(0 0% ${7 + charge * 8}%)`;
-    ctx.fillRect(len * 0.35, -half * 1.15, u * 0.05, half * 2.3);
-    ctx.fillStyle = charge < 0.25
-      ? 'hsl(0 0% 4%)'
-      : `hsl(${ember ? 30 : 190} ${55 + charge * 35}% ${8 + charge * 50}%)`;
-    ctx.beginPath();
-    ctx.ellipse(len * 0.92, 0, half * 0.45, half * 0.95, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const rad = u * (0.55 + charge * 2.35) * pulse;
-    const glow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, rad);
-    glow.addColorStop(0, `hsla(${ember ? 46 : 186} 100% ${74 + charge * 20}% / ${0.2 + charge * 0.85})`);
-    glow.addColorStop(0.3, `hsla(${hue} 95% ${54 + charge * 14}% / ${0.14 + charge * 0.52})`);
-    glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(tipX, tipY, rad, 0, Math.PI * 2);
-    ctx.fill();
-    if (charge > 0.35) {
-      ctx.fillStyle = `hsla(${ember ? 48 : 186} 100% 98% / ${0.3 + (charge - 0.35) * 1.25})`;
+  /** Heat the painted bore in the last ~2 s, then the muzzle blast event
+   *  does the fire. No procedural turret — the gun is in the floor. */
+  private drawCannonHeat(ctx: CanvasRenderingContext2D, st: GameState): void {
+    for (const c of st.cannons) {
+      if (c.hp <= 0) continue;
+      const g = CANNON[c.owner];
+      const u = this.unit;
+      const muzzle = this.worldToScreen(g.shotX, g.shotY);
+      const heatTicks = 7;
+      const heat = c.atkTimer <= heatTicks ? 1 - c.atkTimer / heatTicks : 0;
+      if (heat <= 0.02) continue;
+      const ember = st.players[c.owner].faction === 'magma';
+      const hue = ember ? 22 : 192;
+      const charge = Math.pow(heat, 1.05);
+      const pulse = 0.85 + Math.sin(this.time * (4.2 + charge * 10)) * 0.15 * charge;
+      const tipX = muzzle.x;
+      const tipY = muzzle.y;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const rad = u * (0.28 + charge * 1.55) * pulse;
+      const glow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, rad);
+      glow.addColorStop(0, `hsla(${ember ? 46 : 186} 100% ${74 + charge * 20}% / ${0.18 + charge * 0.72})`);
+      glow.addColorStop(0.35, `hsla(${hue} 95% ${54 + charge * 14}% / ${0.1 + charge * 0.4})`);
+      glow.addColorStop(1, `hsla(${hue} 90% 50% / 0)`);
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(tipX, tipY, u * (0.1 + charge * 0.18), 0, Math.PI * 2);
+      ctx.arc(tipX, tipY, rad, 0, Math.PI * 2);
       ctx.fill();
+      if (charge > 0.4) {
+        ctx.fillStyle = `hsla(${ember ? 48 : 186} 100% 98% / ${0.28 + (charge - 0.4) * 1.1})`;
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, u * (0.07 + charge * 0.12), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+      if (charge > 0.2) this.emitBarrelHeat(`barrel-${c.owner}`, tipX, tipY, ember, charge);
     }
-    ctx.restore();
-
-    if (charge > 0.18) this.emitBarrelHeat(`barrel-${owner}`, tipX, tipY, ember, charge);
   }
 
   private emitBarrelHeat(key: string, x: number, y: number, ember: boolean, charge: number): void {

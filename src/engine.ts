@@ -20,6 +20,7 @@ import {
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
+  CANNON, CANNON_HP, CANNON_R,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
   MARBLE_SIEGE_MULT, MARBLE_CANNON_SPEED, MARBLE_CANNON_SPLASH,
   MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
@@ -29,7 +30,7 @@ import {
   inBasaltDefendZone, isGateMarchTap, basaltDefendAnchor,
 } from './types';
 import type {
-  BotStrength, CardId, FactionId, GameEvent, GameState, MarbleState, ObeliskState, PhaseConfig, PlayerId,
+  BotStrength, CannonState, CardId, FactionId, GameEvent, GameState, MarbleState, ObeliskState, PhaseConfig, PlayerId,
   PlayerInput, PropState, TickResult, UnitState, UnitStats, Vec2,
 } from './types';
 import { LAVA_RAIN, MECHANICS, SPELL_BALANCE, buildDeck, cardDef, speciesDef } from './data';
@@ -142,6 +143,36 @@ function shrineDoor(owner: PlayerId): Vec2 {
   return { x: SHRINE[owner].doorX, y: SHRINE[owner].doorY };
 }
 
+/** Pond-facing lip of a gun pad — walk here, not through the carriage. */
+function cannonPad(owner: PlayerId): Vec2 {
+  return { x: CANNON[owner].padX, y: CANNON[owner].padY };
+}
+
+function cannonOf(st: GameState, owner: PlayerId): CannonState | undefined {
+  return st.cannons.find((c) => c.owner === owner);
+}
+
+/** The shrine cannot take a scratch while its gun still lives. */
+export function shrineGuarded(st: GameState, owner: PlayerId): boolean {
+  const c = cannonOf(st, owner);
+  return !!c && c.hp > 0;
+}
+
+function makeCannons(): CannonState[] {
+  return ([0, 1] as const).map((owner) => {
+    const pos = CANNON[owner];
+    return {
+      owner,
+      hp: CANNON_HP,
+      maxHp: CANNON_HP,
+      x: pos.x,
+      y: pos.y,
+      r: CANNON_R,
+      atkTimer: 1,
+    };
+  });
+}
+
 /** Survivors re-enter on the camera-side grass, flanking their own shrine
  *  so they never spawn inside the keep / temple mass. */
 function oasisReentry(owner: PlayerId, lane: number): Vec2 {
@@ -192,10 +223,13 @@ export function createGame(
     props: basaltProps(),
     obelisks: makeObelisks(),
     marbles: [],
+    cannons: [],
     pendingLava: [],
     players: [makePlayer(factions[0]), makePlayer(factions[1])],
     captureMeter: 0,
     marbleDamage: [0, 0],
+    cannonDamage: [0, 0],
+    cannonFellTick: [null, null],
     winner: null,
     dominanceP0: 0.5,
   };
@@ -810,6 +844,23 @@ function enemyMarble(st: GameState, u: UnitState): MarbleState | null {
   return st.marbles.find((m) => m.owner !== u.owner && m.hp > 0) ?? null;
 }
 
+function enemyCannon(st: GameState, u: UnitState): CannonState | null {
+  if (st.phase !== 'oasis' && st.phase !== 'ended') return null;
+  return st.cannons.find((c) => c.owner !== u.owner && c.hp > 0) ?? null;
+}
+
+/** After a gun falls, stay in the pad fight if this unit and its target
+ *  are still on that shore. Do not peel mid-swing for the shrine door. */
+function finishingPadBrawl(st: GameState, u: UnitState, target: UnitState | null): boolean {
+  if (!target || target.hp <= 0) return false;
+  const foe = (1 - u.owner) as PlayerId;
+  if (shrineGuarded(st, foe)) return false;
+  const pad = CANNON[foe];
+  const nearPad = dist(u.x, u.y, pad.x, pad.y) <= 2.6;
+  const targetNear = dist(target.x, target.y, pad.x, pad.y) <= 2.8;
+  return nearPad && targetNear;
+}
+
 function enemyObelisk(st: GameState, u: UnitState): ObeliskState | null {
   if (st.phase !== 'basalt') return null;
   const wings = st.obelisks.filter((o) => o.owner !== u.owner);
@@ -1077,8 +1128,15 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
         dealObeliskDamage(st, ev, pr.owner, ob, pr.dmg);
       }
     }
+    for (const c of st.cannons) {
+      if (c.owner === pr.owner || c.hp <= 0) continue;
+      if (dist2(c.x, c.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + c.r) ** 2) {
+        dealCannonDamage(st, ev, pr.owner, c, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
+      }
+    }
     for (const m of st.marbles) {
       if (m.owner === pr.owner || m.hp <= 0) continue;
+      if (shrineGuarded(st, m.owner)) continue;
       if (dist2(m.x, m.y, pr.x, pr.y) <= (MECHANICS.acidSplashRadius + m.r) ** 2) {
         dealMarbleDamage(st, ev, pr.owner, m, Math.round(pr.dmg * LAVA_RAIN.buildingPct));
       }
@@ -1167,8 +1225,15 @@ function applyZoneEffects(st: GameState, ev: GameEvent[]): void {
           dealObeliskDamage(st, ev, z.owner, ob, chip);
         }
       }
+      for (const c of st.cannons) {
+        if (c.owner === z.owner || c.hp <= 0) continue;
+        if (dist2(c.x, c.y, z.x, z.y) <= (z.r + c.r) ** 2) {
+          dealCannonDamage(st, ev, z.owner, c, chip);
+        }
+      }
       for (const m of st.marbles) {
         if (m.owner === z.owner || m.hp <= 0) continue;
+        if (shrineGuarded(st, m.owner)) continue;
         if (dist2(m.x, m.y, z.x, z.y) <= (z.r + m.r) ** 2) {
           dealMarbleDamage(st, ev, z.owner, m, chip);
         }
@@ -1205,8 +1270,18 @@ function resolveLavaRain(st: GameState, ev: GameEvent[]): void {
       else if (d <= LAVA_RAIN.rimR + ob.r) dmg = LAVA_RAIN.rimDmg;
       if (dmg > 0) dealObeliskDamage(st, ev, strike.owner, ob, Math.round(dmg * LAVA_RAIN.buildingPct));
     }
+    for (const c of st.cannons) {
+      if (c.hp <= 0 || c.owner === strike.owner) continue;
+      const d = dist(c.x, c.y, strike.x, strike.y);
+      let dmg = 0;
+      if (d <= LAVA_RAIN.centerR + c.r) dmg = LAVA_RAIN.centerDmg;
+      else if (d <= LAVA_RAIN.midR + c.r) dmg = LAVA_RAIN.midDmg;
+      else if (d <= LAVA_RAIN.rimR + c.r) dmg = LAVA_RAIN.rimDmg;
+      if (dmg > 0) dealCannonDamage(st, ev, strike.owner, c, Math.round(dmg * LAVA_RAIN.buildingPct));
+    }
     for (const m of st.marbles) {
       if (m.hp <= 0 || m.owner === strike.owner) continue;
+      if (shrineGuarded(st, m.owner)) continue;
       const d = dist(m.x, m.y, strike.x, strike.y);
       let dmg = 0;
       if (d <= LAVA_RAIN.centerR + m.r) dmg = LAVA_RAIN.centerDmg;
@@ -1452,13 +1527,18 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   const target = pickTarget(st, u);
   u.targetId = target?.id ?? null;
   const ob = enemyObelisk(st, u);
+  const cannon = enemyCannon(st, u);
   const marble = enemyMarble(st, u);
   const siegeReach = ob ? attackReach(u) + u.stats.radius + ob.r : 0;
   const canSiege = !!ob && dist2(u.x, u.y, ob.x, ob.y) <= siegeReach * siegeReach;
-  const marbleReach = marble ? attackReach(u) + u.stats.radius + marble.r : 0;
-  const canSiegeMarble = !!marble && dist2(u.x, u.y, marble.x, marble.y) <= marbleReach * marbleReach;
+  const cannonReach = cannon ? attackReach(u) + u.stats.radius + cannon.r : 0;
+  const canSiegeCannon = !!cannon && dist2(u.x, u.y, cannon.x, cannon.y) <= cannonReach * cannonReach;
+  const marbleExposed = !!marble && !shrineGuarded(st, marble.owner);
+  const marbleReach = marbleExposed ? attackReach(u) + u.stats.radius + marble!.r : 0;
+  const canSiegeMarble = marbleExposed && dist2(u.x, u.y, marble!.x, marble!.y) <= marbleReach * marbleReach;
   const threatClose = target
     && dist2(u.x, u.y, target.x, target.y) <= (Math.max(1.05, u.stats.radius + speciesDef(target.species).stats!.radius + 0.35) ** 2);
+  const padBrawl = finishingPadBrawl(st, u, target);
 
   if (canSiege && !threatClose) {
     if (u.atkTimer <= 0) attackObelisk(st, ev, u, ob!);
@@ -1468,7 +1548,15 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     return;
   }
 
-  if (canSiegeMarble && !threatClose) {
+  if (canSiegeCannon && !threatClose) {
+    if (u.atkTimer <= 0) attackCannon(st, ev, u, cannon!);
+    else u.facing = cannon!.x >= u.x ? 1 : -1;
+    u.stall = 0;
+    u.stallRef = Infinity;
+    return;
+  }
+
+  if (canSiegeMarble && !threatClose && !padBrawl) {
     if (u.atkTimer <= 0) attackMarble(st, ev, u, marble!);
     else u.facing = marble!.x >= u.x ? 1 : -1;
     u.stall = 0;
@@ -1497,11 +1585,22 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     }
   }
 
-  if (marble && !target) {
-    const reach = attackReach(u) + u.stats.radius + marble.r;
-    if (dist2(u.x, u.y, marble.x, marble.y) <= reach * reach) {
-      if (u.atkTimer <= 0) attackMarble(st, ev, u, marble);
-      else u.facing = marble.x >= u.x ? 1 : -1;
+  if (cannon && !target) {
+    const reach = attackReach(u) + u.stats.radius + cannon.r;
+    if (dist2(u.x, u.y, cannon.x, cannon.y) <= reach * reach) {
+      if (u.atkTimer <= 0) attackCannon(st, ev, u, cannon);
+      else u.facing = cannon.x >= u.x ? 1 : -1;
+      u.stall = 0;
+      u.stallRef = Infinity;
+      return;
+    }
+  }
+
+  if (marbleExposed && !target) {
+    const reach = attackReach(u) + u.stats.radius + marble!.r;
+    if (dist2(u.x, u.y, marble!.x, marble!.y) <= reach * reach) {
+      if (u.atkTimer <= 0) attackMarble(st, ev, u, marble!);
+      else u.facing = marble!.x >= u.x ? 1 : -1;
       u.stall = 0;
       u.stallRef = Infinity;
       return;
@@ -1512,7 +1611,8 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   const speed = effSpeed(st, u);
   if (speed <= 0) return;
 
-  // Oasis: never camp the deep. The marble is the prize; mid is a fight.
+  // Oasis: hard-walk the enemy gun until it falls, then the shrine door.
+  // A pad brawl after a topple finishes first — no peel mid-swing.
 
   let goal: Vec2;
   if (target && u.unstick === 0) {
@@ -1536,11 +1636,18 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
       (u.owner === 0 ? u.y < WORLD_H * 0.48 : u.y > WORLD_H * 0.52)
     ) {
       goal = siegeGoal(ob);
+    } else if (padBrawl) {
+      goal = { x: target.x, y: target.y };
     } else if (
-      st.phase === 'oasis' && marble && !threatClose &&
+      st.phase === 'oasis' && cannon && !threatClose &&
       (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
     ) {
-      goal = shrineDoor(marble.owner);
+      goal = cannonPad(cannon.owner);
+    } else if (
+      st.phase === 'oasis' && marbleExposed && !threatClose &&
+      (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
+    ) {
+      goal = shrineDoor(marble!.owner);
     } else {
       goal = { x: target.x, y: target.y };
     }
@@ -1548,13 +1655,15 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     goal = u.waypoint;
   } else {
     u.waypoint = null;
-    goal = st.phase === 'oasis' && marble
-      ? shrineDoor(marble.owner)
-      : ob
-        ? siegeGoal(ob)
-        : st.phase === 'oasis'
-          ? { x: WORLD_W / 2, y: WORLD_H / 2 }
-          : { x: u.x, y: u.owner === 0 ? FORT_WALL_FRONT[1] + 0.6 : FORT_WALL_FRONT[0] - 0.6 };
+    goal = st.phase === 'oasis' && cannon
+      ? cannonPad(cannon.owner)
+      : st.phase === 'oasis' && marbleExposed
+        ? shrineDoor(marble!.owner)
+        : ob
+          ? siegeGoal(ob)
+          : st.phase === 'oasis'
+            ? { x: WORLD_W / 2, y: WORLD_H / 2 }
+            : { x: u.x, y: u.owner === 0 ? FORT_WALL_FRONT[1] + 0.6 : FORT_WALL_FRONT[0] - 0.6 };
   }
 
   const before = { x: u.x, y: u.y };
@@ -1671,10 +1780,13 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   st.obelisks = [];
   const ward: PlayerId | null = st.players[0].blessed ? 0 : st.players[1].blessed ? 1 : null;
   st.marbles = makeMarbles(ward);
+  st.cannons = makeCannons();
   st.marbleDamage = [0, 0];
+  st.cannonDamage = [0, 0];
+  st.cannonFellTick = [null, null];
 
   // Survivors re-enter from their own edge, scars intact, marching the pond
-  // toward the enemy marble — not a capture ring.
+  // toward the enemy gun — the shrine waits until that pad falls.
   const survivors = st.units.filter((u) => u.hp > 0);
   st.units = [];
   let lane = 0;
@@ -1686,7 +1798,7 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
     u.px = spot.x;
     u.py = spot.y;
     const foeOwner = (1 - u.owner) as PlayerId;
-    u.waypoint = shrineDoor(foeOwner);
+    u.waypoint = cannonPad(foeOwner);
     u.stall = 0;
     u.stallRef = Infinity;
     u.buffs = freshBuffs();
@@ -1698,8 +1810,19 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   ev.push({ type: 'phaseChange', phase: 'oasis' });
 }
 
-function inMarbleHalf(m: MarbleState, y: number): boolean {
-  return m.owner === 0 ? y >= WORLD_H * 0.5 : y < WORLD_H * 0.5;
+function dealCannonDamage(
+  st: GameState, ev: GameEvent[], attacker: PlayerId, c: CannonState, amount: number,
+): void {
+  amount = Math.round(amount);
+  if (c.hp <= 0 || amount <= 0) return;
+  c.hp = Math.max(0, c.hp - amount);
+  st.cannonDamage[attacker] += amount;
+  st.players[attacker].damageDealt += amount;
+  ev.push({ type: 'cannonHit', owner: c.owner, amount, x: c.x, y: c.y });
+  if (c.hp <= 0) {
+    if (st.cannonFellTick[c.owner] == null) st.cannonFellTick[c.owner] = st.tick;
+    ev.push({ type: 'cannonDown', owner: c.owner, x: c.x, y: c.y });
+  }
 }
 
 function dealMarbleDamage(
@@ -1707,6 +1830,7 @@ function dealMarbleDamage(
 ): void {
   amount = Math.round(amount);
   if (m.hp <= 0 || amount <= 0) return;
+  if (shrineGuarded(st, m.owner)) return;
   let left = amount;
   let shielded = false;
   if (m.shield > 0) {
@@ -1752,6 +1876,33 @@ function attackMarble(st: GameState, ev: GameEvent[], u: RuntimeUnit, m: MarbleS
     return;
   }
   dealMarbleDamage(st, ev, u.owner, m, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
+}
+
+function attackCannon(st: GameState, ev: GameEvent[], u: RuntimeUnit, c: CannonState): void {
+  u.traveled = 0;
+  u.action = 'attack';
+  u.facing = c.x >= u.x ? 1 : -1;
+  let cd = u.stats.atkCd;
+  if (u.buffs.berserk) cd = Math.max(1, Math.round(cd / 2));
+  u.atkTimer = cd;
+  ev.push({ type: 'attack', unitId: u.id, species: u.species, owner: u.owner, x: u.x, y: u.y, tx: c.x, ty: c.y, crit: false, air: false });
+  if (u.stats.ranged) {
+    const d = Math.max(0.001, dist(u.x, u.y, c.x, c.y));
+    const speed = MECHANICS.acidJetSpeed;
+    st.projectiles.push({
+      id: nextProjId++,
+      owner: u.owner,
+      kind: 'acid',
+      x: u.x, y: u.y, px: u.x, py: u.y,
+      vx: ((c.x - u.x) / d) * speed,
+      vy: ((c.y - u.y) / d) * speed,
+      dmg: Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT),
+      ticksLeft: Math.max(1, Math.ceil(d / speed)),
+    });
+    ev.push({ type: 'shoot', unitId: u.id, x: u.x, y: u.y, tx: c.x, ty: c.y });
+    return;
+  }
+  dealCannonDamage(st, ev, u.owner, c, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
 }
 
 function gateMouth(ob: ObeliskState): Vec2 {
@@ -1823,18 +1974,22 @@ function tickBridgeAlerts(st: GameState, ev: GameEvent[]): void {
   }
 }
 
-function tickShrines(st: GameState, ev: GameEvent[]): void {
+function inCannonHalf(c: CannonState, y: number): boolean {
+  return c.owner === 0 ? y >= WORLD_H * 0.5 : y < WORLD_H * 0.5;
+}
+
+function tickCannons(st: GameState, ev: GameEvent[]): void {
   if (st.phase !== 'oasis') return;
-  for (const m of st.marbles) {
-    if (m.hp <= 0) continue;
-    if (m.atkTimer > 0) m.atkTimer--;
-    if (m.atkTimer > 0) continue;
+  for (const c of st.cannons) {
+    if (c.hp <= 0) continue;
+    if (c.atkTimer > 0) c.atkTimer--;
+    if (c.atkTimer > 0) continue;
     let best: UnitState | null = null;
     let bestD = Infinity;
     for (const u of st.units) {
-      if (u.hp <= 0 || u.owner === m.owner) continue;
-      if (!inMarbleHalf(m, u.y)) continue;
-      const d = dist(u.x, u.y, m.x, m.y);
+      if (u.hp <= 0 || u.owner === c.owner) continue;
+      if (!inCannonHalf(c, u.y)) continue;
+      const d = dist(u.x, u.y, c.x, c.y);
       if (d > MARBLE_SHOT_RANGE) continue;
       if (d < bestD) {
         bestD = d;
@@ -1842,21 +1997,21 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
       }
     }
     if (!best) {
-      m.atkTimer = 1;
+      c.atkTimer = 1;
       continue;
     }
-    const faction = st.players[m.owner].faction;
+    const faction = st.players[c.owner].faction;
     const style = faction === 'magma' ? 'ember' : 'water';
-    const shot = SHRINE[m.owner];
+    const shot = CANNON[c.owner];
     const d = Math.max(0.001, dist(shot.shotX, shot.shotY, best.x, best.y));
     // Land ON the aimed body. Constant speed overshoots whenever
     // distance/speed is not an integer — a 2.2 wu shot at speed 3 would
-    // fly 3 wu and miss a 0.75 splash. At least two ticks so the shell
+    // fly 3 wu and miss a 0.75 splash. At least three ticks so the shell
     // is on screen as a flying projectile, not a teleport.
     const ticks = Math.max(3, Math.ceil(d / MARBLE_CANNON_SPEED));
     st.projectiles.push({
       id: nextProjId++,
-      owner: m.owner,
+      owner: c.owner,
       kind: 'cannon',
       style,
       x: shot.shotX, y: shot.shotY, px: shot.shotX, py: shot.shotY,
@@ -1867,15 +2022,30 @@ function tickShrines(st: GameState, ev: GameEvent[]): void {
     });
     ev.push({
       type: 'shrineShot',
-      owner: m.owner,
+      owner: c.owner,
       x: shot.shotX, y: shot.shotY, tx: best.x, ty: best.y,
       kind: style,
     });
-    m.atkTimer = MARBLE_SHOT_INTERVAL;
+    c.atkTimer = MARBLE_SHOT_INTERVAL;
   }
 }
 
-function oasisWinner(st: GameState): PlayerId | 'tie' {
+function cannonTiebreak(st: GameState): PlayerId | 'tie' {
+  if (st.cannonDamage[0] !== st.cannonDamage[1]) {
+    return st.cannonDamage[0] > st.cannonDamage[1] ? 0 : 1;
+  }
+  const fell0 = st.cannonFellTick[1]; // tick we toppled THEIR (seat 1) gun
+  const fell1 = st.cannonFellTick[0];
+  if (fell0 != null && fell1 != null) {
+    if (fell0 !== fell1) return fell0 < fell1 ? 0 : 1;
+    return 'tie';
+  }
+  if (fell0 != null) return 0;
+  if (fell1 != null) return 1;
+  return 'tie';
+}
+
+export function oasisWinner(st: GameState): PlayerId | 'tie' {
   const m0 = st.marbles.find((m) => m.owner === 0);
   const m1 = st.marbles.find((m) => m.owner === 1);
   if (!m0 || !m1) return 'tie';
@@ -1887,13 +2057,13 @@ function oasisWinner(st: GameState): PlayerId | 'tie' {
     if (st.marbleDamage[0] !== st.marbleDamage[1]) {
       return st.marbleDamage[0] > st.marbleDamage[1] ? 0 : 1;
     }
-    return 'tie';
+    return cannonTiebreak(st);
   }
   const dealt0 = (m1.maxHp - m1.hp) + (m1.shieldMax - m1.shield);
   const dealt1 = (m0.maxHp - m0.hp) + (m0.shieldMax - m0.shield);
   if (dealt0 > dealt1) return 0;
   if (dealt1 > dealt0) return 1;
-  return 'tie';
+  return cannonTiebreak(st);
 }
 
 function endGame(st: GameState, ev: GameEvent[], forced?: PlayerId | 'tie'): void {
@@ -1955,7 +2125,7 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
     tickGates(st, ev);
     tickBridgeAlerts(st, ev);
   }
-  if (st.phase === 'oasis') tickShrines(st, ev);
+  if (st.phase === 'oasis') tickCannons(st, ev);
 
   // The Basalt Fields end only when a fortress has lost BOTH gatehouses —
   // a decisive phase-1 victory that carries the Blessing into the Oasis.
@@ -2215,9 +2385,14 @@ export class BotBrain {
           return { type: 'spell', card: LAVA_RAIN_CARD, x: best.x, y: best.y };
         }
       }
-      // Empty board or a wounded shrine: the sky still cracks marble.
+      // Empty board or a wounded gun / shrine: the sky still cracks stone.
+      const foeCannon = st.cannons.find((c) => c.owner !== this.seat && c.hp > 0);
       const foeMarble = st.marbles.find((m) => m.owner !== this.seat && m.hp > 0);
-      if (foeMarble && (flush || foeMarble.hp + foeMarble.shield < (foeMarble.maxHp + foeMarble.shieldMax) * 0.55)) {
+      if (foeCannon && (flush || foeCannon.hp < foeCannon.maxHp * 0.7)) {
+        this.nextActionTick = st.tick + (strong ? 2 : 4);
+        return { type: 'spell', card: LAVA_RAIN_CARD, x: foeCannon.x, y: foeCannon.y };
+      }
+      if (foeMarble && !foeCannon && (flush || foeMarble.hp + foeMarble.shield < (foeMarble.maxHp + foeMarble.shieldMax) * 0.55)) {
         this.nextActionTick = st.tick + (strong ? 2 : 4);
         return { type: 'spell', card: LAVA_RAIN_CARD, x: foeMarble.x, y: foeMarble.y };
       }
@@ -2260,7 +2435,10 @@ export class BotBrain {
     if (strong && !flush && !punishing) {
       const shrineThreat = st.marbles.some((m) =>
         m.owner === this.seat && m.hp > 0 &&
-        foes.some((u) => dist2(u.x, u.y, m.x, m.y) <= 4.5 * 4.5));
+        foes.some((u) => dist2(u.x, u.y, m.x, m.y) <= 4.5 * 4.5))
+        || st.cannons.some((c) =>
+          c.owner === this.seat && c.hp > 0 &&
+          foes.some((u) => dist2(u.x, u.y, c.x, c.y) <= 4.5 * 4.5));
       const urgentDefense = shrineThreat || st.obelisks
         .filter((o) => o.owner === this.seat && o.hp > 0)
         .some((o) => foes.some((u) => dist2(u.x, u.y, o.x, o.y) <= 4.5 * 4.5));
@@ -2368,16 +2546,22 @@ export class BotBrain {
       ? visibleFoes.reduce((sum, u) => sum + u.x, 0) / visibleFoes.length
       : WORLD_W / 2;
     const spread = strong ? (this.rng() - 0.5) * 0.7 : (this.rng() - 0.5) * 5;
+    const foeGun = st.cannons.find((c) => c.owner !== this.seat && c.hp > 0);
     const marble = st.marbles.find((m) => m.owner !== this.seat && m.hp > 0);
+    const defendGun = st.cannons.find((c) => c.owner === this.seat && c.hp > 0);
     const defend = st.marbles.find((m) => m.owner === this.seat && m.hp > 0);
-    const shrineX = marble?.x ?? WORLD_W / 2;
-    const x = Math.max(0.8, Math.min(WORLD_W - 0.8, (strong ? shrineX : targetX) + spread));
+    const aimX = foeGun?.x ?? marble?.x ?? WORLD_W / 2;
+    const x = Math.max(0.8, Math.min(WORLD_W - 0.8, (strong ? aimX : targetX) + spread));
     const myHalfDeep = this.seat === 0
       ? WORLD_H * 0.5 + 0.35 + this.rng() * (WORLD_H * 0.42)
       : 0.45 + this.rng() * (WORLD_H * 0.42);
-    const y = defend && foes.some((u) => dist2(u.x, u.y, defend.x, defend.y) <= 4.2 * 4.2)
-      ? (this.seat === 0 ? SHRINE[0].doorY + 0.4 : SHRINE[1].doorY - 0.4)
-      : myHalfDeep;
+    const gunPressed = defendGun && foes.some((u) => dist2(u.x, u.y, defendGun.x, defendGun.y) <= 4.2 * 4.2);
+    const shrinePressed = defend && foes.some((u) => dist2(u.x, u.y, defend.x, defend.y) <= 4.2 * 4.2);
+    const y = gunPressed
+      ? (this.seat === 0 ? CANNON[0].padY + 0.35 : CANNON[1].padY - 0.35)
+      : shrinePressed
+        ? (this.seat === 0 ? SHRINE[0].doorY + 0.4 : SHRINE[1].doorY - 0.4)
+        : myHalfDeep;
     this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
     return {
       type: 'deploy',

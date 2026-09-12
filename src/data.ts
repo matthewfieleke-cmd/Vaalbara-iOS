@@ -141,7 +141,7 @@ export const LAVA_RAIN_CARD_DEF: CardDef = {
   title: 'Judgement of Old Vaalbara',
   cost: 5,
   kind: 'spell',
-  blurb: 'A 1.2 s shadow warns the sky is falling. A pile in the pond dies; a shrine takes a real crack. Enemies only.',
+  blurb: 'A 1.2 s shadow warns the sky is falling. A pile in the pond dies; a gun or shrine takes a real crack. Enemies only.',
   hue: 12,
 };
 
@@ -157,7 +157,7 @@ export const LAVA_RAIN = {
   centerR: 1.08,
   midR: 2.05,
   rimR: 2.7,
-  /** Fraction of the ring damage that also bites a marble shrine. */
+  /** Fraction of the ring damage that also bites a gun or shrine. */
   buildingPct: 0.55,
   hue: 12,
 };

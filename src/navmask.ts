@@ -11,7 +11,7 @@
 
 import {
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_WALL_FRONT, RIVER_BANDS,
-  SHRINE, WORLD_H, WORLD_W,
+  CANNON, SHRINE, WORLD_H, WORLD_W,
 } from './types';
 import { BASALT_MASK_B64, NAV_GH, NAV_GW, OASIS_MASK_B64 } from './navmask-data';
 
@@ -108,6 +108,25 @@ function applyOasisShrines(mask: Uint8Array): Uint8Array {
         if (dx * dx + dy * dy > 1) continue;
         const onDoor = Math.abs(wx - s.doorX) <= 0.40 && Math.abs(wy - s.doorY) <= 0.26;
         if (onDoor) continue;
+        mask[gy * NAV_GW + gx] = CELL.BLOCKED;
+      }
+    }
+  }
+  for (const owner of [0, 1] as const) {
+    const g = CANNON[owner];
+    const gx0 = Math.max(0, Math.floor((g.x - g.hw) * cx));
+    const gx1 = Math.min(NAV_GW, Math.ceil((g.x + g.hw) * cx));
+    const gy0 = Math.max(0, Math.floor((g.y - g.hh) * cy));
+    const gy1 = Math.min(NAV_GH, Math.ceil((g.y + g.hh) * cy));
+    for (let gy = gy0; gy < gy1; gy++) {
+      for (let gx = gx0; gx < gx1; gx++) {
+        const wx = (gx + 0.5) / cx;
+        const wy = (gy + 0.5) / cy;
+        const dx = (wx - g.x) / g.hw;
+        const dy = (wy - g.y) / g.hh;
+        if (dx * dx + dy * dy > 1) continue;
+        const onPad = Math.abs(wx - g.padX) <= 0.36 && Math.abs(wy - g.padY) <= 0.24;
+        if (onPad) continue;
         mask[gy * NAV_GW + gx] = CELL.BLOCKED;
       }
     }
