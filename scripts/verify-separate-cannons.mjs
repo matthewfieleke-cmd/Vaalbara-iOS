@@ -11,7 +11,7 @@ page.on('console', (msg) => {
   if (msg.type() === 'error') console.log('PAGEERR', msg.text());
 });
 
-await page.goto('http://127.0.0.1:5173/?p1ticks=14&p2ticks=400', { waitUntil: 'networkidle' });
+await page.goto('http://127.0.0.1:5173/?p1ticks=14&p2ticks=400', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1200);
 const tap = page.locator('.tap-label, .ignite-overlay');
 if (await tap.count()) await page.locator('.ignite-overlay').click({ force: true });
