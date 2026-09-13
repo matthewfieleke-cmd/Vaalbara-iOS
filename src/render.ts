@@ -18,9 +18,11 @@
 
 import {
   CANNON, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  HORN_CHARGE_TICKS, HORN_POS, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads,
+  HORN_CHARGE_TICKS, HORN_COLD_TICKS, HORN_POS, HORN_STRIKE_DELAY_TICKS, HORN_TURN_TICKS,
+  SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads,
 } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
+import { hornLockoutLeft } from './engine';
 import { speciesDef } from './data';
 import { getAnim, getFortArt, getOasisFloor, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
 import type { OasisFloorKey } from './sprites';
@@ -233,6 +235,20 @@ export class Renderer {
   /** Brief local flash at the painted bore when a gun fires. */
   private muzzleBlasts: Array<{
     x: number; y: number; hue: number; ember: boolean; life: number; maxLife: number;
+  }> = [];
+  /** The Horn has sounded: a column rises from the well and a wavefront
+   *  crosses the field to the target wing, arriving with the drum. */
+  private hornCalls: Array<{
+    x0: number; y0: number; x1: number; y1: number;
+    hue: number; mine: boolean; life: number; maxLife: number;
+  }> = [];
+  /** Wing about to take the drum, keyed owner * 2 + wing → seconds left. */
+  private hornWarn = new Map<number, number>();
+  /** Wings struck this tick — the next obeliskHit number is the big gold one. */
+  private hornHitWing = new Set<number>();
+  /** Jagged cracks left in a wall by the drum; fade over a second. */
+  private wallCracks: Array<{
+    pts: Array<{ x: number; y: number }>; hue: number; life: number; maxLife: number; width: number;
   }> = [];
   private ghosts: Ghost[] = [];
   private hitStop = 0;
@@ -574,15 +590,97 @@ export class Renderer {
         break;
       }
       case 'hornShout': {
+        // Beat one: the call. The meter shatters, the well breathes a
+        // column of light, and a wavefront sets out for the target wing.
+        // No damage yet — the wing only throbs amber so the defender reads
+        // what is coming.
         const a = this.worldToScreen(e.x, e.y);
         const b = this.worldToScreen(e.tx, e.ty);
         const mine = e.owner === this.localSeat;
-        const hue = mine ? 46 : 22;
-        this.burst(a.x, a.y, 16, 'flash', hue, 1.8);
-        this.burst(a.x, a.y, 3, 'shockwave', hue, 1.1);
-        this.burst(b.x, b.y - this.unit * 0.5, 12, 'spark', hue, 1.6);
-        this.burst(b.x, b.y - this.unit * 0.35, 4, 'ash', 28, 1.2);
-        this.shake = Math.max(this.shake, mine ? 6 : 8);
+        const hue = mine ? 46 : 24;
+        const u = this.unit;
+        this.burst(a.x, a.y, 14, 'flash', hue, 1.6);
+        this.burst(a.x, a.y, 4, 'shockwave', hue, 1.2);
+        // The full meter breaks into sparks flung off the rim.
+        for (let i = 0; i < 26; i++) {
+          const ang = (i / 26) * Math.PI * 2 + Math.random() * 0.2;
+          const r = u * 0.58;
+          const sp = 90 + Math.random() * 120;
+          this.particles.push({
+            x: a.x + Math.cos(ang) * r, y: a.y + Math.sin(ang) * r * 0.9,
+            vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.7 - 40,
+            life: 0, maxLife: 0.5 + Math.random() * 0.4,
+            size: 1.6 + Math.random() * 2.2,
+            hue, sat: 95, lit: 72, kind: 'spark', alpha: 1, gravity: 160,
+          });
+        }
+        // Dust lifted off the stone by the blast of air.
+        this.burst(a.x, a.y + u * 0.1, 14, 'mist', 30, 1.4);
+        const bar = HORN_STRIKE_DELAY_TICKS * (TICK_MS / 1000);
+        this.hornCalls.push({ x0: a.x, y0: a.y, x1: b.x, y1: b.y, hue, mine, life: 0, maxLife: bar });
+        const lanes = FORT_LANES[(1 - e.owner) as PlayerId];
+        const wing = Math.abs(e.tx - lanes[0]) < Math.abs(e.tx - lanes[1]) ? 0 : 1;
+        this.hornWarn.set((1 - e.owner) * 2 + wing, bar + 0.1);
+        this.shake = Math.max(this.shake, mine ? 5 : 6);
+        break;
+      }
+      case 'hornStrike': {
+        // Beat two: the drum. The wavefront lands on the wall — a white
+        // flash, masonry thrown, a dust ring hugging the base, cracks that
+        // fade, and the damage number in gold.
+        const b = this.worldToScreen(e.tx, e.ty);
+        const mine = e.owner === this.localSeat;
+        const hue = mine ? 46 : 24;
+        const u = this.unit;
+        const lanes = FORT_LANES[(1 - e.owner) as PlayerId];
+        const wing = Math.abs(e.tx - lanes[0]) < Math.abs(e.tx - lanes[1]) ? 0 : 1;
+        const key = (1 - e.owner) * 2 + wing;
+        this.hornWarn.delete(key);
+        this.hornHitWing.add(key);
+        this.obeliskFlash.set(key, 0.6);
+        const wy = b.y - u * 0.55;
+        this.burst(b.x, wy, 8, 'flash', 48, 2.2);
+        this.burst(b.x, wy, 18, 'spark', hue, 2.6);
+        this.burst(b.x, b.y + u * 0.15, 2, 'shockwave', hue, 1.5);
+        this.burst(b.x, b.y, 18, 'mist', 26, 2.0);
+        for (let i = 0; i < 18; i++) {
+          const spread = (Math.random() - 0.5) * u * 2.4;
+          this.particles.push({
+            x: b.x + spread, y: wy + (Math.random() - 0.5) * u * 0.8,
+            vx: spread * 1.1 + (Math.random() - 0.5) * 50,
+            vy: -40 - Math.random() * 140,
+            life: 0, maxLife: 0.9 + Math.random() * 0.7,
+            size: 3.5 + Math.random() * 4.5,
+            hue: 255, sat: 6, lit: 18 + Math.random() * 18,
+            kind: 'ash', alpha: 1, gravity: 380,
+          });
+        }
+        // Cracks radiate from the impact: short jagged steps that zig-zag
+        // about a main direction, with a stub branch off the longer ones.
+        const crack = (sx: number, sy: number, dir: number, segs: number, width: number) => {
+          const pts: Array<{ x: number; y: number }> = [{ x: sx, y: sy }];
+          let cx = sx;
+          let cy = sy;
+          for (let s = 0; s < segs; s++) {
+            const step = u * (0.09 + Math.random() * 0.12);
+            const zig = (s % 2 === 0 ? 1 : -1) * (0.45 + Math.random() * 0.5);
+            cx += Math.cos(dir + zig) * step;
+            cy += Math.sin(dir + zig) * step * 0.7;
+            pts.push({ x: cx, y: cy });
+          }
+          this.wallCracks.push({ pts, hue, life: 0, maxLife: 1.1 + Math.random() * 0.4, width });
+          return pts;
+        };
+        for (let c = 0; c < 4; c++) {
+          const dir = (c / 4) * Math.PI * 2 + (Math.random() - 0.5) * 0.9;
+          const pts = crack(b.x + (Math.random() - 0.5) * u * 0.3, wy + (Math.random() - 0.5) * u * 0.2, dir, 5 + Math.floor(Math.random() * 4), 1.5 + Math.random() * 1.1);
+          if (pts.length > 4 && Math.random() < 0.7) {
+            const at = pts[2 + Math.floor(Math.random() * (pts.length - 3))];
+            crack(at.x, at.y, dir + (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.5), 2 + Math.floor(Math.random() * 3), 1);
+          }
+        }
+        this.shake = Math.max(this.shake, mine ? 11 : 13);
+        this.hitStop = Math.max(this.hitStop, 0.1);
         break;
       }
       case 'obeliskHit': {
@@ -595,15 +693,16 @@ export class Renderer {
         this.obeliskFlash.set(e.owner * 2 + wing, 0.24);
         const mid = this.ox + (WORLD_W / 2) * this.unit;
         const shown = Math.round(e.amount);
+        const hornBlow = this.hornHitWing.delete(e.owner * 2 + wing);
         this.floats.push({
           // Spawn beside the arch (toward mid-field), low on the wall face,
           // so the rising number never drifts across the gatehouse HP bar.
-          x: p.x + this.unit * (p.x < mid ? 1.15 : -1.15), y: p.y - this.unit * 0.4,
-          text: `-${shown}`, life: 0, maxLife: 0.9,
-          color: mine ? '#ff8f6d' : '#ffe08a',
-          size: clamp(11 + shown * 0.1, 11, 19),
+          x: p.x + this.unit * (p.x < mid ? 1.15 : -1.15), y: p.y - this.unit * (hornBlow ? 0.55 : 0.4),
+          text: `-${shown}`, life: 0, maxLife: hornBlow ? 1.4 : 0.9,
+          color: hornBlow ? (mine ? '#ff9a6a' : '#ffd24a') : mine ? '#ff8f6d' : '#ffe08a',
+          size: hornBlow ? 30 : clamp(11 + shown * 0.1, 11, 19),
         });
-        if (mine) this.shake = Math.max(this.shake, 2.5);
+        if (mine && !hornBlow) this.shake = Math.max(this.shake, 2.5);
         break;
       }
       case 'obeliskDown': {
@@ -733,6 +832,8 @@ export class Renderer {
       this.drawUnits(ctx, st, dt, now, 'over');
       this.drawProjectiles(ctx, st, now);
       this.drawMuzzleBlasts(ctx, dt);
+      this.drawHornCalls(ctx, dt);
+      this.drawWallCracks(ctx, dt);
       this.drawShrineBeams(ctx, dt);
       this.drawZones(ctx, st, 'over');
       if (st.obelisks.length > 0) this.drawFortressBars(ctx, st);
@@ -1020,43 +1121,100 @@ export class Renderer {
     const leader: PlayerId | null = c0 === c1 ? null : c0 > c1 ? 0 : 1;
     const charge = leader === null ? 0 : st.hornCharge[leader];
     const frac = charge / HORN_CHARGE_TICKS;
-    const mine = leader === this.localSeat;
-    const hue = leader === null ? 38 : mine ? 46 : 22;
-    const pulse = 0.55 + Math.sin(this.time * 2.4) * 0.18;
+    const hueOf = (seat: PlayerId) => (seat === this.localSeat ? 46 : 22);
+    // Cold: the ring just sounded and is dark for everyone. Locked: one
+    // army sounded last and only the other may charge — the rim wears
+    // that army's colour so the window reads at a glance.
+    const cold = st.hornCold > 0;
+    const coldK = cold ? st.hornCold / HORN_COLD_TICKS : 0;
+    const lock0 = hornLockoutLeft(st, 0);
+    const lock1 = hornLockoutLeft(st, 1);
+    const openFor: PlayerId | null = lock0 > 0 ? 1 : lock1 > 0 ? 0 : null;
+    const lockLeft = Math.max(lock0, lock1);
+    const hue = leader !== null ? hueOf(leader) : openFor !== null ? hueOf(openFor) : 38;
+    const nearFull = frac >= 0.8;
+    const pulse = 0.55 + Math.sin(this.time * (nearFull ? 7 : 2.4)) * (nearFull ? 0.3 : 0.18);
     // Painted rim is ~0.58 wu — tighter than the stand-on pad so the meter
     // sits in the well instead of sliding down onto the south stone.
     const rad = u * (0.58 + frac * 0.04);
 
     ctx.save();
+    const wellA = cold ? 0.03 : 0.08 + frac * 0.24 * pulse;
     const well = ctx.createRadialGradient(p.x, p.y, u * 0.08, p.x, p.y, rad * 1.15);
-    well.addColorStop(0, `hsla(${hue} 80% 62% / ${0.08 + frac * 0.24 * pulse})`);
-    well.addColorStop(0.55, `hsla(${hue} 70% 48% / ${0.05 + frac * 0.16})`);
+    well.addColorStop(0, `hsla(${hue} 80% 62% / ${wellA})`);
+    well.addColorStop(0.55, `hsla(${hue} 70% 48% / ${cold ? 0.02 : 0.05 + frac * 0.16})`);
     well.addColorStop(1, 'hsla(32 40% 20% / 0)');
     ctx.fillStyle = well;
     ctx.beginPath();
     ctx.arc(p.x, p.y, rad * 1.15, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = `hsla(${hue} 70% 58% / ${0.28 + frac * 0.2})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
-    ctx.stroke();
+    if (cold) {
+      // Heat still rising off the stone.
+      if (Math.random() < 0.35 * coldK) {
+        this.particles.push({
+          x: p.x + (Math.random() - 0.5) * u * 0.7, y: p.y,
+          vx: (Math.random() - 0.5) * 8, vy: -(18 + Math.random() * 22),
+          life: 0, maxLife: 0.9 + Math.random() * 0.6,
+          size: u * (0.08 + Math.random() * 0.1), hue: 30, sat: 20, lit: 40,
+          kind: 'mist', alpha: 0.5, gravity: -6,
+        });
+      }
+      ctx.strokeStyle = `hsla(30 20% 40% / ${0.22 + 0.18 * coldK})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([u * 0.1, u * 0.12]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.strokeStyle = `hsla(${hue} 70% 58% / ${0.28 + frac * 0.2 + (openFor !== null ? 0.12 : 0)})`;
+      ctx.lineWidth = openFor !== null ? 2.6 : 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
-    if (frac > 0) {
+    if (frac > 0 && !cold) {
       ctx.strokeStyle = `hsla(${hue} 90% 72% / ${0.45 + frac * 0.45 * pulse})`;
-      ctx.lineWidth = 3.2;
+      ctx.lineWidth = nearFull ? 4 : 3.2;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.arc(p.x, p.y, rad, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.stroke();
+      if (nearFull) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(p.x, p.y, rad * 0.6, p.x, p.y, rad * 1.5);
+        g.addColorStop(0, `hsla(${hue} 95% 70% / ${0.18 * pulse})`);
+        g.addColorStop(1, `hsla(${hue} 90% 60% / 0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Lockout: a thin outer arc in the locked army's colour, draining as
+    // their turn comes back — "the Horn will not sound twice for you".
+    if (!cold && openFor !== null && lockLeft > 0) {
+      const locked = (1 - openFor) as PlayerId;
+      const k = lockLeft / HORN_TURN_TICKS;
+      ctx.strokeStyle = `hsla(${hueOf(locked)} 60% 55% / 0.35)`;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rad + u * 0.12, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
       ctx.stroke();
     }
 
     ctx.font = `600 ${Math.max(11, Math.round(u * 0.26))}px "Iowan Old Style", Palatino, serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = `hsla(38 40% 86% / ${0.42 + frac * 0.4})`;
-    ctx.fillText('The Horn', p.x, p.y + rad + u * 0.32);
+    const label = cold ? 'The Horn' : openFor === this.localSeat ? 'The Horn · yours' : openFor !== null ? 'The Horn · theirs' : 'The Horn';
+    ctx.fillStyle = `hsla(38 40% 86% / ${cold ? 0.3 : 0.42 + frac * 0.4})`;
+    ctx.fillText(label, p.x, p.y + rad + u * 0.32);
     ctx.restore();
   }
 
@@ -1069,6 +1227,11 @@ export class Renderer {
       const n = v - dt;
       if (n <= 0) this.obeliskFlash.delete(k);
       else this.obeliskFlash.set(k, n);
+    }
+    for (const [k, v] of [...this.hornWarn]) {
+      const n = v - dt;
+      if (n <= 0) this.hornWarn.delete(k);
+      else this.hornWarn.set(k, n);
     }
     // The strongholds themselves are drawn from frame(): backdrop, the
     // behind-the-wall unit pass, then each facade in its own depth slot.
@@ -1830,6 +1993,20 @@ export class Renderer {
           continue;
         }
         const hue = mine ? 190 : 6;
+        // The Horn is coming for this wing: an amber throb around the bar
+        // for the whole bar between call and drum.
+        const warn = this.hornWarn.get(owner * 2 + wing.wing) ?? 0;
+        if (warn > 0) {
+          const throb = 0.45 + Math.sin(t * 14) * 0.35;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = `hsla(40 100% 65% / ${throb})`;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(wp.x - bw / 2 - 4, barY - 4, bw + 8, bh + 8, 4);
+          ctx.stroke();
+          ctx.restore();
+        }
         ctx.fillStyle = 'rgba(6,4,10,0.72)';
         ctx.beginPath();
         ctx.roundRect(wp.x - bw / 2 - 1.5, barY - 1.5, bw + 3, bh + 3, 3);
@@ -2139,6 +2316,120 @@ export class Renderer {
       next.push(b);
     }
     this.muzzleBlasts = next;
+  }
+
+  /** The Horn's call, over one bar: a column of light and dust standing
+   *  up out of the well, and a wavefront rolling across the field toward
+   *  the target wing — it arrives as the drum lands. */
+  private drawHornCalls(ctx: CanvasRenderingContext2D, dt: number): void {
+    if (this.hornCalls.length === 0) return;
+    const u = this.unit;
+    const next = [];
+    for (const c of this.hornCalls) {
+      c.life += dt;
+      if (c.life >= c.maxLife) continue;
+      const t = c.life / c.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+
+      // Column: brightest in the first half-second, breathing out slowly.
+      const colA = t < 0.2 ? t / 0.2 : 1 - (t - 0.2) / 0.8;
+      const colH = u * (1.6 + t * 1.8);
+      const colW = u * (0.55 + t * 0.35);
+      const col = ctx.createLinearGradient(0, c.y0, 0, c.y0 - colH);
+      col.addColorStop(0, `hsla(${c.hue} 95% 70% / ${0.42 * colA})`);
+      col.addColorStop(0.35, `hsla(${c.hue} 90% 62% / ${0.22 * colA})`);
+      col.addColorStop(1, `hsla(${c.hue} 80% 55% / 0)`);
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(c.x0 - colW * 0.5, c.y0);
+      ctx.lineTo(c.x0 - colW * 0.9, c.y0 - colH);
+      ctx.lineTo(c.x0 + colW * 0.9, c.y0 - colH);
+      ctx.lineTo(c.x0 + colW * 0.5, c.y0);
+      ctx.closePath();
+      ctx.fill();
+      if (Math.random() < 0.6) {
+        this.particles.push({
+          x: c.x0 + (Math.random() - 0.5) * colW, y: c.y0 - Math.random() * u * 0.3,
+          vx: (Math.random() - 0.5) * 20, vy: -(70 + Math.random() * 110),
+          life: 0, maxLife: 0.7 + Math.random() * 0.6,
+          size: 1.2 + Math.random() * 1.6, hue: c.hue, sat: 90, lit: 76,
+          kind: 'mote', alpha: 0.9 * colA, gravity: -20,
+        });
+      }
+
+      // Wavefront: eases out of the well and accelerates into the wall.
+      const dx = c.x1 - c.x0;
+      const dy = c.y1 - c.y0;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = dx / len;
+      const ny = dy / len;
+      const ease = t * t * (3 - 2 * t);
+      for (let k = 0; k < 3; k++) {
+        const lag = k * 0.07;
+        const tk = clamp(ease - lag, 0, 1);
+        if (tk <= 0) continue;
+        const px = c.x0 + dx * tk;
+        const py = c.y0 + dy * tk;
+        const rad = u * (0.55 + k * 0.22) * (0.8 + tk * 0.5);
+        const a = (k === 0 ? 0.85 : 0.4 - k * 0.1) * (1 - tk * 0.25);
+        const ang = Math.atan2(ny, nx);
+        ctx.strokeStyle = `hsla(${c.hue} 95% ${72 - k * 8}% / ${a})`;
+        ctx.lineWidth = k === 0 ? 3.4 : 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(px, py, rad, ang - 1.05, ang + 1.05);
+        ctx.stroke();
+        if (k === 0) {
+          const g = ctx.createRadialGradient(px, py, 1, px, py, rad * 1.1);
+          g.addColorStop(0, `hsla(${c.hue} 95% 80% / 0.28)`);
+          g.addColorStop(1, `hsla(${c.hue} 90% 60% / 0)`);
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(px, py, rad * 1.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // A faint bearing line so the target reads even before the front arrives.
+      ctx.strokeStyle = `hsla(${c.hue} 80% 65% / ${0.12 * (1 - t)})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([u * 0.18, u * 0.22]);
+      ctx.beginPath();
+      ctx.moveTo(c.x0, c.y0);
+      ctx.lineTo(c.x1, c.y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      next.push(c);
+    }
+    this.hornCalls = next;
+  }
+
+  /** Cracks the drum leaves in a wall face, glowing hot then fading. */
+  private drawWallCracks(ctx: CanvasRenderingContext2D, dt: number): void {
+    if (this.wallCracks.length === 0) return;
+    const next = [];
+    for (const c of this.wallCracks) {
+      c.life += dt;
+      if (c.life >= c.maxLife) continue;
+      const k = 1 - c.life / c.maxLife;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = `rgba(6,4,8,${0.7 * k})`;
+      ctx.lineWidth = c.width + 1.2;
+      ctx.beginPath();
+      ctx.moveTo(c.pts[0].x, c.pts[0].y);
+      for (let i = 1; i < c.pts.length; i++) ctx.lineTo(c.pts[i].x, c.pts[i].y);
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `hsla(${c.hue} 100% 70% / ${0.85 * k * k})`;
+      ctx.lineWidth = c.width * 0.6;
+      ctx.stroke();
+      ctx.restore();
+      next.push(c);
+    }
+    this.wallCracks = next;
   }
 
   private drawShrineBeams(ctx: CanvasRenderingContext2D, dt: number): void {
