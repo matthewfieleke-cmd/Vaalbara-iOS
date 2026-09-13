@@ -269,6 +269,9 @@ export function GameScreen({
         } else if (e.type === 'bridgeThreat' && e.owner === seat) {
           playHaptic('warning');
           showToast('They\'re on your bridge!');
+        } else if (e.type === 'hornShout') {
+          playHaptic(e.owner === seat ? 'success' : 'warning');
+          showToast(e.owner === seat ? 'The Horn shouts for you!' : 'The Horn shouts against you!');
         } else if (e.type === 'obeliskDown') {
           playHaptic('heavy');
           const razed = state.obelisks
@@ -323,7 +326,7 @@ export function GameScreen({
     setBanner({
       id: Date.now(),
       title: 'Phase I — Raze Their Fortress',
-      body: 'Drop on your side to stop them. Tap a gate to march.',
+      body: 'Drop on your side to stop them. Tap a gate to march. Contest The Horn in the mid stone.',
       color: '#ffab7a',
     });
 

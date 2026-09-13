@@ -649,6 +649,13 @@ const GLOBAL_SFX = {
     noise({ dur: 0.22, gain: 0.1, filterFreq: 900, filterEnd: 220 });
     voice({ type: 'triangle', freq: 330, freqEnd: 180, dur: 0.16, gain: 0.05, when: t + 0.04 });
   },
+  hornShout: () => {
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sawtooth', freq: 148, freqEnd: 68, dur: 0.58, gain: 0.26, filterFreq: 380 });
+    voice({ type: 'sine', freq: 92, freqEnd: 48, dur: 0.72, gain: 0.32 });
+    voice({ type: 'triangle', freq: 236, freqEnd: 110, dur: 0.38, gain: 0.11, when: t + 0.05 });
+    noise({ dur: 0.3, gain: 0.12, filterFreq: 640, filterEnd: 160 });
+  },
   shrineImpactWater: () => {
     voice({ type: 'sine', freq: 78, freqEnd: 40, dur: 0.14, gain: 0.12 });
     noise({ dur: 0.1, gain: 0.07, filterFreq: 1100, filterEnd: 260, filterType: 'bandpass' });
@@ -863,6 +870,7 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'shrineShot':
       case 'shrineImpact':
       case 'bridgeThreat':
+      case 'hornShout':
         return 1;
       default:
         return 2;
@@ -945,6 +953,10 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'bridgeThreat':
         if (!claim(3)) break;
         GLOBAL_SFX.bridgeThreat();
+        break;
+      case 'hornShout':
+        if (!claim(3)) break;
+        GLOBAL_SFX.hornShout();
         break;
       case 'obeliskHit':
         if (!claim(2)) break;

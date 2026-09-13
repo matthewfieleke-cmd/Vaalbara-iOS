@@ -174,6 +174,9 @@ export interface UnitState {
   homeWing: 0 | 1;
   /** True after this unit first stepped onto the enemy bridge. */
   bridgeWarned: boolean;
+  /** True after this unit stood on the mid Horn ring. Required before
+   *  they may siege the far gate of a fortress. */
+  touchedMid: boolean;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -246,7 +249,6 @@ export interface ObeliskState {
    *  lane (in world coordinates, before any seat-view mirroring). */
   readonly wing: 0 | 1;
   hp: number;
-  /** Grows when the sister wing falls (last-stand fortification surge). */
   maxHp: number;
   readonly x: number;
   readonly y: number;
@@ -322,6 +324,7 @@ export type GameEvent =
   | { type: 'obeliskDown'; owner: PlayerId; x: number; y: number }
   | { type: 'gateShot'; owner: PlayerId; wing: 0 | 1; x: number; y: number; tx: number; ty: number }
   | { type: 'bridgeThreat'; owner: PlayerId; wing: 0 | 1; x: number; y: number }
+  | { type: 'hornShout'; owner: PlayerId; x: number; y: number; tx: number; ty: number }
   | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
   | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
   | { type: 'cannonHit'; owner: PlayerId; amount: number; x: number; y: number }
@@ -370,6 +373,10 @@ export interface GameState {
   cannonDamage: [number, number];
   /** Tick each owner's gun fell, or null if it still stands. Earlier topple wins a remaining tie. */
   cannonFellTick: [number | null, number | null];
+  /** Exclusive (or leading) control on the Horn ring, in ticks. */
+  hornCharge: [number, number];
+  /** Horn shouts already fired this chapter (cap HORN_SHOTS_MAX). */
+  hornShots: [number, number];
   winner: PlayerId | 'tie' | null;
   dominanceP0: number;
 }
@@ -543,19 +550,33 @@ export const GATE_SHOT_SPLASH = 0.42;
 export const CAPTURE_RATE = 1;
 /** Phase-1 objective: each seat's fortress has TWO gatehouse wings, each
  *  with its own HP. The Basalt Fields end only when a fortress loses both. */
-/** First-gate HP. A won-bridge punish should SHOW; the remaining wing
- *  still hardens after its sister falls (see dealObeliskDamage) so clean
- *  sweeps stay rare. */
-export const OBELISK_HP = 1380;
+/** Mid Horn — the stone throat between the two rivers. Ring is stand-on. */
+export const HORN_POS = { x: 4.5, y: 7.5 };
+/** About one bridge opening. Walkers pass left or right of the coil. */
+export const HORN_R = 1.05;
+/** 13 ticks = 3.9 s of having the ring. */
+export const HORN_CHARGE_TICKS = 13;
+/** A shout should crack a gate, not delete it. */
+export const HORN_BLAST = 220;
+export const HORN_SHOTS_MAX = 2;
+
+export function onHornPad(x: number, y: number): boolean {
+  const dx = x - HORN_POS.x;
+  const dy = y - HORN_POS.y;
+  return dx * dx + dy * dy <= HORN_R * HORN_R;
+}
+
+/** First-gate HP. Both wings of a fortress stay the same building. */
+export const OBELISK_HP = 500;
 
 /** Phase-2 shrine (keep and temple). The gun must fall first; this HP is
  *  the real clock. Veil still sits on the stone only. */
-export const MARBLE_HP = 880;
+export const MARBLE_HP = 1400;
 /** Footprint radius — matches the painted keep / temple, so units stop
  *  at the door instead of walking through the stone. */
 export const MARBLE_R = 1.48;
 /** Separate grass-pad gun. Equal for both seats — no veil. */
-export const CANNON_HP = 550;
+export const CANNON_HP = 850;
 /** Collision radius of the painted pad, not the keep. */
 export const CANNON_R = 0.72;
 /** Cannon shell — 200 every 8 s. A landed hit deletes chaff and chunks a tank. */
