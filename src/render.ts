@@ -18,7 +18,7 @@
 
 import {
   CANNON, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  HORN_CHARGE_TICKS, HORN_POS, HORN_R, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads,
+  HORN_CHARGE_TICKS, HORN_POS, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads,
 } from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
@@ -372,8 +372,17 @@ export class Renderer {
       case 'hit': {
         const p = this.worldToScreen(e.x, e.y);
         const hue = e.kind === 'burn' ? 20 : e.kind === 'lava' ? 8 : e.kind === 'vent' ? 55 : e.kind === 'reflect' ? 160 : 0;
-        // Cannon landings stay quiet — the explosion already happened at the muzzle.
-        if (e.kind !== 'cannon') {
+        if (e.kind === 'cannon') {
+          this.burst(p.x, p.y - this.unit * 0.2, 22, 'spark', 28, 2.4);
+          this.burst(p.x, p.y, 3, 'shockwave', 22, 1.35);
+          this.burst(p.x, p.y - this.unit * 0.15, 10, 'flash', 36, 1.8);
+          this.flashes.set(e.unitId, 0.38);
+          const dir = this.recallHitDir(e.x, e.y) ?? { x: 0.2, y: 0.9 };
+          const d = this.display.get(e.unitId);
+          if (d) d.jig = { t0: this.time, dirX: dir.x, dirY: dir.y, mag: clamp(5 + e.amount * 0.04, 5, 11) };
+          this.shake = Math.max(this.shake, 9);
+          this.hitStop = Math.max(this.hitStop, 0.1);
+        } else {
           this.burst(p.x, p.y, e.kind === 'lava' ? 18 : 5, e.kind === 'lava' ? 'spark' : 'flash', hue, 1.4);
         }
         if (e.kind === 'melee' || e.kind === 'ranged' || e.kind === 'lava') {
@@ -532,13 +541,20 @@ export class Renderer {
         this.burst(a.x, a.y, 2, 'shockwave', hue, 0.55);
         this.muzzleBlasts.push({ x: a.x, y: a.y, hue, ember, life: 0, maxLife: 0.22 });
         this.shake = Math.max(this.shake, 5);
+        const shotLen = Math.hypot(e.tx - e.x, e.ty - e.y) || 1;
+        this.rememberHitDir(e.tx, e.ty, { x: (e.tx - e.x) / shotLen, y: (e.ty - e.y) / shotLen });
         break;
       }
       case 'shrineImpact': {
         const p = this.worldToScreen(e.x, e.y);
-        const hue = e.kind === 'ember' ? 24 : 200;
-        this.burst(p.x, p.y, 8, 'ash', hue, 1.1);
-        this.burst(p.x, p.y, 4, e.kind === 'ember' ? 'mist' : 'bubble', hue, 0.8);
+        const ember = e.kind === 'ember';
+        const hue = ember ? 24 : 200;
+        this.burst(p.x, p.y, 20, 'spark', hue, 2.2);
+        this.burst(p.x, p.y, 3, 'shockwave', hue, 1.25);
+        this.burst(p.x, p.y, 10, ember ? 'ash' : 'bubble', hue, 1.4);
+        this.burst(p.x, p.y - this.unit * 0.1, 6, ember ? 'flash' : 'mist', hue, 1.2);
+        this.shake = Math.max(this.shake, 7);
+        this.hitStop = Math.max(this.hitStop, 0.06);
         break;
       }
       case 'gateShot': {
@@ -994,7 +1010,8 @@ export class Renderer {
     }
   }
 
-  /** Runtime charge glow on The Horn — never baked into the floor painting. */
+  /** Runtime charge glow on The Horn — never baked into the floor painting.
+   *  Drawn as a true circle on the painted throat (not a south-shifted oval). */
   private drawHorn(ctx: CanvasRenderingContext2D, st: GameState): void {
     const p = this.worldToScreen(HORN_POS.x, HORN_POS.y);
     const u = this.unit;
@@ -1006,36 +1023,40 @@ export class Renderer {
     const mine = leader === this.localSeat;
     const hue = leader === null ? 38 : mine ? 46 : 22;
     const pulse = 0.55 + Math.sin(this.time * 2.4) * 0.18;
-    const rad = HORN_R * u * (0.92 + frac * 0.12);
+    // Painted rim is ~0.58 wu — tighter than the stand-on pad so the meter
+    // sits in the well instead of sliding down onto the south stone.
+    const rad = u * (0.58 + frac * 0.04);
 
     ctx.save();
-    const well = ctx.createRadialGradient(p.x, p.y, u * 0.12, p.x, p.y, rad);
-    well.addColorStop(0, `hsla(${hue} 80% 62% / ${0.06 + frac * 0.22 * pulse})`);
-    well.addColorStop(0.55, `hsla(${hue} 70% 48% / ${0.04 + frac * 0.16})`);
+    const well = ctx.createRadialGradient(p.x, p.y, u * 0.08, p.x, p.y, rad * 1.15);
+    well.addColorStop(0, `hsla(${hue} 80% 62% / ${0.08 + frac * 0.24 * pulse})`);
+    well.addColorStop(0.55, `hsla(${hue} 70% 48% / ${0.05 + frac * 0.16})`);
     well.addColorStop(1, 'hsla(32 40% 20% / 0)');
     ctx.fillStyle = well;
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, rad, rad * 0.86, 0, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, rad * 1.15, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.strokeStyle = `hsla(${hue} 70% 58% / ${0.28 + frac * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+    ctx.stroke();
+
     if (frac > 0) {
-      ctx.strokeStyle = `hsla(${hue} 88% 62% / ${0.22 + frac * 0.5 * pulse})`;
-      ctx.lineWidth = 2.2 + frac * 3.2;
+      ctx.strokeStyle = `hsla(${hue} 90% 72% / ${0.45 + frac * 0.45 * pulse})`;
+      ctx.lineWidth = 3.2;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y, rad * 0.78, rad * 0.68, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = `hsla(${hue} 90% 72% / ${0.35 + frac * 0.45})`;
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, rad * 0.78, rad * 0.68, 0, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.arc(p.x, p.y, rad, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
       ctx.stroke();
     }
 
-    ctx.font = `600 ${Math.max(11, Math.round(u * 0.28))}px "Iowan Old Style", Palatino, serif`;
+    ctx.font = `600 ${Math.max(11, Math.round(u * 0.26))}px "Iowan Old Style", Palatino, serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = `hsla(38 40% 86% / ${0.42 + frac * 0.4})`;
-    ctx.fillText('The Horn', p.x, p.y + rad * 0.95);
+    ctx.fillText('The Horn', p.x, p.y + rad + u * 0.32);
     ctx.restore();
   }
 

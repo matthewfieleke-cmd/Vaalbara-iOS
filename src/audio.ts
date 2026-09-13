@@ -635,8 +635,11 @@ const GLOBAL_SFX = {
     voice({ type: 'sine', freq: 46, freqEnd: 22, dur: 0.85, gain: 0.2, when: t + 0.08 });
   },
   shrineImpactEmber: () => {
-    voice({ type: 'sine', freq: 70, freqEnd: 36, dur: 0.16, gain: 0.14 });
-    noise({ dur: 0.12, gain: 0.08, filterFreq: 700, filterEnd: 180 });
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 92, freqEnd: 28, dur: 0.38, gain: 0.32 });
+    voice({ type: 'sawtooth', freq: 64, freqEnd: 30, dur: 0.28, gain: 0.16, filterFreq: 240 });
+    noise({ dur: 0.28, gain: 0.22, filterFreq: 1400, filterEnd: 180 });
+    voice({ type: 'triangle', freq: 180, freqEnd: 70, dur: 0.16, gain: 0.08, when: t + 0.03 });
   },
   gateShot: () => {
     voice({ type: 'triangle', freq: 420, freqEnd: 160, dur: 0.09, gain: 0.07 });
@@ -657,8 +660,11 @@ const GLOBAL_SFX = {
     noise({ dur: 0.3, gain: 0.12, filterFreq: 640, filterEnd: 160 });
   },
   shrineImpactWater: () => {
-    voice({ type: 'sine', freq: 78, freqEnd: 40, dur: 0.14, gain: 0.12 });
-    noise({ dur: 0.1, gain: 0.07, filterFreq: 1100, filterEnd: 260, filterType: 'bandpass' });
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 86, freqEnd: 32, dur: 0.36, gain: 0.3 });
+    voice({ type: 'triangle', freq: 140, freqEnd: 50, dur: 0.24, gain: 0.12, filterFreq: 400 });
+    noise({ dur: 0.26, gain: 0.2, filterFreq: 1600, filterEnd: 220, filterType: 'bandpass' });
+    voice({ type: 'sine', freq: 210, freqEnd: 80, dur: 0.14, gain: 0.07, when: t + 0.03 });
   },
   marbleHit: () => {
     voice({ type: 'sine', freq: 180, freqEnd: 70, dur: 0.22, gain: 0.2 });
@@ -973,9 +979,10 @@ export function handleGameEvents(events: GameEvent[]): void {
         playHaptic('medium');
         break;
       case 'shrineImpact':
-        if (!claim(1)) break;
+        if (!claim(3)) break;
         if (e.kind === 'ember') GLOBAL_SFX.shrineImpactEmber();
         else GLOBAL_SFX.shrineImpactWater();
+        playHaptic('medium');
         break;
       case 'marbleHit':
         if (!claim(1)) break;

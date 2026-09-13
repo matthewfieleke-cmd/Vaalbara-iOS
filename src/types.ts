@@ -550,8 +550,9 @@ export const GATE_SHOT_SPLASH = 0.42;
 export const CAPTURE_RATE = 1;
 /** Phase-1 objective: each seat's fortress has TWO gatehouse wings, each
  *  with its own HP. The Basalt Fields end only when a fortress loses both. */
-/** Mid Horn — the stone throat between the two rivers. Ring is stand-on. */
-export const HORN_POS = { x: 4.5, y: 7.5 };
+/** Mid Horn — the painted throat between the two rivers (the dark well
+ *  sits at y≈7.0; 7.5 is the south rim). Ring is stand-on. */
+export const HORN_POS = { x: 4.5, y: 7.0 };
 /** About one bridge opening. Walkers pass left or right of the coil. */
 export const HORN_R = 1.05;
 /** 13 ticks = 3.9 s of having the ring. */

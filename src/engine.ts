@@ -149,6 +149,23 @@ function cannonPad(owner: PlayerId): Vec2 {
   return { x: CANNON[owner].padX, y: CANNON[owner].padY };
 }
 
+/** Pond-facing lip of the gun — units south/west of the bottom carriage
+ *  (or north of the top one) are not on the pad and must walk around. */
+function onCannonPadSide(u: UnitState, c: CannonState): boolean {
+  const g = CANNON[c.owner];
+  return c.owner === 0 ? u.y <= g.padY + 0.28 : u.y >= g.padY - 0.28;
+}
+
+/** If a walker is behind or beside the carriage, swing to the pond-side
+ *  flank first so they do not freeze in the left alley of the bottom gun. */
+function cannonSiegeGoal(u: UnitState, c: CannonState): Vec2 {
+  const g = CANNON[c.owner];
+  const pad = cannonPad(c.owner);
+  if (onCannonPadSide(u, c)) return pad;
+  const side = u.x < g.x ? -1 : 1;
+  return { x: g.x + side * (g.hw + 0.42), y: g.padY };
+}
+
 function cannonOf(st: GameState, owner: PlayerId): CannonState | undefined {
   return st.cannons.find((c) => c.owner === owner);
 }
@@ -1649,7 +1666,8 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   const siegeReach = ob ? attackReach(u) + u.stats.radius + ob.r : 0;
   const canSiege = !!ob && dist2(u.x, u.y, ob.x, ob.y) <= siegeReach * siegeReach;
   const cannonReach = cannon ? attackReach(u) + u.stats.radius + cannon.r : 0;
-  const canSiegeCannon = !!cannon && dist2(u.x, u.y, cannon.x, cannon.y) <= cannonReach * cannonReach;
+  const canSiegeCannon = !!cannon && onCannonPadSide(u, cannon)
+    && dist2(u.x, u.y, cannon.x, cannon.y) <= cannonReach * cannonReach;
   const marbleExposed = !!marble && !shrineGuarded(st, marble.owner);
   const marbleReach = marbleExposed ? attackReach(u) + u.stats.radius + marble!.r : 0;
   const canSiegeMarble = marbleExposed && dist2(u.x, u.y, marble!.x, marble!.y) <= marbleReach * marbleReach;
@@ -1702,7 +1720,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     }
   }
 
-  if (cannon && !target) {
+  if (cannon && !target && onCannonPadSide(u, cannon)) {
     const reach = attackReach(u) + u.stats.radius + cannon.r;
     if (dist2(u.x, u.y, cannon.x, cannon.y) <= reach * reach) {
       if (u.atkTimer <= 0) attackCannon(st, ev, u, cannon);
@@ -1769,7 +1787,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
       st.phase === 'oasis' && cannon && !threatClose &&
       (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
     ) {
-      goal = cannonPad(cannon.owner);
+      goal = cannonSiegeGoal(u, cannon);
     } else if (
       st.phase === 'oasis' && marbleExposed && !threatClose &&
       (u.owner === 0 ? u.y < WORLD_H * 0.52 : u.y > WORLD_H * 0.48)
@@ -1783,7 +1801,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   } else {
     u.waypoint = null;
     goal = st.phase === 'oasis' && cannon
-      ? cannonPad(cannon.owner)
+      ? cannonSiegeGoal(u, cannon)
       : st.phase === 'oasis' && marbleExposed
         ? shrineDoor(marble!.owner)
         : ob
@@ -2632,7 +2650,7 @@ export class BotBrain {
       const grabHorn = shotsLeft && this.rng() < (strong ? 0.18 : 0.15);
       if (contestHorn || grabHorn) {
         const flying = !!def.stats?.flying;
-        const lipY = this.seat === 0 ? 8.2 : 6.8;
+        const lipY = this.seat === 0 ? 7.75 : 6.25;
         const hornSnap = snapBasaltFieldDrop(st, this.seat, HORN_POS.x, lipY, flying);
         if (hornSnap) {
           const pref: 0 | 1 = Math.abs(hornSnap.x - FORT_LANES[this.seat][0])

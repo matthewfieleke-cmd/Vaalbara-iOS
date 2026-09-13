@@ -431,6 +431,22 @@ function enterOasis(st: GameState): void {
 
 {
   resetIds();
+  const st = createGame(15, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[0].atkTimer = 99;
+  const u = dummyUnit({
+    owner: 1, species: 'lion', x: 0.65, y: 10.6, hp: 400, maxHp: 400,
+    waypoint: { x: CANNON[0].padX, y: CANNON[0].padY },
+  });
+  st.units.push(u);
+  const startY = u.y;
+  for (let i = 0; i < 28; i++) advanceTick(st, []);
+  assert(u.y < startY - 0.45, 'left-of-cannon leftover walks north around the carriage');
+  assert(u.y <= CANNON[0].padY + 0.45, 'left-of-cannon leftover reaches the pond-side pad');
+}
+
+{
+  resetIds();
   const st = createGame(21, ['magma', 'oasis']);
   st.units.push(dummyUnit({
     owner: 0, species: 'lion', x: HORN_POS.x, y: HORN_POS.y, hp: 400, maxHp: 400,
