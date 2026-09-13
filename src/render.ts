@@ -234,7 +234,7 @@ export class Renderer {
   }> = [];
   /** Brief local flash at the painted bore when a gun fires. */
   private muzzleBlasts: Array<{
-    x: number; y: number; hue: number; ember: boolean; life: number; maxLife: number;
+    x: number; y: number; hue: number; ember: boolean; life: number; maxLife: number; scale?: number;
   }> = [];
   /** The Horn has sounded: a column rises from the well and a wavefront
    *  crosses the field to the target wing, arriving with the drum. */
@@ -574,10 +574,45 @@ export class Renderer {
         break;
       }
       case 'gateShot': {
+        // A shot from the arch: muzzle flash in the mouth, a puff of
+        // smoke, sparks thrown down the lane, the gatehouse blooming.
         const a = this.worldToScreen(e.x, e.y);
-        const hue = e.owner === this.localSeat ? 190 : 22;
-        this.burst(a.x, a.y - this.unit * 0.15, 6, 'spark', hue, 1.1);
-        this.obeliskFlash.set(e.owner * 2 + e.wing, 0.16);
+        const ember = this.state?.players[e.owner].faction === 'magma';
+        const hue = ember ? 24 : 190;
+        const u = this.unit;
+        const len = Math.hypot(e.tx - e.x, e.ty - e.y) || 1;
+        const dx = (e.tx - e.x) / len;
+        const dy = (e.ty - e.y) / len;
+        this.muzzleBlasts.push({ x: a.x, y: a.y - u * 0.1, hue, ember: !!ember, life: 0, maxLife: 0.18, scale: 0.7 });
+        for (let i = 0; i < 9; i++) {
+          const spread = (Math.random() - 0.5) * 0.9;
+          const ca = Math.atan2(dy, dx) + spread;
+          const sp = 90 + Math.random() * 120;
+          this.particles.push({
+            x: a.x, y: a.y - u * 0.15,
+            vx: Math.cos(ca) * sp, vy: Math.sin(ca) * sp,
+            life: 0, maxLife: 0.22 + Math.random() * 0.2,
+            size: 1.4 + Math.random() * 1.8,
+            hue: ember ? 30 : 190, sat: 95, lit: 70,
+            kind: 'spark', alpha: 1, gravity: 120,
+          });
+        }
+        this.burst(a.x, a.y - u * 0.2, 4, 'mist', ember ? 28 : 200, 1.0);
+        this.obeliskFlash.set(e.owner * 2 + e.wing, 0.3);
+        break;
+      }
+      case 'gateImpact': {
+        // The bolt lands: a flash, a small shock ring and sparks that skid
+        // along the ground; a clean miss is a dry puff of dust.
+        const p = this.worldToScreen(e.x, e.y);
+        const ember = this.state?.players[e.owner].faction === 'magma';
+        const hue = ember ? 26 : 192;
+        const u = this.unit;
+        this.burst(p.x, p.y - u * 0.1, e.hit ? 6 : 3, 'flash', ember ? 42 : 186, e.hit ? 1.5 : 0.9);
+        this.burst(p.x, p.y, e.hit ? 12 : 6, 'spark', hue, e.hit ? 1.7 : 1.0);
+        this.burst(p.x, p.y + u * 0.05, 1, 'shockwave', hue, e.hit ? 0.8 : 0.5);
+        this.burst(p.x, p.y, e.hit ? 5 : 4, 'mist', ember ? 24 : 200, 1.0);
+        if (e.hit && e.owner !== this.localSeat) this.shake = Math.max(this.shake, 2);
         break;
       }
       case 'bridgeThreat': {
@@ -2197,24 +2232,64 @@ export class Renderer {
       const totalTicks = pr.ticksLeft + 1;
       const flight = clamp(1 - (pr.ticksLeft - k) / Math.max(1, totalTicks), 0, 1);
       if (pr.kind === 'gate') {
+        // A gate bolt crosses in one or two ticks, so it has to read as a
+        // streak, not a dot: a hot core with a comet tail laid back along
+        // its motion, embers shed behind it, and a bright ground shadow.
         const ember = pr.style !== 'water';
-        const arc = Math.sin(flight * Math.PI) * this.unit * 0.22;
+        const u = this.unit;
+        const arc = Math.sin(flight * Math.PI) * u * 0.26;
         const y = p.y - arc;
-        const rad = this.unit * 0.15;
+        const prev = this.worldToScreen(pr.px, pr.py);
+        const mx = p.x - prev.x;
+        const my = p.y - prev.y;
+        const mlen = Math.hypot(mx, my) || 1;
+        const tx = -mx / mlen;
+        const ty = -my / mlen;
+        const tail = u * 0.95;
+        const rad = u * 0.17;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 2.4);
-        g.addColorStop(0, ember ? 'hsla(38 100% 78% / 0.95)' : 'hsla(188 90% 80% / 0.9)');
-        g.addColorStop(0.45, ember ? 'hsla(18 95% 52% / 0.7)' : 'hsla(195 80% 50% / 0.55)');
+        const trail = ctx.createLinearGradient(p.x, y, p.x + tx * tail, y + ty * tail);
+        trail.addColorStop(0, ember ? 'hsla(36 100% 72% / 0.85)' : 'hsla(188 95% 78% / 0.8)');
+        trail.addColorStop(0.35, ember ? 'hsla(20 95% 55% / 0.45)' : 'hsla(195 85% 55% / 0.4)');
+        trail.addColorStop(1, ember ? 'hsla(14 90% 45% / 0)' : 'hsla(200 80% 45% / 0)');
+        ctx.strokeStyle = trail;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = rad * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, y);
+        ctx.lineTo(p.x + tx * tail, y + ty * tail);
+        ctx.stroke();
+        const g = ctx.createRadialGradient(p.x, y, 1, p.x, y, rad * 2.6);
+        g.addColorStop(0, ember ? 'hsla(44 100% 90% / 1)' : 'hsla(186 95% 90% / 0.95)');
+        g.addColorStop(0.4, ember ? 'hsla(24 100% 58% / 0.8)' : 'hsla(195 85% 55% / 0.65)');
         g.addColorStop(1, 'hsla(20 80% 40% / 0)');
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(p.x, y, rad * 2.4, 0, Math.PI * 2);
+        ctx.arc(p.x, y, rad * 2.6, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        ctx.fillStyle = ember ? 'hsl(22 18% 22%)' : 'hsl(200 12% 24%)';
+        ctx.fillStyle = ember ? 'hsl(26 30% 20%)' : 'hsl(200 14% 22%)';
         ctx.beginPath();
-        ctx.ellipse(p.x, y, rad * 1.15, rad * 0.85, 0, 0, Math.PI * 2);
+        ctx.arc(p.x, y, rad * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = ember ? 'hsla(40 100% 85% / 0.9)' : 'hsla(186 90% 88% / 0.9)';
+        ctx.beginPath();
+        ctx.arc(p.x - rad * 0.2, y - rad * 0.25, rad * 0.32, 0, Math.PI * 2);
+        ctx.fill();
+        if (Math.random() < 0.85) {
+          this.particles.push({
+            x: p.x + tx * rad * 1.5, y: y + ty * rad * 1.5,
+            vx: tx * 30 + (Math.random() - 0.5) * 24, vy: ty * 30 + 10,
+            life: 0, maxLife: 0.22 + Math.random() * 0.2,
+            size: 1.2 + Math.random() * 1.4,
+            hue: ember ? 28 : 190, sat: 95, lit: 68,
+            kind: 'spark', alpha: 1, gravity: 60,
+          });
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + 4, rad * 0.9, rad * 0.35, 0, 0, Math.PI * 2);
         ctx.fill();
         continue;
       }
@@ -2300,7 +2375,7 @@ export class Renderer {
       if (b.life >= b.maxLife) continue;
       const t = b.life / b.maxLife;
       const fade = 1 - t;
-      const u = this.unit;
+      const u = this.unit * (b.scale ?? 1);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       const rad = u * (0.28 + t * 0.42);
