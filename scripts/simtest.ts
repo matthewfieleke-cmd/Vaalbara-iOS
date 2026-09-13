@@ -9,7 +9,7 @@ import { BotBrain, advanceTick, createGame, oasisWinner, resetIds, shrineGuarded
 import type { CannonState, GameState, MarbleState, PlayerId, PlayerInput, UnitState } from '../src/types';
 import {
   CANNON, CANNON_HP, CANNON_R, FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  LAVA_RAIN_CARD, MARBLE_HP, MARBLE_POS, MARBLE_R,
+  HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, LAVA_RAIN_CARD, MARBLE_HP, MARBLE_POS, MARBLE_R,
   PHASE1_TICKS, PHASE2_TICKS, SHRINE, TRANSITION_TICKS,
 } from '../src/types';
 import { LAVA_RAIN } from '../src/data';
@@ -135,6 +135,7 @@ function dummyUnit(partial: Pick<UnitState, 'owner' | 'x' | 'y'> & Partial<UnitS
     buffs: { stun: 0, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
     stealthed: false, action: 'idle', targetId: null, homeWing: 0,
     bridgeWarned: false,
+    touchedMid: false,
     ...partial,
   };
 }
@@ -426,6 +427,64 @@ function enterOasis(st: GameState): void {
   assert(down && st.cannons[0].hp <= 0, 'cannonDown fires when the gun topples');
   assert(st.winner == null && st.phase === 'oasis', 'toppling a gun does not end the match');
   assert(st.cannonDamage[1] >= 35, 'melee on the gun deals raw unit damage');
+}
+
+{
+  resetIds();
+  const st = createGame(21, ['magma', 'oasis']);
+  st.units.push(dummyUnit({
+    owner: 0, species: 'lion', x: HORN_POS.x, y: HORN_POS.y, hp: 400, maxHp: 400,
+    waypoint: { x: HORN_POS.x, y: HORN_POS.y },
+  }));
+  const startHp = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
+  let shouts = 0;
+  for (let i = 0; i < HORN_CHARGE_TICKS + 3; i++) {
+    const { events } = advanceTick(st, []);
+    shouts += events.filter((e) => e.type === 'hornShout' && e.owner === 0).length;
+  }
+  const endHp = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
+  assert(shouts === 1, 'exclusive Horn hold fires one shout');
+  assert(st.hornShots[0] === 1, 'shout consumes one of two charges');
+  assert(startHp - endHp === HORN_BLAST, 'shout deals HORN_BLAST to the weaker wing');
+}
+
+{
+  resetIds();
+  const st = createGame(22, ['magma', 'oasis']);
+  const frozen = {
+    stun: 40, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0,
+    rangeCapTicks: 0, blessed: false, berserk: false,
+  };
+  st.units.push(dummyUnit({
+    id: 9001, owner: 0, species: 'lion', x: 4.3, y: 7.5, hp: 400, maxHp: 400, buffs: { ...frozen },
+  }));
+  st.units.push(dummyUnit({
+    id: 9002, owner: 1, species: 'bear', x: 4.7, y: 7.5, hp: 400, maxHp: 400, buffs: { ...frozen },
+  }));
+  let shouts = 0;
+  for (let i = 0; i < 20; i++) {
+    const { events } = advanceTick(st, []);
+    shouts += events.filter((e) => e.type === 'hornShout').length;
+  }
+  assert(shouts === 0 && st.hornCharge[0] === 0 && st.hornCharge[1] === 0, 'tied Horn ring makes no progress');
+}
+
+{
+  resetIds();
+  const st = createGame(23, ['magma', 'oasis']);
+  const lane = st.obelisks.find((o) => o.owner === 1 && o.wing === 0)!;
+  lane.hp = 0;
+  st.hornShots[0] = 2;
+  const u = dummyUnit({
+    owner: 0, species: 'lion',
+    x: lane.x, y: FORT_WALL_FRONT[1] + 0.55,
+    hp: 400, maxHp: 400, touchedMid: false,
+  });
+  st.units.push(u);
+  const startY = u.y;
+  for (let i = 0; i < 10; i++) advanceTick(st, []);
+  assert(u.y > startY + 0.35, 'leftover walks the mid plateau toward The Horn');
+  assert(u.y < FORT_WALL_FRONT[0] - 1, 'leftover does not skip mid for the far gate');
 }
 
 console.log('');

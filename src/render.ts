@@ -16,7 +16,10 @@
  *    tick, with visual catch-up interpolation for network corrections.
  * ========================================================================== */
 
-import { CANNON, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads } from './types';
+import {
+  CANNON, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y, FORT_WALL_FRONT,
+  HORN_CHARGE_TICKS, HORN_POS, HORN_R, SHRINE, TICK_MS, WORLD_H, WORLD_W, fortPads,
+} from './types';
 import type { GameEvent, GameState, PlayerId, SpeciesId } from './types';
 import { speciesDef } from './data';
 import { getAnim, getFortArt, getOasisFloor, getOasisOverlay, getPhaseArt, getSprite } from './sprites';
@@ -554,6 +557,18 @@ export class Renderer {
         if (mine) this.shake = Math.max(this.shake, 7);
         break;
       }
+      case 'hornShout': {
+        const a = this.worldToScreen(e.x, e.y);
+        const b = this.worldToScreen(e.tx, e.ty);
+        const mine = e.owner === this.localSeat;
+        const hue = mine ? 46 : 22;
+        this.burst(a.x, a.y, 16, 'flash', hue, 1.8);
+        this.burst(a.x, a.y, 3, 'shockwave', hue, 1.1);
+        this.burst(b.x, b.y - this.unit * 0.5, 12, 'spark', hue, 1.6);
+        this.burst(b.x, b.y - this.unit * 0.35, 4, 'ash', 28, 1.2);
+        this.shake = Math.max(this.shake, mine ? 6 : 8);
+        break;
+      }
       case 'obeliskHit': {
         const p = this.worldToScreen(e.x, e.y);
         const mine = e.owner === this.localSeat;
@@ -946,6 +961,7 @@ export class Renderer {
     }
 
     if (world === 'oasis') this.drawOasisOverlays(ctx, st);
+    if (st.phase === 'basalt') this.drawHorn(ctx, st);
 
     // Deploy-band glow — Oasis: your half. Phase 1: your dirt (mid → wall)
     // plus the pulsing gate pads, so field-drop vs march is unmissable.
@@ -976,6 +992,51 @@ export class Renderer {
       const yBot = Math.max(y0, y1);
       ctx.fillRect(r.left, yTop, r.w, yBot - yTop);
     }
+  }
+
+  /** Runtime charge glow on The Horn — never baked into the floor painting. */
+  private drawHorn(ctx: CanvasRenderingContext2D, st: GameState): void {
+    const p = this.worldToScreen(HORN_POS.x, HORN_POS.y);
+    const u = this.unit;
+    const c0 = st.hornCharge[0];
+    const c1 = st.hornCharge[1];
+    const leader: PlayerId | null = c0 === c1 ? null : c0 > c1 ? 0 : 1;
+    const charge = leader === null ? 0 : st.hornCharge[leader];
+    const frac = charge / HORN_CHARGE_TICKS;
+    const mine = leader === this.localSeat;
+    const hue = leader === null ? 38 : mine ? 46 : 22;
+    const pulse = 0.55 + Math.sin(this.time * 2.4) * 0.18;
+    const rad = HORN_R * u * (0.92 + frac * 0.12);
+
+    ctx.save();
+    const well = ctx.createRadialGradient(p.x, p.y, u * 0.12, p.x, p.y, rad);
+    well.addColorStop(0, `hsla(${hue} 80% 62% / ${0.06 + frac * 0.22 * pulse})`);
+    well.addColorStop(0.55, `hsla(${hue} 70% 48% / ${0.04 + frac * 0.16})`);
+    well.addColorStop(1, 'hsla(32 40% 20% / 0)');
+    ctx.fillStyle = well;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, rad, rad * 0.86, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (frac > 0) {
+      ctx.strokeStyle = `hsla(${hue} 88% 62% / ${0.22 + frac * 0.5 * pulse})`;
+      ctx.lineWidth = 2.2 + frac * 3.2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, rad * 0.78, rad * 0.68, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `hsla(${hue} 90% 72% / ${0.35 + frac * 0.45})`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, rad * 0.78, rad * 0.68, 0, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.font = `600 ${Math.max(11, Math.round(u * 0.28))}px "Iowan Old Style", Palatino, serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `hsla(38 40% 86% / ${0.42 + frac * 0.4})`;
+    ctx.fillText('The Horn', p.x, p.y + rad * 0.95);
+    ctx.restore();
   }
 
   /* --------------------------- objectives -------------------------------- */

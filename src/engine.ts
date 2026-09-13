@@ -19,7 +19,8 @@ import {
   GATE_SHOT_SPLASH,
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
-  HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
+  HAND_SIZE, HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, HORN_SHOTS_MAX,
+  LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP, onHornPad,
   CANNON, CANNON_HP, CANNON_R,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
   MARBLE_CANNON_SPEED, MARBLE_CANNON_SPLASH,
@@ -230,6 +231,8 @@ export function createGame(
     marbleDamage: [0, 0],
     cannonDamage: [0, 0],
     cannonFellTick: [null, null],
+    hornCharge: [0, 0],
+    hornShots: [0, 0],
     winner: null,
     dominanceP0: 0.5,
   };
@@ -375,8 +378,8 @@ function fieldDropWaypoint(st: GameState, player: PlayerId, sx: number, sy: numb
  *  so a small lift here quickens the stride without breaking foot contact. */
 /** Basalt stride. A mid unit should reach the far river in ~10–12 s so
  *  the walk is a fuse, not a commute. Oasis keeps the older gait. */
-const BASALT_MARCH = 1.50;
-const OASIS_MARCH = 1.20;
+const BASALT_MARCH = 1.80;
+const OASIS_MARCH = 1.80;
 
 /** Is this ground position on a collapsed gatehouse's rubble mound? Razed
  *  lanes stay open, but crossing the debris is a scramble, not a march. */
@@ -500,6 +503,7 @@ function spawnUnit(
     targetId: null,
     homeWing,
     bridgeWarned: false,
+    touchedMid: false,
   };
   // Temple Ward is a marble veil, not a unit buff. Do not snowball combat.
   st.units.push(u);
@@ -605,7 +609,9 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
         sx = snap.x;
         sy = snap.y;
         homeWing = laneWingOf(input.player, sx);
-        wp = fieldDropWaypoint(st, input.player, sx, sy);
+        wp = onHornPad(sx, sy)
+          ? { x: HORN_POS.x, y: HORN_POS.y }
+          : fieldDropWaypoint(st, input.player, sx, sy);
         if (!stats.flying) {
           for (let k = 0; k < 6 && !groundOpen(st, wp.x, wp.y); k++) {
             wp = { x: (wp.x + sx) * 0.5, y: (wp.y + sy) * 0.5 };
@@ -869,7 +875,130 @@ function enemyObelisk(st: GameState, u: UnitState): ObeliskState | null {
     Math.abs(cur.x - u.x) < Math.abs(best.x - u.x) ? cur : best);
   if (laneWing.hp > 0) return laneWing;
   const other = wings.find((o) => o !== laneWing && o.hp > 0);
-  return other ?? null;
+  if (!other) return null;
+  return u.touchedMid ? other : null;
+}
+
+/** After a lane wing falls, leftovers must walk the mid plateau before
+ *  they may siege the far gate. New deploys down the other bridge still go. */
+function needsMidWalk(st: GameState, u: UnitState): boolean {
+  if (st.phase !== 'basalt' || u.touchedMid) return false;
+  const wings = st.obelisks.filter((o) => o.owner !== u.owner);
+  if (wings.length === 0) return false;
+  const laneWing = wings.reduce((best, cur) =>
+    Math.abs(cur.x - u.x) < Math.abs(best.x - u.x) ? cur : best);
+  if (laneWing.hp > 0) return false;
+  return wings.some((o) => o !== laneWing && o.hp > 0);
+}
+
+/** Keep at most two bodies on the well while this seat still has shouts. */
+function holdingHorn(st: GameState, u: UnitState): boolean {
+  if (st.phase !== 'basalt') return false;
+  if (st.hornShots[u.owner] >= HORN_SHOTS_MAX) return false;
+  if (!onHornPad(u.x, u.y)) return false;
+  const allies = st.units
+    .filter((o) => o.hp > 0 && o.owner === u.owner && onHornPad(o.x, o.y))
+    .sort((a, b) => dist2(a.x, a.y, HORN_POS.x, HORN_POS.y) - dist2(b.x, b.y, HORN_POS.x, HORN_POS.y));
+  return allies.slice(0, 2).some((o) => o.id === u.id);
+}
+
+function weakerEnemyWing(st: GameState, attacker: PlayerId): ObeliskState | null {
+  const living = st.obelisks.filter((o) => o.owner !== attacker && o.hp > 0);
+  if (living.length === 0) return null;
+  return living.reduce((a, b) => {
+    if (b.hp !== a.hp) return b.hp < a.hp ? b : a;
+    return b.wing < a.wing ? b : a;
+  });
+}
+
+function fireHorn(st: GameState, ev: GameEvent[], owner: PlayerId): void {
+  const target = weakerEnemyWing(st, owner);
+  if (!target) return;
+  ev.push({
+    type: 'hornShout',
+    owner,
+    x: HORN_POS.x,
+    y: HORN_POS.y,
+    tx: target.x,
+    ty: target.y,
+  });
+  dealObeliskDamage(st, ev, owner, target, HORN_BLAST);
+  st.hornShots[owner] += 1;
+  st.hornCharge[owner] = 0;
+}
+
+/** Exclusive charge +1 / tick; leading contest +1 every other tick; empty
+ *  decays; a tie freezes both meters. */
+function tickHorn(st: GameState, ev: GameEvent[]): void {
+  if (st.phase !== 'basalt') return;
+  let n0 = 0;
+  let n1 = 0;
+  for (const u of st.units) {
+    if (u.hp <= 0 || !onHornPad(u.x, u.y)) continue;
+    if (u.owner === 0) n0++;
+    else n1++;
+  }
+  const grow = (seat: PlayerId, contested: boolean) => {
+    if (st.hornShots[seat] >= HORN_SHOTS_MAX) {
+      st.hornCharge[seat] = 0;
+      return;
+    }
+    if (contested && st.tick % 2 !== 0) return;
+    st.hornCharge[seat] += 1;
+    if (st.hornCharge[seat] >= HORN_CHARGE_TICKS) fireHorn(st, ev, seat);
+  };
+  if (n0 === 0 && n1 === 0) {
+    st.hornCharge[0] = Math.max(0, st.hornCharge[0] - 1);
+    st.hornCharge[1] = Math.max(0, st.hornCharge[1] - 1);
+    return;
+  }
+  if (n0 > 0 && n1 === 0) {
+    st.hornCharge[1] = Math.max(0, st.hornCharge[1] - 1);
+    grow(0, false);
+    return;
+  }
+  if (n1 > 0 && n0 === 0) {
+    st.hornCharge[0] = Math.max(0, st.hornCharge[0] - 1);
+    grow(1, false);
+    return;
+  }
+  if (n0 === n1) return;
+  const leader: PlayerId = n0 > n1 ? 0 : 1;
+  grow(leader, true);
+}
+
+/** Contest a started shout or an enemy charge — never peel off a siege. */
+function peelTowardHorn(st: GameState): void {
+  if (st.phase !== 'basalt') return;
+  for (const seat of [0, 1] as const) {
+    if (st.hornShots[seat] >= HORN_SHOTS_MAX) continue;
+    let onPad = 0;
+    for (const u of st.units) {
+      if (u.hp > 0 && u.owner === seat && onHornPad(u.x, u.y)) onPad++;
+    }
+    const foeCharge = st.hornCharge[(1 - seat) as PlayerId];
+    const recover = st.hornCharge[seat] >= 3 && onPad === 0;
+    if (foeCharge < 4 && !recover) continue;
+    const take = foeCharge >= 4 ? 2 : 1;
+    const ranked = st.units
+      .filter((u) => {
+        if (u.hp <= 0 || u.owner !== seat) return false;
+        if (onHornPad(u.x, u.y)) return false;
+        const ob = enemyObelisk(st, u);
+        if (ob) {
+          const stats = speciesDef(u.species).stats!;
+          const reach = stats.range + stats.radius + ob.r;
+          if (dist2(u.x, u.y, ob.x, ob.y) <= reach * reach) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => dist2(a.x, a.y, HORN_POS.x, HORN_POS.y) - dist2(b.x, b.y, HORN_POS.x, HORN_POS.y));
+    for (const u of ranked.slice(0, take)) {
+      u.waypoint = { x: HORN_POS.x, y: HORN_POS.y };
+      u.stall = 0;
+      u.stallRef = Infinity;
+    }
+  }
 }
 
 /** Where a ground unit stands to besiege a wing: on the field, just off the
@@ -997,25 +1126,12 @@ function performAttack(st: GameState, ev: GameEvent[], u: RuntimeUnit, target: U
 function dealObeliskDamage(st: GameState, ev: GameEvent[], attacker: PlayerId, ob: ObeliskState, amount: number): void {
   amount = Math.round(amount);
   if (ob.hp <= 0 || amount <= 0) return;
-  // Mild last-stand DR while the sister wing is already down. The big
-  // fortification is the HP surge applied when the first wing falls (below).
-  const sister = st.obelisks.find((o) => o.owner === ob.owner && o.wing !== ob.wing);
-  const fortified = !!sister && sister.hp <= 0;
-  const dealt = fortified ? Math.max(1, Math.round(amount * 0.82)) : amount;
-  ob.hp -= dealt;
-  st.players[attacker].damageDealt += dealt;
-  ev.push({ type: 'obeliskHit', owner: ob.owner, amount: dealt, x: ob.x, y: ob.y });
+  ob.hp -= amount;
+  st.players[attacker].damageDealt += amount;
+  ev.push({ type: 'obeliskHit', owner: ob.owner, amount, x: ob.x, y: ob.y });
   if (ob.hp <= 0) {
     ob.hp = 0;
     ev.push({ type: 'obeliskDown', owner: ob.owner, x: ob.x, y: ob.y });
-    // Remaining wing surges: buys time for a counter-siege to land the
-    // reciprocal first gate (1–1 trades) and keeps clean sweeps rare —
-    // sized for staged late armies that would otherwise steamroll the sister.
-    if (sister && sister.hp > 0) {
-      const bonus = Math.round(sister.maxHp * 1.15);
-      sister.maxHp += bonus;
-      sister.hp = Math.min(sister.maxHp, sister.hp + bonus);
-    }
   }
 }
 
@@ -1517,6 +1633,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   else u.buffs.slowMult = 1;
   if (u.atkTimer > 0) u.atkTimer--;
   if (u.unstick > 0) u.unstick--;
+  if (onHornPad(u.x, u.y)) u.touchedMid = true;
 
   // 1. Attack when a target is in reach — unless we are already on an enemy
   // gatehouse. Siege takes priority over chasing a distant skirmish so a
@@ -1623,7 +1740,9 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
   }
 
   let goal: Vec2;
-  if (target && u.unstick === 0) {
+  if ((holdingHorn(st, u) || needsMidWalk(st, u)) && !threatClose) {
+    goal = { x: HORN_POS.x, y: HORN_POS.y };
+  } else if (target && u.unstick === 0) {
     // Lane discipline: a warrior still behind its own wall FINISHES ITS OWN
     // LANE first — through the tunnel or up over the rubble mound — and only
     // then crosses toward enemies in other lanes from the battlefield side.
@@ -1682,6 +1801,7 @@ function tickUnit(st: GameState, ev: GameEvent[], raw: UnitState): void {
     if (Math.abs(u.x - before.x) > 0.01) u.facing = u.x > before.x ? 1 : -1;
     u.action = 'move';
     if (u.waypoint && dist2(u.x, u.y, u.waypoint.x, u.waypoint.y) <= 0.16) u.waypoint = null;
+    if (onHornPad(u.x, u.y)) u.touchedMid = true;
     if (u.species === 'trex') {
       u.stompBank += step;
       if (u.stompBank >= MECHANICS.trexStompStride) {
@@ -2112,12 +2232,14 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
   resolveLavaRain(st, ev);
 
   if (st.phase === 'basalt' || st.phase === 'oasis') {
+    if (st.phase === 'basalt') peelTowardHorn(st);
     const order = [...st.units].sort(
       (a, b) => (a.owner === first ? -1 : 1) - (b.owner === first ? -1 : 1) || a.id - b.id,
     );
     for (const u of order) {
       if (u.hp > 0) tickUnit(st, ev, u);
     }
+    if (st.phase === 'basalt') tickHorn(st, ev);
     tickProjectiles(st, ev);
     separateUnits(st);
     laneDiscipline(st);
@@ -2503,6 +2625,25 @@ export class BotBrain {
         this.lastLane = threatWing;
         this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
         return { type: 'deploy', card: pick, x: snap.x, y: snap.y, dirX: 0, dirY };
+      }
+      const shotsLeft = st.hornShots[this.seat] < HORN_SHOTS_MAX;
+      const foeCharge = st.hornCharge[(1 - this.seat) as PlayerId];
+      const contestHorn = shotsLeft && foeCharge >= (strong ? 4 : 6);
+      const grabHorn = shotsLeft && this.rng() < (strong ? 0.18 : 0.15);
+      if (contestHorn || grabHorn) {
+        const flying = !!def.stats?.flying;
+        const lipY = this.seat === 0 ? 8.2 : 6.8;
+        const hornSnap = snapBasaltFieldDrop(st, this.seat, HORN_POS.x, lipY, flying);
+        if (hornSnap) {
+          const pref: 0 | 1 = Math.abs(hornSnap.x - FORT_LANES[this.seat][0])
+            < Math.abs(hornSnap.x - FORT_LANES[this.seat][1]) ? 0 : 1;
+          const chosen = preferDeployLane(st, this.seat, pref, flying, def.stats?.count ?? 1);
+          if (chosen !== null) {
+            this.lastLane = chosen;
+            this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
+            return { type: 'deploy', card: pick, x: hornSnap.x, y: hornSnap.y, dirX: 0, dirY };
+          }
+        }
       }
       const pads = fortPads(this.seat);
       const wings = st.obelisks.filter((o) => o.owner !== this.seat && o.hp > 0);
