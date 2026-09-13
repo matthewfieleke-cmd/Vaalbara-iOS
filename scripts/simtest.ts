@@ -9,7 +9,7 @@ import { BotBrain, advanceTick, createGame, oasisWinner, resetIds, shrineGuarded
 import type { CannonState, GameState, MarbleState, PlayerId, PlayerInput, UnitState } from '../src/types';
 import {
   CANNON, CANNON_HP, CANNON_R, FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  LAVA_RAIN_CARD, MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SIEGE_MULT,
+  LAVA_RAIN_CARD, MARBLE_HP, MARBLE_POS, MARBLE_R,
   PHASE1_TICKS, PHASE2_TICKS, SHRINE, TRANSITION_TICKS,
 } from '../src/types';
 import { LAVA_RAIN } from '../src/data';
@@ -425,8 +425,7 @@ function enterOasis(st: GameState): void {
   }
   assert(down && st.cannons[0].hp <= 0, 'cannonDown fires when the gun topples');
   assert(st.winner == null && st.phase === 'oasis', 'toppling a gun does not end the match');
-  const siege = Math.round(35 * MARBLE_SIEGE_MULT);
-  assert(st.cannonDamage[1] >= siege, 'melee on the gun uses the shrine siege multiplier');
+  assert(st.cannonDamage[1] >= 35, 'melee on the gun deals raw unit damage');
 }
 
 console.log('');
