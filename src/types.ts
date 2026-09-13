@@ -548,21 +548,18 @@ export const CAPTURE_RATE = 1;
  *  sweeps stay rare. */
 export const OBELISK_HP = 1380;
 
-/** Phase-2 shrine. The gun must fall first; this HP is the real clock.
- *  Veil still sits on the stone only. */
-export const MARBLE_HP = 800;
+/** Phase-2 shrine (keep and temple). The gun must fall first; this HP is
+ *  the real clock. Veil still sits on the stone only. */
+export const MARBLE_HP = 880;
 /** Footprint radius — matches the painted keep / temple, so units stop
  *  at the door instead of walking through the stone. */
 export const MARBLE_R = 1.48;
 /** Separate grass-pad gun. Equal for both seats — no veil. */
-export const CANNON_HP = 500;
+export const CANNON_HP = 550;
 /** Collision radius of the painted pad, not the keep. */
 export const CANNON_R = 0.72;
 /** Cannon shell — 200 every 8 s. A landed hit deletes chaff and chunks a tank. */
 export const MARBLE_SHOT_DMG = 200;
-/** Melee/ranged hits on marble — the stone is the chapter, so those
- *  swings have to matter. Spells keep their own building pct. */
-export const MARBLE_SIEGE_MULT = 2.6;
 /** 27 ticks = 8.1 s. Half the old cadence; the blast carries the power. */
 export const MARBLE_SHOT_INTERVAL = 27;
 /** Owns the friendly half. inMarbleHalf still forbids shooting across. */
@@ -571,7 +568,7 @@ export const MARBLE_SHOT_RANGE = 7.4;
 export const MARBLE_CANNON_SPEED = 3.0;
 /** Splash on units only. No acid pool, no buildings. */
 export const MARBLE_CANNON_SPLASH = 0.75;
-/** ~190 HP veil — a few tank swings — even after the HP retune. */
+/** ~230 HP veil — a few tank swings — even after the HP retune. */
 export const MARBLE_SHIELD_PCT = 0.26;
 
 /** Painted shrines on the Oasis floor. Seat 0 is the keep (south); seat 1

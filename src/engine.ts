@@ -22,7 +22,7 @@ import {
   HAND_SIZE, LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP,
   CANNON, CANNON_HP, CANNON_R,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
-  MARBLE_SIEGE_MULT, MARBLE_CANNON_SPEED, MARBLE_CANNON_SPLASH,
+  MARBLE_CANNON_SPEED, MARBLE_CANNON_SPLASH,
   MARBLE_SHOT_INTERVAL, MARBLE_SHOT_RANGE, PHASE1_TICKS, PHASE2_TICKS,
   SHRINE,
   RUBBLE_VISIBLE_DEPTH, RIVER_BANDS, TICK_MS, TRANSITION_TICKS, VENT_DMG,
@@ -1877,13 +1877,13 @@ function attackMarble(st: GameState, ev: GameEvent[], u: RuntimeUnit, m: MarbleS
       x: u.x, y: u.y, px: u.x, py: u.y,
       vx: ((m.x - u.x) / d) * speed,
       vy: ((m.y - u.y) / d) * speed,
-      dmg: Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT),
+      dmg: Math.round(effDmg(u, st)),
       ticksLeft: Math.max(1, Math.ceil(d / speed)),
     });
     ev.push({ type: 'shoot', unitId: u.id, x: u.x, y: u.y, tx: m.x, ty: m.y });
     return;
   }
-  dealMarbleDamage(st, ev, u.owner, m, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
+  dealMarbleDamage(st, ev, u.owner, m, Math.round(effDmg(u, st)));
 }
 
 function attackCannon(st: GameState, ev: GameEvent[], u: RuntimeUnit, c: CannonState): void {
@@ -1904,13 +1904,13 @@ function attackCannon(st: GameState, ev: GameEvent[], u: RuntimeUnit, c: CannonS
       x: u.x, y: u.y, px: u.x, py: u.y,
       vx: ((c.x - u.x) / d) * speed,
       vy: ((c.y - u.y) / d) * speed,
-      dmg: Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT),
+      dmg: Math.round(effDmg(u, st)),
       ticksLeft: Math.max(1, Math.ceil(d / speed)),
     });
     ev.push({ type: 'shoot', unitId: u.id, x: u.x, y: u.y, tx: c.x, ty: c.y });
     return;
   }
-  dealCannonDamage(st, ev, u.owner, c, Math.round(effDmg(u, st) * MARBLE_SIEGE_MULT));
+  dealCannonDamage(st, ev, u.owner, c, Math.round(effDmg(u, st)));
 }
 
 function gateMouth(ob: ObeliskState): Vec2 {
