@@ -331,6 +331,7 @@ export type GameEvent =
   | { type: 'obeliskHit'; owner: PlayerId; amount: number; x: number; y: number }
   | { type: 'obeliskDown'; owner: PlayerId; x: number; y: number }
   | { type: 'gateShot'; owner: PlayerId; wing: 0 | 1; x: number; y: number; tx: number; ty: number }
+  | { type: 'gateImpact'; owner: PlayerId; x: number; y: number; hit: boolean }
   | { type: 'bridgeThreat'; owner: PlayerId; wing: 0 | 1; x: number; y: number }
   | { type: 'hornShout'; owner: PlayerId; x: number; y: number; tx: number; ty: number }
   | { type: 'hornStrike'; owner: PlayerId; x: number; y: number; tx: number; ty: number }
@@ -384,10 +385,15 @@ export interface GameState {
   cannonDamage: [number, number];
   /** Tick each owner's gun fell, or null if it still stands. Earlier topple wins a remaining tie. */
   cannonFellTick: [number | null, number | null];
-  /** Exclusive (or leading) control on the Horn ring, in ticks. */
+  /** Uncontested ground control of the Horn ring, in ticks. */
   hornCharge: [number, number];
-  /** Horn shouts already fired this chapter (cap HORN_SHOTS_MAX). */
+  /** Horn shouts sounded this chapter, per seat (no cap — alternation limits it). */
   hornShots: [number, number];
+  /** Seat that sounded the Horn last, and when. Drives the alternation lockout. */
+  hornLastSide: PlayerId | null;
+  hornLastTick: number;
+  /** Ticks the ring stays cold for everyone after a shout. */
+  hornCold: number;
   winner: PlayerId | 'tie' | null;
   dominanceP0: number;
 }
@@ -566,13 +572,22 @@ export const CAPTURE_RATE = 1;
 export const HORN_POS = { x: 4.5, y: 7.0 };
 /** About one bridge opening. Walkers pass left or right of the coil. */
 export const HORN_R = 1.05;
-/** 13 ticks = 3.9 s of having the ring. */
-export const HORN_CHARGE_TICKS = 13;
-/** A shout should crack a gate, not delete it. */
-export const HORN_BLAST = 220;
-export const HORN_SHOTS_MAX = 2;
-/** Ticks from the Rohan call to the drum hit (5 × 300 ms = 1.5 s). */
-export const HORN_STRIKE_DELAY_TICKS = 5;
+/** 14 ticks = 4.2 s of ground bodies alone on the ring. Any enemy body
+ *  freezes the meter; flyers never count — someone must stand on the stone. */
+export const HORN_CHARGE_TICKS = 14;
+/** About 40 % of a wing. Big enough to finish a battered gate from mid. */
+export const HORN_BLAST = 300;
+/** The Horn will not sound twice in a row for the same army: after a shout
+ *  that seat is locked out until the other army sounds it or this many
+ *  ticks pass (30 s). Neutral — no underdog bias, just alternation. */
+export const HORN_TURN_TICKS = 100;
+/** After any shout the ring is cold for everyone (9 s) — room for the drum. */
+export const HORN_COLD_TICKS = 30;
+/** Call to drum: one full bar at 100 BPM (8 ticks = 2.4 s). The damage
+ *  lands with the drum, on the next downbeat. */
+export const HORN_STRIKE_DELAY_TICKS = 8;
+/** Field drops may not land inside the ring; they snap to this rim. */
+export const HORN_LIP_R = HORN_R + 0.22;
 
 export function onHornPad(x: number, y: number): boolean {
   const dx = x - HORN_POS.x;
@@ -580,8 +595,9 @@ export function onHornPad(x: number, y: number): boolean {
   return dx * dx + dy * dy <= HORN_R * HORN_R;
 }
 
-/** First-gate HP. Both wings of a fortress stay the same building. */
-export const OBELISK_HP = 500;
+/** Gate HP. Raised with the bigger Horn so a chapter still runs ~2:35 and
+ *  ends by raze about seven matches in ten (850 → 71 % raze, 5.8 shouts). */
+export const OBELISK_HP = 850;
 
 /** Phase-2 shrine (keep and temple). The gun must fall first; this HP is
  *  the real clock. Veil still sits on the stone only. */

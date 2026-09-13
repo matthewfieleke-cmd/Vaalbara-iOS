@@ -5,12 +5,12 @@
  *   npm run sim            # quick suite: 12 seeded matches + determinism
  * ========================================================================== */
 
-import { BotBrain, advanceTick, createGame, oasisWinner, resetIds, shrineGuarded } from '../src/engine';
+import { BotBrain, advanceTick, createGame, hornLockoutLeft, oasisWinner, resetIds, shrineGuarded } from '../src/engine';
 import type { CannonState, GameState, MarbleState, PlayerId, PlayerInput, UnitState } from '../src/types';
 import {
   CANNON, CANNON_HP, CANNON_R, FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, HORN_STRIKE_DELAY_TICKS,
-  LAVA_RAIN_CARD, MARBLE_CANNON_SPLASH,
+  HORN_BLAST, HORN_CHARGE_TICKS, HORN_COLD_TICKS, HORN_POS, HORN_STRIKE_DELAY_TICKS,
+  HORN_TURN_TICKS, LAVA_RAIN_CARD, MARBLE_CANNON_SPLASH, onHornPad,
   MARBLE_HP, MARBLE_POS, MARBLE_R,
   PHASE1_TICKS, PHASE2_TICKS, SHRINE, TRANSITION_TICKS,
 } from '../src/types';
@@ -480,14 +480,17 @@ function enterOasis(st: GameState): void {
 {
   resetIds();
   const st = createGame(21, ['magma', 'oasis']);
+  // Stunned so the holder stands on the stone and never swings at a gate.
   st.units.push(dummyUnit({
     owner: 0, species: 'lion', x: HORN_POS.x, y: HORN_POS.y, hp: 400, maxHp: 400,
     waypoint: { x: HORN_POS.x, y: HORN_POS.y },
+    buffs: { stun: 99, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
   }));
   const startHp = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
   let shouts = 0;
   let strikes = 0;
   let hpAtShout = startHp;
+  let hpAtStrike = startHp;
   let shoutTick = 0;
   let strikeTick = 0;
   for (let i = 0; i < HORN_CHARGE_TICKS + HORN_STRIKE_DELAY_TICKS + 3; i++) {
@@ -500,14 +503,33 @@ function enterOasis(st: GameState): void {
     if (events.some((e) => e.type === 'hornStrike' && e.owner === 0)) {
       strikes++;
       strikeTick = st.tick;
+      hpAtStrike = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
     }
   }
-  const endHp = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
   assert(shouts === 1, 'exclusive Horn hold fires one shout');
-  assert(st.hornShots[0] === 1, 'shout consumes one of two charges');
+  assert(st.hornShots[0] === 1 && st.hornLastSide === 0, 'shout is counted and locks the shouter out');
   assert(hpAtShout === startHp, 'Rohan call does not deal damage yet');
-  assert(strikes === 1 && strikeTick === shoutTick + HORN_STRIKE_DELAY_TICKS, 'drum lands five ticks after the call');
-  assert(startHp - endHp === HORN_BLAST, 'drum hit deals HORN_BLAST to the weaker wing');
+  assert(strikes === 1 && strikeTick === shoutTick + HORN_STRIKE_DELAY_TICKS, 'drum lands one bar after the call');
+  assert(startHp - hpAtStrike === HORN_BLAST, 'drum hit deals HORN_BLAST to the weaker wing');
+  // Alternation: the shouter cannot recharge while locked out; the other army can.
+  const lockedUntil = shoutTick + HORN_TURN_TICKS;
+  for (let i = 0; i < HORN_COLD_TICKS + 4; i++) advanceTick(st, []);
+  assert(st.hornCold === 0 && st.hornCharge[0] === 0 && st.tick < lockedUntil, 'locked-out holder does not recharge after the ring warms');
+  assert(hornLockoutLeft(st, 0) > 0 && hornLockoutLeft(st, 1) === 0, 'lockout reads for the shouter only');
+  st.units.push(dummyUnit({
+    id: 9010, owner: 1, species: 'bear', x: HORN_POS.x + 0.3, y: HORN_POS.y, hp: 400, maxHp: 400,
+    waypoint: { x: HORN_POS.x, y: HORN_POS.y },
+    buffs: { stun: 99, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
+  }));
+  const lion = st.units.find((u) => u.species === 'lion' && u.owner === 0);
+  if (lion) lion.hp = 0;
+  let foeShouts = 0;
+  for (let i = 0; i < HORN_CHARGE_TICKS + 2; i++) {
+    const { events } = advanceTick(st, []);
+    foeShouts += events.filter((e) => e.type === 'hornShout' && e.owner === 1).length;
+  }
+  assert(foeShouts === 1 && st.hornLastSide === 1, 'the other army sounds the Horn during the lockout');
+  assert(hornLockoutLeft(st, 0) === 0, 'their shout hands the Horn back');
 }
 
 {
@@ -521,6 +543,9 @@ function enterOasis(st: GameState): void {
     id: 9001, owner: 0, species: 'lion', x: 4.3, y: 7.5, hp: 400, maxHp: 400, buffs: { ...frozen },
   }));
   st.units.push(dummyUnit({
+    id: 9003, owner: 0, species: 'lion', x: 4.1, y: 7.2, hp: 400, maxHp: 400, buffs: { ...frozen },
+  }));
+  st.units.push(dummyUnit({
     id: 9002, owner: 1, species: 'bear', x: 4.7, y: 7.5, hp: 400, maxHp: 400, buffs: { ...frozen },
   }));
   let shouts = 0;
@@ -528,7 +553,31 @@ function enterOasis(st: GameState): void {
     const { events } = advanceTick(st, []);
     shouts += events.filter((e) => e.type === 'hornShout').length;
   }
-  assert(shouts === 0 && st.hornCharge[0] === 0 && st.hornCharge[1] === 0, 'tied Horn ring makes no progress');
+  assert(shouts === 0 && st.hornCharge[0] === 0 && st.hornCharge[1] === 0, 'one enemy body freezes a 2-v-1 ring');
+}
+
+{
+  resetIds();
+  const st = createGame(24, ['magma', 'oasis']);
+  st.units.push(dummyUnit({
+    id: 9004, owner: 0, species: 'eagle', x: HORN_POS.x, y: HORN_POS.y, hp: 400, maxHp: 400,
+    waypoint: { x: HORN_POS.x, y: HORN_POS.y },
+    buffs: { stun: 99, slowTicks: 0, slowMult: 1, burnStacks: 0, burnTicks: 0, rangeCapTicks: 0, blessed: false, berserk: false },
+  }));
+  for (let i = 0; i < HORN_CHARGE_TICKS + 4; i++) advanceTick(st, []);
+  assert(st.hornCharge[0] === 0 && st.hornShots[0] === 0, 'a flyer alone on the ring cannot blow the Horn');
+}
+
+{
+  resetIds();
+  const st = createGame(25, ['magma', 'oasis']);
+  st.players[0].aqua = 10;
+  st.players[0].hand[0] = 'lion';
+  const { events: ringEv } = advanceTick(st, [{ seq: 1, player: 0, tick: 1, action: { type: 'deploy', card: 'lion', x: HORN_POS.x, y: 7.6, dirX: 0, dirY: -1 } }]);
+  const born = ringEv.find((e) => e.type === 'spawn');
+  const drop = st.units.find((u) => u.species === 'lion');
+  assert(!!born && !onHornPad(born.x, born.y) && born.y > HORN_POS.y + 1.1, 'a drop on the ring lands on the rim, not the stone');
+  assert(!!drop?.waypoint && Math.abs(drop.waypoint.x - HORN_POS.x) < 0.05 && Math.abs(drop.waypoint.y - HORN_POS.y) < 0.05, 'rim drop walks onto the stone');
 }
 
 {
@@ -536,7 +585,9 @@ function enterOasis(st: GameState): void {
   const st = createGame(23, ['magma', 'oasis']);
   const lane = st.obelisks.find((o) => o.owner === 1 && o.wing === 0)!;
   lane.hp = 0;
-  st.hornShots[0] = 2;
+  // Locked out of the Horn: the mid walk is still required before the far gate.
+  st.hornLastSide = 0;
+  st.hornLastTick = st.tick;
   const u = dummyUnit({
     owner: 0, species: 'lion',
     x: lane.x, y: FORT_WALL_FRONT[1] + 0.55,

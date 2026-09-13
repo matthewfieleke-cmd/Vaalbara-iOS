@@ -19,8 +19,8 @@ import {
   GATE_SHOT_SPLASH,
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
-  HAND_SIZE, HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, HORN_SHOTS_MAX,
-  HORN_STRIKE_DELAY_TICKS,
+  HAND_SIZE, HORN_BLAST, HORN_CHARGE_TICKS, HORN_COLD_TICKS, HORN_LIP_R, HORN_POS,
+  HORN_STRIKE_DELAY_TICKS, HORN_TURN_TICKS,
   LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP, onHornPad,
   CANNON, CANNON_HP, CANNON_R,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
@@ -252,6 +252,9 @@ export function createGame(
     cannonFellTick: [null, null],
     hornCharge: [0, 0],
     hornShots: [0, 0],
+    hornLastSide: null,
+    hornLastTick: -1,
+    hornCold: 0,
     winner: null,
     dominanceP0: 0.5,
   };
@@ -623,12 +626,20 @@ function applyInput(st: GameState, ev: GameEvent[], input: PlayerInput): void {
       } else if (inBasaltDefendZone(input.player, a.y)) {
         // Drop on your dirt: appear on the bank / path / plateau and take
         // a short step toward the threat. No tunnel.
-        const snap = snapBasaltFieldDrop(st, input.player, a.x, a.y, !!stats.flying);
+        let snap = snapBasaltFieldDrop(st, input.player, a.x, a.y, !!stats.flying);
         if (!snap) return;
+        // The stone must be walked onto: a drop aimed at the ring lands on
+        // the rim and the warrior steps in — a beat the enemy can read.
+        const wantsHorn = onHornPad(snap.x, snap.y);
+        if (wantsHorn) {
+          const lip = hornLipFor(st, input.player, snap.x, snap.y, !!stats.flying);
+          if (!lip) return;
+          snap = lip;
+        }
         sx = snap.x;
         sy = snap.y;
         homeWing = laneWingOf(input.player, sx);
-        wp = onHornPad(sx, sy)
+        wp = wantsHorn
           ? { x: HORN_POS.x, y: HORN_POS.y }
           : fieldDropWaypoint(st, input.player, sx, sy);
         if (!stats.flying) {
@@ -910,15 +921,68 @@ function needsMidWalk(st: GameState, u: UnitState): boolean {
   return wings.some((o) => o !== laneWing && o.hp > 0);
 }
 
-/** Keep at most two bodies on the well while this seat still has shouts. */
-function holdingHorn(st: GameState, u: UnitState): boolean {
+/** Only ground bodies count on the ring — flyers cannot blow the Horn and
+ *  cannot deny it. The ring fight has to be winnable by the bodies on it. */
+function hornBody(u: UnitState): boolean {
+  return u.hp > 0 && !speciesDef(u.species).stats!.flying && onHornPad(u.x, u.y);
+}
+
+/** May this seat charge the Horn right now? False while the ring is cold or
+ *  while this seat is locked out by the alternation rule. */
+export function hornOpenFor(st: GameState, seat: PlayerId): boolean {
   if (st.phase !== 'basalt') return false;
-  if (st.hornShots[u.owner] >= HORN_SHOTS_MAX) return false;
-  if (!onHornPad(u.x, u.y)) return false;
+  if (st.hornCold > 0) return false;
+  if (st.hornLastSide === seat && st.tick - st.hornLastTick < HORN_TURN_TICKS) return false;
+  return true;
+}
+
+/** Ticks until this seat may charge again (0 = open now). */
+export function hornLockoutLeft(st: GameState, seat: PlayerId): number {
+  if (st.hornLastSide !== seat) return 0;
+  return Math.max(0, HORN_TURN_TICKS - (st.tick - st.hornLastTick));
+}
+
+/** Is the other army's meter live — worth a body on the stone to freeze it? */
+function hornThreatFrom(st: GameState, foe: PlayerId): boolean {
+  return st.hornCold === 0 && st.hornCharge[foe] > 0 && hornOpenFor(st, foe);
+}
+
+/** Keep up to two ground bodies on the well while this seat may sound it,
+ *  or one body to freeze a live enemy meter. Otherwise walk off and siege. */
+function holdingHorn(st: GameState, u: UnitState): boolean {
+  if (st.phase !== 'basalt' || st.hornCold > 0) return false;
+  if (!hornBody(u)) return false;
+  const open = hornOpenFor(st, u.owner);
+  const denying = hornThreatFrom(st, (1 - u.owner) as PlayerId);
+  if (!open && !denying) return false;
   const allies = st.units
-    .filter((o) => o.hp > 0 && o.owner === u.owner && onHornPad(o.x, o.y))
+    .filter((o) => o.owner === u.owner && hornBody(o))
     .sort((a, b) => dist2(a.x, a.y, HORN_POS.x, HORN_POS.y) - dist2(b.x, b.y, HORN_POS.x, HORN_POS.y));
-  return allies.slice(0, 2).some((o) => o.id === u.id);
+  return allies.slice(0, open ? 2 : 1).some((o) => o.id === u.id);
+}
+
+/** Field drops may not land inside the ring: slide the point out to the
+ *  rim on the dropper's own side, then let the walker step onto the stone. */
+function hornLipFor(
+  st: GameState, player: PlayerId, x: number, y: number, flying: boolean,
+): Vec2 | null {
+  let dx = x - HORN_POS.x;
+  let dy = y - HORN_POS.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.05) {
+    dx = 0;
+    dy = player === 0 ? 1 : -1;
+  } else {
+    dx /= len;
+    dy /= len;
+  }
+  let cand = { x: HORN_POS.x + dx * HORN_LIP_R, y: HORN_POS.y + dy * HORN_LIP_R };
+  if (!inBasaltDefendZone(player, cand.y)) {
+    cand = { x, y: player === 0 ? HORN_POS.y + HORN_LIP_R : HORN_POS.y - HORN_LIP_R };
+  }
+  const snap = snapBasaltFieldDrop(st, player, cand.x, cand.y, flying);
+  if (!snap || onHornPad(snap.x, snap.y)) return null;
+  return snap;
 }
 
 function weakerEnemyWing(st: GameState, attacker: PlayerId): ObeliskState | null {
@@ -943,6 +1007,9 @@ function fireHorn(st: GameState, ev: GameEvent[], owner: PlayerId): void {
   });
   st.hornShots[owner] += 1;
   st.hornCharge[owner] = 0;
+  st.hornLastSide = owner;
+  st.hornLastTick = st.tick;
+  st.hornCold = HORN_COLD_TICKS;
   st.hornPending.push({
     owner,
     wing: target.wing,
@@ -973,62 +1040,62 @@ function tickHornStrikes(st: GameState, ev: GameEvent[]): void {
   }
 }
 
-/** Exclusive charge +1 / tick; leading contest +1 every other tick; empty
- *  decays; a tie freezes both meters. */
+/** Ground bodies alone on the ring charge +1 / tick. Any enemy ground body
+ *  freezes both meters — denial is one cheap unit. Empty decays. A cold
+ *  ring (just sounded) and a locked-out seat (sounded last) both decay. */
 function tickHorn(st: GameState, ev: GameEvent[]): void {
   if (st.phase !== 'basalt') return;
+  const decay = (seat: PlayerId) => {
+    st.hornCharge[seat] = Math.max(0, st.hornCharge[seat] - 1);
+  };
+  if (st.hornCold > 0) {
+    st.hornCold--;
+    decay(0);
+    decay(1);
+    return;
+  }
   let n0 = 0;
   let n1 = 0;
   for (const u of st.units) {
-    if (u.hp <= 0 || !onHornPad(u.x, u.y)) continue;
+    if (!hornBody(u)) continue;
     if (u.owner === 0) n0++;
     else n1++;
   }
-  const grow = (seat: PlayerId, contested: boolean) => {
-    if (st.hornShots[seat] >= HORN_SHOTS_MAX) {
-      st.hornCharge[seat] = 0;
-      return;
-    }
-    if (contested && st.tick % 2 !== 0) return;
-    st.hornCharge[seat] += 1;
-    if (st.hornCharge[seat] >= HORN_CHARGE_TICKS) fireHorn(st, ev, seat);
-  };
+  if (n0 > 0 && n1 > 0) return;
   if (n0 === 0 && n1 === 0) {
-    st.hornCharge[0] = Math.max(0, st.hornCharge[0] - 1);
-    st.hornCharge[1] = Math.max(0, st.hornCharge[1] - 1);
+    decay(0);
+    decay(1);
     return;
   }
-  if (n0 > 0 && n1 === 0) {
-    st.hornCharge[1] = Math.max(0, st.hornCharge[1] - 1);
-    grow(0, false);
+  const holder: PlayerId = n0 > 0 ? 0 : 1;
+  decay((1 - holder) as PlayerId);
+  if (!hornOpenFor(st, holder)) {
+    decay(holder);
     return;
   }
-  if (n1 > 0 && n0 === 0) {
-    st.hornCharge[0] = Math.max(0, st.hornCharge[0] - 1);
-    grow(1, false);
-    return;
-  }
-  if (n0 === n1) return;
-  const leader: PlayerId = n0 > n1 ? 0 : 1;
-  grow(leader, true);
+  st.hornCharge[holder] += 1;
+  if (st.hornCharge[holder] >= HORN_CHARGE_TICKS) fireHorn(st, ev, holder);
 }
 
-/** Contest a started shout or an enemy charge — never peel off a siege. */
+/** Deny an enemy charge with one body, or finish our own — never peel off
+ *  a siege, never send a flyer (it cannot stand on the stone). */
 function peelTowardHorn(st: GameState): void {
-  if (st.phase !== 'basalt') return;
+  if (st.phase !== 'basalt' || st.hornCold > 0) return;
   for (const seat of [0, 1] as const) {
-    if (st.hornShots[seat] >= HORN_SHOTS_MAX) continue;
     let onPad = 0;
     for (const u of st.units) {
-      if (u.hp > 0 && u.owner === seat && onHornPad(u.x, u.y)) onPad++;
+      if (u.owner === seat && hornBody(u)) onPad++;
     }
-    const foeCharge = st.hornCharge[(1 - seat) as PlayerId];
-    const recover = st.hornCharge[seat] >= 3 && onPad === 0;
-    if (foeCharge < 4 && !recover) continue;
-    const take = foeCharge >= 4 ? 2 : 1;
+    const foe = (1 - seat) as PlayerId;
+    const foeCharge = st.hornCharge[foe];
+    const deny = onPad === 0 && foeCharge >= 4 && hornOpenFor(st, foe);
+    const recover = onPad === 0 && st.hornCharge[seat] >= 3 && hornOpenFor(st, seat);
+    if (!deny && !recover) continue;
+    const take = deny && foeCharge >= 8 ? 2 : 1;
     const ranked = st.units
       .filter((u) => {
         if (u.hp <= 0 || u.owner !== seat) return false;
+        if (speciesDef(u.species).stats!.flying) return false;
         if (onHornPad(u.x, u.y)) return false;
         const ob = enemyObelisk(st, u);
         if (ob) {
@@ -1332,13 +1399,16 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
     }
     if (pr.kind === 'gate') {
       const r2 = GATE_SHOT_SPLASH * GATE_SHOT_SPLASH;
+      let hit = false;
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
         if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
           dealDamage(st, ev, null, o, pr.dmg, 'ranged');
           st.players[pr.owner].damageDealt += pr.dmg;
+          hit = true;
         }
       }
+      ev.push({ type: 'gateImpact', owner: pr.owner, x: pr.x, y: pr.y, hit });
       continue;
     }
 
@@ -2018,6 +2088,7 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   st.projectiles = [];
   st.pendingLava = [];
   st.hornPending = [];
+  st.hornCold = 0;
   st.props = oasisProps();
   st.obelisks = [];
   const ward: PlayerId | null = st.players[0].blessed ? 0 : st.players[1].blessed ? 1 : null;
@@ -2743,22 +2814,47 @@ export class BotBrain {
         this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
         return { type: 'deploy', card: pick, x: snap.x, y: snap.y, dirX: 0, dirY };
       }
-      const shotsLeft = st.hornShots[this.seat] < HORN_SHOTS_MAX;
-      const foeCharge = st.hornCharge[(1 - this.seat) as PlayerId];
-      const contestHorn = shotsLeft && foeCharge >= (strong ? 4 : 6);
-      const grabHorn = shotsLeft && this.rng() < (strong ? 0.18 : 0.15);
-      if (contestHorn || grabHorn) {
-        const flying = !!def.stats?.flying;
-        const lipY = this.seat === 0 ? 7.75 : 6.25;
-        const hornSnap = snapBasaltFieldDrop(st, this.seat, HORN_POS.x, lipY, flying);
+      // The Horn: deny a live enemy meter with the cheapest ground body;
+      // take an open window when they are committed to a lane, when the
+      // blast would finish a wing, or on a read. Flyers never go — they
+      // cannot stand on the stone.
+      const foe = (1 - this.seat) as PlayerId;
+      const foeCharge = st.hornCharge[foe];
+      const myOnRing = st.units.filter((u) => u.owner === this.seat && hornBody(u)).length;
+      const foeOnRing = st.units.filter((u) => u.owner === foe && hornBody(u)).length;
+      const open = hornOpenFor(st, this.seat);
+      const groundCards = scored.filter(({ c }) => {
+        const d = cardDef(c, st.phase);
+        return d.kind === 'unit' && !!d.stats && !d.stats.flying;
+      });
+      const weakestFoeWing = st.obelisks
+        .filter((o) => o.owner !== this.seat && o.hp > 0)
+        .reduce<number | null>((m, o) => (m === null || o.hp < m ? o.hp : m), null);
+      const killShot = open && weakestFoeWing !== null && weakestFoeWing <= HORN_BLAST + 40;
+      const foesNearRing = foes.filter((u) => dist2(u.x, u.y, HORN_POS.x, HORN_POS.y) <= 2.6 * 2.6).length;
+      const foesCommitted = foes.length >= 2 && foesNearRing === 0;
+      const deny = myOnRing === 0 && hornThreatFrom(st, foe) && foeCharge >= (strong ? 3 : 5);
+      const reinforce = open && myOnRing > 0 && myOnRing <= foeOnRing && st.hornCharge[this.seat] > 0;
+      const grab = open && myOnRing === 0 && (
+        killShot ||
+        (foesCommitted && this.rng() < (strong ? 0.5 : 0.35)) ||
+        this.rng() < (strong ? 0.16 : 0.12)
+      );
+      if ((deny || reinforce || grab) && groundCards.length > 0) {
+        const cheapest = groundCards.reduce((a, b) =>
+          (cardDef(b.c, st.phase).cost < cardDef(a.c, st.phase).cost ? b : a));
+        const hornCard = deny && !killShot ? cheapest.c : groundCards[0].c;
+        const hornDef = cardDef(hornCard, st.phase);
+        const lipY = this.seat === 0 ? HORN_POS.y + HORN_LIP_R : HORN_POS.y - HORN_LIP_R;
+        const hornSnap = snapBasaltFieldDrop(st, this.seat, HORN_POS.x, lipY, false);
         if (hornSnap) {
           const pref: 0 | 1 = Math.abs(hornSnap.x - FORT_LANES[this.seat][0])
             < Math.abs(hornSnap.x - FORT_LANES[this.seat][1]) ? 0 : 1;
-          const chosen = preferDeployLane(st, this.seat, pref, flying, def.stats?.count ?? 1);
+          const chosen = preferDeployLane(st, this.seat, pref, false, hornDef.stats?.count ?? 1);
           if (chosen !== null) {
             this.lastLane = chosen;
             this.nextActionTick = st.tick + (punishing || strong ? 1 : 2);
-            return { type: 'deploy', card: pick, x: hornSnap.x, y: hornSnap.y, dirX: 0, dirY };
+            return { type: 'deploy', card: hornCard, x: hornSnap.x, y: hornSnap.y, dirX: 0, dirY };
           }
         }
       }
