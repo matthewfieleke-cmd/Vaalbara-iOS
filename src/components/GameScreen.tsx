@@ -270,8 +270,10 @@ export function GameScreen({
           playHaptic('warning');
           showToast('They\'re on your bridge!');
         } else if (e.type === 'hornShout') {
-          playHaptic(e.owner === seat ? 'success' : 'warning');
+          playHaptic('medium');
           showToast(e.owner === seat ? 'The Horn shouts for you!' : 'The Horn shouts against you!');
+        } else if (e.type === 'hornStrike') {
+          playHaptic(e.owner === seat ? 'heavy' : 'warning');
         } else if (e.type === 'obeliskDown') {
           playHaptic('heavy');
           const razed = state.obelisks

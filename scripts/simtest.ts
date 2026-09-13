@@ -9,7 +9,8 @@ import { BotBrain, advanceTick, createGame, oasisWinner, resetIds, shrineGuarded
 import type { CannonState, GameState, MarbleState, PlayerId, PlayerInput, UnitState } from '../src/types';
 import {
   CANNON, CANNON_HP, CANNON_R, FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, LAVA_RAIN_CARD, MARBLE_CANNON_SPLASH,
+  HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, HORN_STRIKE_DELAY_TICKS,
+  LAVA_RAIN_CARD, MARBLE_CANNON_SPLASH,
   MARBLE_HP, MARBLE_POS, MARBLE_R,
   PHASE1_TICKS, PHASE2_TICKS, SHRINE, TRANSITION_TICKS,
 } from '../src/types';
@@ -485,14 +486,28 @@ function enterOasis(st: GameState): void {
   }));
   const startHp = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
   let shouts = 0;
-  for (let i = 0; i < HORN_CHARGE_TICKS + 3; i++) {
+  let strikes = 0;
+  let hpAtShout = startHp;
+  let shoutTick = 0;
+  let strikeTick = 0;
+  for (let i = 0; i < HORN_CHARGE_TICKS + HORN_STRIKE_DELAY_TICKS + 3; i++) {
     const { events } = advanceTick(st, []);
-    shouts += events.filter((e) => e.type === 'hornShout' && e.owner === 0).length;
+    if (events.some((e) => e.type === 'hornShout' && e.owner === 0)) {
+      shouts++;
+      shoutTick = st.tick;
+      hpAtShout = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
+    }
+    if (events.some((e) => e.type === 'hornStrike' && e.owner === 0)) {
+      strikes++;
+      strikeTick = st.tick;
+    }
   }
   const endHp = st.obelisks.filter((o) => o.owner === 1).reduce((s, o) => s + o.hp, 0);
   assert(shouts === 1, 'exclusive Horn hold fires one shout');
   assert(st.hornShots[0] === 1, 'shout consumes one of two charges');
-  assert(startHp - endHp === HORN_BLAST, 'shout deals HORN_BLAST to the weaker wing');
+  assert(hpAtShout === startHp, 'Rohan call does not deal damage yet');
+  assert(strikes === 1 && strikeTick === shoutTick + HORN_STRIKE_DELAY_TICKS, 'drum lands five ticks after the call');
+  assert(startHp - endHp === HORN_BLAST, 'drum hit deals HORN_BLAST to the weaker wing');
 }
 
 {

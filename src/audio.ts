@@ -653,11 +653,32 @@ const GLOBAL_SFX = {
     voice({ type: 'triangle', freq: 330, freqEnd: 180, dur: 0.16, gain: 0.05, when: t + 0.04 });
   },
   hornShout: () => {
+    // Helm-call announce: a hunting-horn fifth, not a sampled cue.
+    // Two held brass notes, then the drum lands on hornStrike.
     const t = core.ctx?.currentTime ?? 0;
-    voice({ type: 'sawtooth', freq: 148, freqEnd: 68, dur: 0.58, gain: 0.26, filterFreq: 380 });
-    voice({ type: 'sine', freq: 92, freqEnd: 48, dur: 0.72, gain: 0.32 });
-    voice({ type: 'triangle', freq: 236, freqEnd: 110, dur: 0.38, gain: 0.11, when: t + 0.05 });
-    noise({ dur: 0.3, gain: 0.12, filterFreq: 640, filterEnd: 160 });
+    noise({ dur: 0.2, gain: 0.055, filterFreq: 820, filterEnd: 320, when: t });
+    const low = 146.8;
+    voice({ type: 'sawtooth', freq: low * 0.93, freqEnd: low, glideDur: 0.09, dur: 0.86, gain: 0.24, attack: 0.08, filterFreq: 740, filterQ: 0.7, when: t });
+    voice({ type: 'sawtooth', freq: low * 0.94, freqEnd: low * 1.004, glideDur: 0.09, dur: 0.86, gain: 0.13, attack: 0.09, filterFreq: 520, when: t, pan: 0.16 });
+    voice({ type: 'triangle', freq: low * 1.87, freqEnd: low * 2, glideDur: 0.09, dur: 0.8, gain: 0.09, attack: 0.07, when: t });
+    voice({ type: 'sine', freq: low, dur: 0.92, gain: 0.2, attack: 0.11, when: t });
+    const fifth = 220;
+    const t2 = t + 0.64;
+    voice({ type: 'sawtooth', freq: fifth * 0.95, freqEnd: fifth, glideDur: 0.07, dur: 0.8, gain: 0.26, attack: 0.055, filterFreq: 800, filterQ: 0.65, when: t2 });
+    voice({ type: 'sawtooth', freq: fifth * 0.96, freqEnd: fifth * 1.004, glideDur: 0.07, dur: 0.8, gain: 0.14, attack: 0.065, filterFreq: 560, when: t2, pan: -0.14 });
+    voice({ type: 'triangle', freq: fifth * 2, dur: 0.72, gain: 0.1, attack: 0.05, when: t2 });
+    voice({ type: 'sine', freq: fifth, dur: 0.88, gain: 0.18, attack: 0.08, when: t2 });
+    voice({ type: 'sine', freq: fifth, freqEnd: fifth * 0.9, glideDur: 0.22, dur: 0.28, gain: 0.07, attack: 0.02, when: t2 + 0.64 });
+  },
+  hornStrike: () => {
+    const t = core.ctx?.currentTime ?? 0;
+    voice({ type: 'sine', freq: 44, freqEnd: 20, dur: 1.9, gain: 0.64, attack: 0.003 });
+    voice({ type: 'sine', freq: 28, freqEnd: 16, dur: 2.2, gain: 0.4, attack: 0.005 });
+    voice({ type: 'triangle', freq: 56, freqEnd: 26, dur: 1.45, gain: 0.3, attack: 0.003 });
+    voice({ type: 'sawtooth', freq: 70, freqEnd: 32, dur: 0.58, gain: 0.18, filterFreq: 170, attack: 0.002 });
+    noise({ dur: 0.24, gain: 0.44, filterFreq: 880, filterEnd: 80 });
+    noise({ dur: 0.5, gain: 0.2, filterFreq: 260, filterEnd: 60 });
+    voice({ type: 'sine', freq: 92, freqEnd: 38, dur: 0.16, gain: 0.14, when: t + 0.01 });
   },
   shrineImpactWater: () => {
     const t = core.ctx?.currentTime ?? 0;
@@ -877,6 +898,7 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'shrineImpact':
       case 'bridgeThreat':
       case 'hornShout':
+      case 'hornStrike':
         return 1;
       default:
         return 2;
@@ -961,8 +983,13 @@ export function handleGameEvents(events: GameEvent[]): void {
         GLOBAL_SFX.bridgeThreat();
         break;
       case 'hornShout':
-        if (!claim(3)) break;
+        if (!claim(6)) break;
         GLOBAL_SFX.hornShout();
+        break;
+      case 'hornStrike':
+        if (!claim(5)) break;
+        GLOBAL_SFX.hornStrike();
+        playHaptic('heavy');
         break;
       case 'obeliskHit':
         if (!claim(2)) break;
