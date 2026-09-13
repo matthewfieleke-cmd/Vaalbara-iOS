@@ -20,6 +20,7 @@ import {
   BRIDGE_HALF_W, FORT_ARCH_HALF_W, FORT_LANES, FORT_SPAWN_Y,
   FORT_WALL_FRONT, FORT_WING_R, FORT_WING_Y,
   HAND_SIZE, HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, HORN_SHOTS_MAX,
+  HORN_STRIKE_DELAY_TICKS,
   LANE_SOFT_CAP, LOTUS_HEAL_PCT, OBELISK_HP, onHornPad,
   CANNON, CANNON_HP, CANNON_R,
   MARBLE_HP, MARBLE_POS, MARBLE_R, MARBLE_SHIELD_PCT, MARBLE_SHOT_DMG,
@@ -243,6 +244,7 @@ export function createGame(
     marbles: [],
     cannons: [],
     pendingLava: [],
+    hornPending: [],
     players: [makePlayer(factions[0]), makePlayer(factions[1])],
     captureMeter: 0,
     marbleDamage: [0, 0],
@@ -939,9 +941,36 @@ function fireHorn(st: GameState, ev: GameEvent[], owner: PlayerId): void {
     tx: target.x,
     ty: target.y,
   });
-  dealObeliskDamage(st, ev, owner, target, HORN_BLAST);
   st.hornShots[owner] += 1;
   st.hornCharge[owner] = 0;
+  st.hornPending.push({
+    owner,
+    wing: target.wing,
+    resolveTick: st.tick + HORN_STRIKE_DELAY_TICKS,
+  });
+}
+
+/** Land the delayed blast when the drum hits. */
+function tickHornStrikes(st: GameState, ev: GameEvent[]): void {
+  if (st.hornPending.length === 0) return;
+  const due = st.hornPending.filter((p) => p.resolveTick <= st.tick);
+  st.hornPending = st.hornPending.filter((p) => p.resolveTick > st.tick);
+  for (const pending of due) {
+    let target = st.obelisks.find(
+      (o) => o.owner !== pending.owner && o.wing === pending.wing && o.hp > 0,
+    ) ?? null;
+    if (!target) target = weakerEnemyWing(st, pending.owner);
+    if (!target) continue;
+    ev.push({
+      type: 'hornStrike',
+      owner: pending.owner,
+      x: HORN_POS.x,
+      y: HORN_POS.y,
+      tx: target.x,
+      ty: target.y,
+    });
+    dealObeliskDamage(st, ev, pending.owner, target, HORN_BLAST);
+  }
 }
 
 /** Exclusive charge +1 / tick; leading contest +1 every other tick; empty
@@ -1988,6 +2017,7 @@ function beginOasis(st: GameState, ev: GameEvent[]): void {
   st.zones = [];
   st.projectiles = [];
   st.pendingLava = [];
+  st.hornPending = [];
   st.props = oasisProps();
   st.obelisks = [];
   const ward: PlayerId | null = st.players[0].blessed ? 0 : st.players[1].blessed ? 1 : null;
@@ -2325,6 +2355,7 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
       if (u.hp > 0) tickUnit(st, ev, u);
     }
     if (st.phase === 'basalt') tickHorn(st, ev);
+    tickHornStrikes(st, ev);
     tickProjectiles(st, ev);
     separateUnits(st);
     laneDiscipline(st);
@@ -2332,6 +2363,7 @@ export function advanceTick(st: GameState, inputs: PlayerInput[]): TickResult {
     applyZoneEffects(st, ev);
   } else if (st.phase === 'transition') {
     tickTransitionMarch(st);
+    tickHornStrikes(st, ev);
   }
 
   st.units = st.units.filter((u) => u.hp > 0);

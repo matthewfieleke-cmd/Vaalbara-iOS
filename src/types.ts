@@ -226,6 +226,13 @@ export interface PendingLavaRain {
   readonly resolveTick: Tick;
 }
 
+/** Horn blast waiting for the drum after the Rohan call. */
+export interface PendingHornStrike {
+  readonly owner: PlayerId;
+  readonly wing: 0 | 1;
+  readonly resolveTick: Tick;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Authored props — hand-placed to match the arena paintings                  */
 /* ------------------------------------------------------------------------ */
@@ -326,6 +333,7 @@ export type GameEvent =
   | { type: 'gateShot'; owner: PlayerId; wing: 0 | 1; x: number; y: number; tx: number; ty: number }
   | { type: 'bridgeThreat'; owner: PlayerId; wing: 0 | 1; x: number; y: number }
   | { type: 'hornShout'; owner: PlayerId; x: number; y: number; tx: number; ty: number }
+  | { type: 'hornStrike'; owner: PlayerId; x: number; y: number; tx: number; ty: number }
   | { type: 'marbleHit'; owner: PlayerId; amount: number; x: number; y: number; shielded: boolean }
   | { type: 'marbleDown'; owner: PlayerId; x: number; y: number }
   | { type: 'cannonHit'; owner: PlayerId; amount: number; x: number; y: number }
@@ -365,6 +373,8 @@ export interface GameState {
   /** Phase-2 siege guns. Empty in Basalt. A living gun makes its shrine immune. */
   cannons: CannonState[];
   pendingLava: PendingLavaRain[];
+  /** Shouts that have sounded but whose drum / damage has not landed yet. */
+  hornPending: PendingHornStrike[];
   players: [PlayerBoardState, PlayerBoardState];
   /** Kept for replay/UI; Phase 2 no longer wins by pond claim. */
   captureMeter: number;
@@ -561,6 +571,8 @@ export const HORN_CHARGE_TICKS = 13;
 /** A shout should crack a gate, not delete it. */
 export const HORN_BLAST = 220;
 export const HORN_SHOTS_MAX = 2;
+/** Ticks from the Rohan call to the drum hit (5 × 300 ms = 1.5 s). */
+export const HORN_STRIKE_DELAY_TICKS = 5;
 
 export function onHornPad(x: number, y: number): boolean {
   const dx = x - HORN_POS.x;
