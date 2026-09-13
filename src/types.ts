@@ -331,6 +331,7 @@ export type GameEvent =
   | { type: 'obeliskHit'; owner: PlayerId; amount: number; x: number; y: number }
   | { type: 'obeliskDown'; owner: PlayerId; x: number; y: number }
   | { type: 'gateShot'; owner: PlayerId; wing: 0 | 1; x: number; y: number; tx: number; ty: number }
+  | { type: 'gateImpact'; owner: PlayerId; x: number; y: number; hit: boolean }
   | { type: 'bridgeThreat'; owner: PlayerId; wing: 0 | 1; x: number; y: number }
   | { type: 'hornShout'; owner: PlayerId; x: number; y: number; tx: number; ty: number }
   | { type: 'hornStrike'; owner: PlayerId; x: number; y: number; tx: number; ty: number }

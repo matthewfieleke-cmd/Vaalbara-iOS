@@ -1399,13 +1399,16 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
     }
     if (pr.kind === 'gate') {
       const r2 = GATE_SHOT_SPLASH * GATE_SHOT_SPLASH;
+      let hit = false;
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
         if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
           dealDamage(st, ev, null, o, pr.dmg, 'ranged');
           st.players[pr.owner].damageDealt += pr.dmg;
+          hit = true;
         }
       }
+      ev.push({ type: 'gateImpact', owner: pr.owner, x: pr.x, y: pr.y, hit });
       continue;
     }
 

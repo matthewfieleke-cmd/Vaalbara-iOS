@@ -642,8 +642,12 @@ const GLOBAL_SFX = {
     voice({ type: 'triangle', freq: 180, freqEnd: 70, dur: 0.16, gain: 0.08, when: t + 0.03 });
   },
   gateShot: () => {
-    voice({ type: 'triangle', freq: 420, freqEnd: 160, dur: 0.09, gain: 0.07 });
-    noise({ dur: 0.08, gain: 0.06, filterFreq: 1800, filterEnd: 400 });
+    // Crack and whoosh from the arch — a real shot, not a click.
+    const t = core.ctx?.currentTime ?? 0;
+    noise({ dur: 0.05, gain: 0.16, filterFreq: 2600, filterType: 'highpass' });
+    voice({ type: 'triangle', freq: 560, freqEnd: 150, dur: 0.11, gain: 0.12 });
+    voice({ type: 'sine', freq: 150, freqEnd: 60, dur: 0.15, gain: 0.15 });
+    noise({ dur: 0.22, gain: 0.07, filterFreq: 900, filterEnd: 2600, filterType: 'bandpass', when: t + 0.03 });
   },
   bridgeThreat: () => {
     const t = core.ctx?.currentTime ?? 0;
@@ -652,33 +656,12 @@ const GLOBAL_SFX = {
     noise({ dur: 0.22, gain: 0.1, filterFreq: 900, filterEnd: 220 });
     voice({ type: 'triangle', freq: 330, freqEnd: 180, dur: 0.16, gain: 0.05, when: t + 0.04 });
   },
-  hornShout: () => {
-    // Helm-call announce: a hunting-horn fifth, not a sampled cue.
-    // Two held brass notes, then the drum lands on hornStrike.
+  gateImpact: (hit: boolean) => {
+    // The bolt lands: a stone thud with a sizzle; a clean miss is drier.
     const t = core.ctx?.currentTime ?? 0;
-    noise({ dur: 0.2, gain: 0.055, filterFreq: 820, filterEnd: 320, when: t });
-    const low = 146.8;
-    voice({ type: 'sawtooth', freq: low * 0.93, freqEnd: low, glideDur: 0.09, dur: 0.86, gain: 0.24, attack: 0.08, filterFreq: 740, filterQ: 0.7, when: t });
-    voice({ type: 'sawtooth', freq: low * 0.94, freqEnd: low * 1.004, glideDur: 0.09, dur: 0.86, gain: 0.13, attack: 0.09, filterFreq: 520, when: t, pan: 0.16 });
-    voice({ type: 'triangle', freq: low * 1.87, freqEnd: low * 2, glideDur: 0.09, dur: 0.8, gain: 0.09, attack: 0.07, when: t });
-    voice({ type: 'sine', freq: low, dur: 0.92, gain: 0.2, attack: 0.11, when: t });
-    const fifth = 220;
-    const t2 = t + 0.64;
-    voice({ type: 'sawtooth', freq: fifth * 0.95, freqEnd: fifth, glideDur: 0.07, dur: 0.8, gain: 0.26, attack: 0.055, filterFreq: 800, filterQ: 0.65, when: t2 });
-    voice({ type: 'sawtooth', freq: fifth * 0.96, freqEnd: fifth * 1.004, glideDur: 0.07, dur: 0.8, gain: 0.14, attack: 0.065, filterFreq: 560, when: t2, pan: -0.14 });
-    voice({ type: 'triangle', freq: fifth * 2, dur: 0.72, gain: 0.1, attack: 0.05, when: t2 });
-    voice({ type: 'sine', freq: fifth, dur: 0.88, gain: 0.18, attack: 0.08, when: t2 });
-    voice({ type: 'sine', freq: fifth, freqEnd: fifth * 0.9, glideDur: 0.22, dur: 0.28, gain: 0.07, attack: 0.02, when: t2 + 0.64 });
-  },
-  hornStrike: () => {
-    const t = core.ctx?.currentTime ?? 0;
-    voice({ type: 'sine', freq: 44, freqEnd: 20, dur: 1.9, gain: 0.64, attack: 0.003 });
-    voice({ type: 'sine', freq: 28, freqEnd: 16, dur: 2.2, gain: 0.4, attack: 0.005 });
-    voice({ type: 'triangle', freq: 56, freqEnd: 26, dur: 1.45, gain: 0.3, attack: 0.003 });
-    voice({ type: 'sawtooth', freq: 70, freqEnd: 32, dur: 0.58, gain: 0.18, filterFreq: 170, attack: 0.002 });
-    noise({ dur: 0.24, gain: 0.44, filterFreq: 880, filterEnd: 80 });
-    noise({ dur: 0.5, gain: 0.2, filterFreq: 260, filterEnd: 60 });
-    voice({ type: 'sine', freq: 92, freqEnd: 38, dur: 0.16, gain: 0.14, when: t + 0.01 });
+    voice({ type: 'sine', freq: 130, freqEnd: 48, dur: 0.16, gain: hit ? 0.2 : 0.12 });
+    noise({ dur: 0.1, gain: hit ? 0.14 : 0.08, filterFreq: 1600, filterEnd: 260 });
+    if (hit) voice({ type: 'triangle', freq: 300, freqEnd: 110, dur: 0.09, gain: 0.07, when: t + 0.01 });
   },
   shrineImpactWater: () => {
     const t = core.ctx?.currentTime ?? 0;
@@ -899,6 +882,7 @@ export function handleGameEvents(events: GameEvent[]): void {
       case 'bridgeThreat':
       case 'hornShout':
       case 'hornStrike':
+      case 'gateImpact':
         return 1;
       default:
         return 2;
@@ -983,13 +967,19 @@ export function handleGameEvents(events: GameEvent[]): void {
         GLOBAL_SFX.bridgeThreat();
         break;
       case 'hornShout':
-        if (!claim(6)) break;
-        GLOBAL_SFX.hornShout();
+        // The Horn is a member of the orchestra — it plays on the grid,
+        // through the hall, and the band ducks under it.
+        if (!claim(8)) break;
+        music.hornCall(quantizeAttackWhen());
         break;
       case 'hornStrike':
-        if (!claim(5)) break;
-        GLOBAL_SFX.hornStrike();
+        if (!claim(7)) break;
+        music.hornStrike(quantizeAttackWhen());
         playHaptic('heavy');
+        break;
+      case 'gateImpact':
+        if (!claim(1)) break;
+        GLOBAL_SFX.gateImpact(e.hit);
         break;
       case 'obeliskHit':
         if (!claim(2)) break;
@@ -1064,6 +1054,13 @@ class MusicDirector {
   private running = false;
   private mode: MusicMode = 'menu';
   private bus: GainNode | null = null;
+  /** The Horn's own seat in the orchestra: into the hall and the glue
+   *  compressor, beside the score bus rather than inside it, so the band
+   *  can step back under the call without the horn stepping back too. */
+  private hornBus: GainNode | null = null;
+  /** Score bus ducks to this multiplier until this AudioContext time. */
+  private duckUntil = 0;
+  private duck = 1;
   private reverb: ConvolverNode | null = null;
   private reverbGain: GainNode | null = null;
   private nextNoteTime = 0;
@@ -1260,6 +1257,14 @@ class MusicDirector {
       this.reverbGain.connect(core.musicBus);
     }
     this.bus.connect(this.reverb);
+    if (!this.hornBus) {
+      // Hot into the score bus: the glue compressor takes some of it back,
+      // and that squeeze on everything else is the orchestra flinching.
+      this.hornBus = ctx.createGain();
+      this.hornBus.gain.value = 1.7;
+      this.hornBus.connect(core.musicBus);
+      this.hornBus.connect(this.reverb);
+    }
     this.nextNoteTime = ctx.currentTime + 0.08;
     this.gridOrigin = this.nextNoteTime;
     this.step = 0;
@@ -1464,8 +1469,12 @@ class MusicDirector {
     this.beeHarmonyLevel += (beeTarget - this.beeHarmonyLevel) * (beeTarget > this.beeHarmonyLevel ? 0.2 : 0.12);
     this.eagleHarmonyLevel += (eagleTarget - this.eagleHarmonyLevel) * (eagleTarget > this.eagleHarmonyLevel ? 0.2 : 0.12);
     if (this.bus && core.ctx) {
+      // The orchestra makes room for the Horn: -6 dB from the call until
+      // the drum lands, then swells straight back in.
+      const duckTarget = core.ctx.currentTime < this.duckUntil ? 0.5 : 1;
+      this.duck += (duckTarget - this.duck) * (duckTarget < this.duck ? 0.35 : 0.18);
       // Soft cap near 1.45 so finale crest stays powerful without harsh clip.
-      const g = Math.min(1.45, Math.max(0.0001, this.volumeMul));
+      const g = Math.min(1.45, Math.max(0.0001, this.volumeMul)) * this.duck;
       this.bus.gain.setTargetAtTime(g, core.ctx.currentTime, 0.08);
     }
   }
@@ -1789,6 +1798,218 @@ class MusicDirector {
     sub.onended = () => releaseGraph(sub);
     sub.start(t0);
     sub.stop(t0 + dur + 0.1);
+  }
+
+  /** Soft-clip curve for the war horn's rasp — brass overblown, not fuzz. */
+  private static hornCurve: Float32Array<ArrayBuffer> | null = null;
+
+  private hornOut(): GainNode | null {
+    return this.hornBus ?? core.sfxBus;
+  }
+
+  /**
+   * One blow of the great war horn. A brass model, not stacked stabs:
+   * six detuned saws with a −70-cent scoop into the note, a lowpass that
+   * blooms open as the swell rises (brass gets brighter as it gets louder),
+   * a resonant formant for the horn vowel, a tanh shaper for the rasp,
+   * breath noise, vibrato that arrives late, a sub octave under it and a
+   * quiet octave above so it still carries on a phone speaker.
+   */
+  private hornBlow(t: number, freq: number, dur: number, gain: number, pan = 0): void {
+    const ctx = core.ensure();
+    const out = this.hornOut();
+    if (!ctx || !out) return;
+    if (!MusicDirector.hornCurve) {
+      const n = 2048;
+      const c = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1;
+        c[i] = Math.tanh(1.9 * x) * 0.92;
+      }
+      MusicDirector.hornCurve = c;
+    }
+    const attack = Math.min(0.46, dur * 0.34);
+    const release = Math.min(0.5, dur * 0.3);
+    const peakAt = t + attack;
+    const endAt = t + dur;
+    const relStart = Math.max(peakAt, endAt - release);
+
+    // Swell from an audible floor, not from silence — an exponential ramp
+    // out of -80 dB spends half the attack inaudible and the blow arrives
+    // late. Release decays to -34 dB, then a short linear tail to zero.
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(gain * 0.02, t);
+    env.gain.exponentialRampToValueAtTime(gain, peakAt);
+    env.gain.setValueAtTime(gain, relStart);
+    env.gain.exponentialRampToValueAtTime(gain * 0.02, endAt - 0.05);
+    env.gain.linearRampToValueAtTime(0.0001, endAt);
+
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = MusicDirector.hornCurve;
+    shaper.oversample = '2x';
+
+    // Bloom: the body filter opens with the swell and closes on the release.
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.9;
+    lp.frequency.setValueAtTime(360, t);
+    lp.frequency.exponentialRampToValueAtTime(2400, peakAt + 0.08);
+    lp.frequency.setValueAtTime(2400, Math.max(peakAt + 0.08, endAt - release));
+    lp.frequency.exponentialRampToValueAtTime(700, endAt);
+
+    // The horn vowel — a resonant peak in parallel with the body.
+    const formant = ctx.createBiquadFilter();
+    formant.type = 'bandpass';
+    formant.frequency.value = 760;
+    formant.Q.value = 1.5;
+    const formantMix = ctx.createGain();
+    formantMix.gain.value = 0.55;
+
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) panner.pan.value = Math.max(-1, Math.min(1, pan));
+
+    const pre = ctx.createGain();
+    pre.gain.value = 1;
+    pre.connect(lp);
+    pre.connect(formant);
+    formant.connect(formantMix);
+    lp.connect(shaper);
+    formantMix.connect(shaper);
+    shaper.connect(env);
+    if (panner) {
+      env.connect(panner);
+      panner.connect(out);
+    } else {
+      env.connect(out);
+    }
+
+    // Vibrato arrives late, the way a player leans into a held note.
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 5.2;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.setValueAtTime(0, t);
+    lfoDepth.gain.setValueAtTime(0, t + attack + 0.15);
+    lfoDepth.gain.linearRampToValueAtTime(freq * 0.011, t + attack + 0.7);
+    lfo.connect(lfoDepth);
+
+    const nodes: AudioNode[] = [env, shaper, lp, formant, formantMix, pre, lfo, lfoDepth];
+    if (panner) nodes.push(panner);
+    let remaining = 0;
+    const done = () => {
+      remaining--;
+      if (remaining === 0) disconnectNodes(...nodes);
+    };
+    const scoopFrom = Math.pow(2, -70 / 1200);
+    for (const cents of [-14, -8, -3, 3, 8, 14]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      const f = freq * Math.pow(2, cents / 1200);
+      osc.frequency.setValueAtTime(f * scoopFrom, t);
+      osc.frequency.exponentialRampToValueAtTime(f, t + 0.14);
+      lfoDepth.connect(osc.frequency);
+      const g = ctx.createGain();
+      g.gain.value = 0.17;
+      osc.connect(g);
+      g.connect(pre);
+      remaining++;
+      osc.onended = () => { disconnectNodes(osc, g); done(); };
+      osc.start(t);
+      osc.stop(endAt + 0.1);
+    }
+    // Breath — bandpassed air riding the same envelope, into the rasp.
+    const breath = ctx.createBufferSource();
+    breath.buffer = getNoise(ctx);
+    breath.loop = true;
+    const breathBp = ctx.createBiquadFilter();
+    breathBp.type = 'bandpass';
+    breathBp.frequency.value = 1100;
+    breathBp.Q.value = 0.7;
+    const breathG = ctx.createGain();
+    breathG.gain.value = 0.045;
+    breath.connect(breathBp);
+    breathBp.connect(breathG);
+    breathG.connect(pre);
+    remaining++;
+    breath.onended = () => { disconnectNodes(breath, breathBp, breathG); done(); };
+    breath.start(t);
+    breath.stop(endAt + 0.1);
+    // Sub octave — the weight — straight to the envelope, no rasp.
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(freq * 0.5 * scoopFrom, t);
+    sub.frequency.exponentialRampToValueAtTime(freq * 0.5, t + 0.14);
+    const subG = ctx.createGain();
+    subG.gain.value = 0.55;
+    sub.connect(subG);
+    subG.connect(env);
+    remaining++;
+    sub.onended = () => { disconnectNodes(sub, subG); done(); };
+    sub.start(t);
+    sub.stop(endAt + 0.1);
+    // Octave above at a whisper so the call survives a phone speaker.
+    const hi = ctx.createOscillator();
+    hi.type = 'triangle';
+    hi.frequency.setValueAtTime(freq * 2 * scoopFrom, t);
+    hi.frequency.exponentialRampToValueAtTime(freq * 2, t + 0.14);
+    lfoDepth.connect(hi.frequency);
+    const hiG = ctx.createGain();
+    hiG.gain.value = 0.16;
+    hi.connect(hiG);
+    hiG.connect(pre);
+    remaining++;
+    hi.onended = () => { disconnectNodes(hi, hiG); done(); };
+    hi.start(t);
+    hi.stop(endAt + 0.1);
+    lfo.start(t);
+    lfo.stop(endAt + 0.1);
+  }
+
+  /**
+   * The Horn sounds — the theme's opening reach, D up to A, as two long
+   * blows filling one bar. The orchestra ducks under it until the drum.
+   */
+  hornCall(when: number): void {
+    const ctx = core.ensure();
+    if (!ctx) return;
+    const t = Math.max(when, ctx.currentTime + 0.02);
+    const bar = MUSIC_16TH_SEC * 16;
+    this.duckUntil = t + bar + 0.2;
+    // The second blow re-articulates out of the first's release — one
+    // breath, two notes — and is still ringing when the drum lands.
+    this.hornBlow(t, 73.42, 1.45, 0.95, -0.08);
+    this.hornBlow(t + 0.92, 110, 1.6, 1.1, 0.1);
+    // A distant answering echo from the far wall of the field.
+    this.hornBlow(t + 1.7, 110, 0.9, 0.2, -0.45);
+  }
+
+  /**
+   * The drum. Lands one bar after the call, with the damage: skin, body,
+   * a sub that rings, a crash wash and a low D braam so the hit sits in
+   * the harmony. Runs into the glue compressor so the whole mix flinches.
+   */
+  hornStrike(when: number): void {
+    const ctx = core.ensure();
+    const out = this.hornOut();
+    if (!ctx || !out) return;
+    const t = Math.max(when, ctx.currentTime + 0.01);
+    this.duckUntil = t + 0.12;
+    // Slap and skin.
+    noise({ dur: 0.045, gain: 0.34, filterFreq: 2600, filterType: 'highpass', bus: out, when: t });
+    noise({ dur: 0.34, gain: 0.5, filterFreq: 240, filterType: 'bandpass', bus: out, when: t });
+    noise({ dur: 0.6, gain: 0.22, filterFreq: 420, filterEnd: 70, bus: out, when: t });
+    // Body and sub — pitch falls, then rings.
+    voice({ type: 'sine', freq: 64, freqEnd: 30, glideDur: 0.45, dur: 1.7, gain: 0.8, attack: 0.003, bus: out, when: t });
+    voice({ type: 'triangle', freq: 92, freqEnd: 40, glideDur: 0.3, dur: 0.95, gain: 0.3, attack: 0.003, bus: out, when: t });
+    voice({ type: 'sine', freq: 38, freqEnd: 25, glideDur: 0.6, dur: 2.6, gain: 0.55, attack: 0.006, bus: out, when: t });
+    voice({ type: 'sine', freq: 130, freqEnd: 50, glideDur: 0.08, dur: 0.14, gain: 0.2, attack: 0.002, bus: out, when: t });
+    // Cymbal wash and the low D braam under it.
+    noise({ dur: 1.5, gain: 0.11, filterFreq: 3800, filterType: 'highpass', bus: out, when: t });
+    noise({ dur: 0.6, gain: 0.06, filterFreq: 2200, filterType: 'highpass', bus: out, when: t });
+    if (this.bus) {
+      this.braamAt(t, 73.42, 1.7, 0.36, 0);
+      this.taiko(t + MUSIC_16TH_SEC * 2, false, 0.6);
+    }
   }
 
   /** Rising tension sweep (phase transition, cinematic climax). */
