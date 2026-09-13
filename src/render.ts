@@ -112,6 +112,80 @@ interface FloatText {
   x: number; y: number; text: string; life: number; maxLife: number; color: string; size: number;
 }
 
+/** One rolling puff in a ruin's smoke column. */
+interface Puff {
+  x: number; y: number; vx: number; vy: number;
+  age: number; life: number;
+  /** Radius at birth (px); the puff swells to ~2.6× over its life. */
+  size: number;
+  /** Lateral wobble phase and rate. */
+  wobble: number; wobbleRate: number;
+  /** Sprite variant 0..2. */
+  variant: number;
+}
+
+/** A razed wing or crumbled shrine burning: puffs, embers and settle pulses. */
+interface Plume {
+  x: number; y: number;
+  ember: boolean;
+  scale: number;
+  puffs: Puff[];
+  /** Render time the ruin first smoked — the aftermath is heavier. */
+  born: number;
+  /** Render time of the previous frame this plume was drawn. */
+  last: number;
+  spawnCarry: number;
+  emberCarry: number;
+  nextSettle: number;
+  /** Heart flare from the last settle pulse (seconds remaining). */
+  flare: number;
+  /** Frame stamp so plumes for ruins no longer drawn can be dropped. */
+  seen: number;
+}
+
+/** Soft, lumpy smoke sprites — three silhouettes per tint, drawn once.
+ *  Ember ruins climb soot → umber → ash; water ruins are a blue-grey. */
+let puffSprites: HTMLCanvasElement[] | null = null;
+const PUFF_TINTS = ['soot', 'umber', 'ash', 'water'] as const;
+function getPuffSprites(): HTMLCanvasElement[] {
+  if (puffSprites) return puffSprites;
+  const out: HTMLCanvasElement[] = [];
+  const colorOf = (tint: string, a: number) =>
+    tint === 'soot' ? `hsla(12 22% 11% / ${a})`
+      : tint === 'umber' ? `hsla(22 16% 30% / ${a})`
+        : tint === 'ash' ? `hsla(30 8% 60% / ${a})`
+          : `hsla(206 12% 52% / ${a})`;
+  let seed = 7;
+  const rng = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  for (const tint of PUFF_TINTS) {
+    for (let v = 0; v < 3; v++) {
+      const c = document.createElement('canvas');
+      c.width = 96;
+      c.height = 96;
+      const g = c.getContext('2d')!;
+      for (let i = 0; i < 9; i++) {
+        const ang = rng() * Math.PI * 2;
+        const dist = 6 + rng() * 18;
+        const cx = 48 + Math.cos(ang) * dist;
+        const cy = 48 + Math.sin(ang) * dist * 0.75;
+        const rad = 15 + rng() * 15;
+        const grad = g.createRadialGradient(cx, cy, 0, cx, cy, rad);
+        grad.addColorStop(0, colorOf(tint, 0.6));
+        grad.addColorStop(0.55, colorOf(tint, 0.24));
+        grad.addColorStop(1, colorOf(tint, 0));
+        g.fillStyle = grad;
+        g.fillRect(0, 0, 96, 96);
+      }
+      out.push(c);
+    }
+  }
+  puffSprites = out;
+  return out;
+}
+
 interface AttackAnim {
   t0: number;
   dirX: number;
@@ -268,8 +342,9 @@ export class Renderer {
    *  pads pulse hard so "tap a gate" is unmissable, and the friendly half
    *  glows so a field drop is equally obvious. */
   padHint = false;
-  /** Last emit time for each persistent ruin-smoke column (render-only). */
-  private ruinSmokeAt = new Map<string, number>();
+  /** Persistent smoke columns over razed wings and crumbled shrines
+   *  (render-only). Each is a small puff simulation keyed by ruin. */
+  private plumes = new Map<string, Plume>();
 
   // Layout.
   private unit = 40; // px per world unit
@@ -880,6 +955,7 @@ export class Renderer {
     this.updateParticles(ctx, dt);
     this.updateFloats(ctx, dt);
     this.drawVignette(ctx, W, H);
+    this.pruneRuinPlumes();
     ctx.restore();
   }
 
@@ -1298,8 +1374,7 @@ export class Renderer {
         const ember = st.players[m.owner].faction === 'magma';
         const s = SHRINE[m.owner];
         const p = this.worldToScreen(s.doorX, s.doorY);
-        this.drawRuinPlume(ctx, p.x, p.y, ember, 1.15);
-        this.emitRuinColumn(`p2-${m.owner}`, p.x, p.y, ember);
+        this.drawRuinPlume(ctx, `p2-${m.owner}`, p.x, p.y, ember, 1.15);
         continue;
       }
       if (m.shield > 0) {
@@ -1482,112 +1557,171 @@ export class Renderer {
     }
   }
 
-  /** Soft stacked smoke banks over a crumbled tower — always on, so a dead
-   *  wing / shrine reads as burning even between particle bursts. */
+  /**
+   * A ruin burning. Not a stack of gradients: a column of rolling puffs
+   * born in the rubble heart, swelling as they climb, soot-dark at the
+   * base and grey up high, leaning with the wind. Embers drift up inside
+   * it, the heart flickers, and every so often the ruin settles — a gout
+   * of extra smoke and a few tumbling stones. Heavier for the first ten
+   * seconds after the collapse. Cached sprites, no per-frame gradients
+   * beyond the heart and the ground haze.
+   */
   private drawRuinPlume(
-    ctx: CanvasRenderingContext2D, x: number, y: number, ember: boolean, scale = 1,
+    ctx: CanvasRenderingContext2D, key: string, x: number, y: number, ember: boolean, scale = 1,
   ): void {
     const u = this.unit * scale;
     const t = this.time;
-    const pulse = 0.78 + Math.sin(t * 1.12 + x * 0.02) * 0.14;
+    let pl = this.plumes.get(key);
+    if (!pl) {
+      pl = {
+        x, y, ember, scale, puffs: [], born: t, last: t, spawnCarry: 0, emberCarry: 0,
+        nextSettle: t + 6 + Math.random() * 6, flare: 0, seen: t,
+      };
+      this.plumes.set(key, pl);
+    }
+    pl.x = x;
+    pl.y = y;
+    pl.seen = t;
+    const dt = clamp(t - pl.last, 0, 0.05);
+    pl.last = t;
+    const after = clamp(1 - (t - pl.born) / 10, 0, 1);
+    const wind = Math.sin(t * 0.21 + x * 0.01) * 0.35 + 0.25;
+
+    // Spawn: a steady column, thicker in the aftermath.
+    pl.spawnCarry += dt * (9 + after * 12);
+    while (pl.spawnCarry >= 1 && pl.puffs.length < 52) {
+      pl.spawnCarry -= 1;
+      pl.puffs.push({
+        x: x + (Math.random() - 0.5) * u * 0.6,
+        y: y + (Math.random() - 0.5) * u * 0.18,
+        vx: (Math.random() - 0.5) * u * 0.16 + wind * u * 0.14,
+        vy: -(u * (0.6 + Math.random() * 0.32)) * (1 + after * 0.3),
+        age: 0,
+        life: 2.8 + Math.random() * 1.5,
+        size: u * (0.24 + Math.random() * 0.18) * (1 + after * 0.35),
+        wobble: Math.random() * Math.PI * 2,
+        wobbleRate: 1.2 + Math.random() * 1.4,
+        variant: Math.floor(Math.random() * 3),
+      });
+    }
+    // Settle pulse: the ruin shifts, coughs smoke, drops stones.
+    if (t >= pl.nextSettle) {
+      pl.nextSettle = t + 8 + Math.random() * 8;
+      pl.flare = 0.9;
+      for (let i = 0; i < 7; i++) {
+        pl.puffs.push({
+          x: x + (Math.random() - 0.5) * u * 0.8,
+          y: y + (Math.random() - 0.5) * u * 0.2,
+          vx: (Math.random() - 0.5) * u * 0.5,
+          vy: -(u * (0.55 + Math.random() * 0.4)),
+          age: 0, life: 2 + Math.random(), size: u * (0.26 + Math.random() * 0.18),
+          wobble: Math.random() * Math.PI * 2, wobbleRate: 1.5 + Math.random(),
+          variant: Math.floor(Math.random() * 3),
+        });
+      }
+      for (let i = 0; i < 4; i++) {
+        this.particles.push({
+          x: x + (Math.random() - 0.5) * u * 0.9, y: y - u * 0.1,
+          vx: (Math.random() - 0.5) * 70, vy: -30 - Math.random() * 60,
+          life: 0, maxLife: 0.8 + Math.random() * 0.5,
+          size: 2.5 + Math.random() * 3, hue: 255, sat: 6, lit: 18 + Math.random() * 14,
+          kind: 'ash', alpha: 1, gravity: 340,
+        });
+      }
+    }
+    pl.flare = Math.max(0, pl.flare - dt);
+    // Embers: sparse bright flecks lifting through the column.
+    if (ember) {
+      pl.emberCarry += dt * (1.6 + after * 3 + pl.flare * 6);
+      while (pl.emberCarry >= 1) {
+        pl.emberCarry -= 1;
+        this.particles.push({
+          x: x + (Math.random() - 0.5) * u * 0.5, y: y + (Math.random() - 0.5) * u * 0.1,
+          vx: (Math.random() - 0.5) * 22 + wind * 14, vy: -(50 + Math.random() * 70),
+          life: 0, maxLife: 0.7 + Math.random() * 0.8,
+          size: 1.2 + Math.random() * 1.3, hue: 28, sat: 100, lit: 62,
+          kind: 'mote', alpha: 1, gravity: -12,
+        });
+      }
+    }
+
     ctx.save();
     const r = this.boardRect();
     ctx.beginPath();
     ctx.roundRect(r.left - 3, r.top - 3, r.w + 6, r.h + 6, 12);
     ctx.clip();
+
+    // Soot on the stone around the breach, and a low haze pooling out of it.
+    const soot = ctx.createRadialGradient(x, y + u * 0.1, u * 0.1, x, y + u * 0.1, u * 1.3);
+    soot.addColorStop(0, 'rgba(8,5,6,0.34)');
+    soot.addColorStop(1, 'rgba(8,5,6,0)');
+    ctx.fillStyle = soot;
+    ctx.fillRect(x - u * 1.3, y - u * 1.2, u * 2.6, u * 2.4);
+    const hazeX = x + Math.sin(t * 0.3 + x * 0.02) * u * 0.25 + wind * u * 0.3;
+    const hazeR = u * (1.5 + after * 0.6);
+    const haze = ctx.createRadialGradient(0, 0, 1, 0, 0, hazeR);
+    haze.addColorStop(0, ember ? `rgba(70,52,44,${0.2 + after * 0.15})` : `rgba(70,84,96,${0.18 + after * 0.12})`);
+    haze.addColorStop(1, 'rgba(60,50,46,0)');
+    ctx.save();
+    ctx.translate(hazeX, y + u * 0.22);
+    ctx.scale(1, 0.34);
+    ctx.fillStyle = haze;
+    ctx.beginPath();
+    ctx.arc(0, 0, hazeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // The heart: an ember glow that flickers, flaring when the ruin settles.
     if (ember) {
-      const heart = ctx.createRadialGradient(x, y + u * 0.15, 1, x, y + u * 0.15, u * 0.95);
-      heart.addColorStop(0, `hsla(28 92% 52% / ${0.22 * pulse})`);
-      heart.addColorStop(0.45, `hsla(18 80% 38% / ${0.12 * pulse})`);
+      const flick = 0.72 + Math.sin(t * 9.1 + x) * 0.1 + Math.sin(t * 23.7 + y) * 0.07 + pl.flare * 0.5;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const heart = ctx.createRadialGradient(x, y + u * 0.12, 1, x, y + u * 0.12, u * 1.05);
+      heart.addColorStop(0, `hsla(26 95% 56% / ${0.44 * flick})`);
+      heart.addColorStop(0.4, `hsla(18 85% 42% / ${0.18 * flick})`);
       heart.addColorStop(1, 'hsla(16 70% 30% / 0)');
       ctx.fillStyle = heart;
-      ctx.fillRect(x - u * 1.1, y - u * 0.5, u * 2.2, u * 1.6);
+      ctx.fillRect(x - u * 1.1, y - u * 0.7, u * 2.2, u * 1.7);
+      ctx.restore();
     }
-    const layers: Array<[number, number, number, number]> = [
-      [0.00, 0.00, 1.05, 0.40],
-      [-0.95, 0.16, 1.35, 0.28],
-      [-1.95, -0.12, 1.65, 0.18],
-      [-3.05, 0.22, 1.95, 0.10],
-      [-4.15, -0.08, 2.25, 0.05],
-    ];
-    for (const [oy, ox, rad, a] of layers) {
-      const drift = Math.sin(t * 0.62 + oy * 1.7 + x * 0.03) * u * 0.18;
-      const cx = x + drift + ox * u;
-      const cy = y + oy * u;
-      const rr = rad * u;
-      const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, rr);
-      if (ember) {
-        g.addColorStop(0, `hsla(16 22% 16% / ${a * pulse})`);
-        g.addColorStop(0.55, `hsla(12 18% 14% / ${a * pulse * 0.7})`);
-        g.addColorStop(1, 'hsla(10 16% 12% / 0)');
-      } else {
-        g.addColorStop(0, `hsla(210 10% 38% / ${a * pulse})`);
-        g.addColorStop(0.55, `hsla(205 8% 32% / ${a * pulse * 0.65})`);
-        g.addColorStop(1, 'hsla(200 8% 28% / 0)');
+
+    // Advance the puffs, then draw oldest (highest, faintest) first so
+    // fresh dark smoke sits on top.
+    for (let i = pl.puffs.length - 1; i >= 0; i--) {
+      const p = pl.puffs[i];
+      p.age += dt;
+      if (p.age >= p.life) {
+        pl.puffs.splice(i, 1);
+        continue;
       }
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+      const k = p.age / p.life;
+      p.vy *= 1 - dt * 0.14; // the column slows as it cools
+      p.x += (p.vx + Math.sin(p.wobble + p.age * p.wobbleRate) * u * 0.12 + wind * u * 0.22 * k) * dt;
+      p.y += p.vy * dt;
     }
+    pl.puffs.sort((a, b) => b.age - a.age);
+    const sprites = getPuffSprites();
+    for (const p of pl.puffs) {
+      const k = p.age / p.life;
+      const s = p.size * (1 + k * 1.7);
+      const fadeIn = clamp(p.age / 0.18, 0, 1);
+      const fadeOut = k < 0.45 ? 1 : 1 - (k - 0.45) / 0.55;
+      const a = 0.9 * fadeIn * fadeOut * (0.85 + after * 0.15);
+      // Soot in the breach, umber through the middle, pale ash up high.
+      const climb = clamp((y - p.y) / (u * 2.6), 0, 1);
+      const tint = ember ? (climb < 0.3 ? 0 : climb < 0.65 ? 1 : 2) : 3;
+      const spr = sprites[tint * 3 + p.variant];
+      ctx.globalAlpha = a;
+      ctx.drawImage(spr, p.x - s, p.y - s, s * 2, s * 2);
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
-  /** Cadenced rising wisps from a ruin. Time-gated so the column is steady
-   *  without dumping the particle budget. */
-  private emitRuinColumn(key: string, x: number, y: number, ember: boolean): void {
-    const last = this.ruinSmokeAt.get(key) ?? -10;
-    if (this.time - last < 0.05) return;
-    this.ruinSmokeAt.set(key, this.time);
-    const u = this.unit;
-    for (let i = 0; i < 2; i++) {
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * u * 0.55,
-        y: y + (Math.random() - 0.5) * u * 0.16,
-        vx: (Math.random() - 0.5) * u * 0.28,
-        vy: -(u * 0.48 + Math.random() * u * 0.42),
-        life: 0,
-        maxLife: 1.5 + Math.random() * 0.95,
-        size: u * (0.16 + Math.random() * 0.26),
-        hue: ember ? 18 : 205,
-        sat: ember ? 16 : 8,
-        lit: ember ? 26 : 44,
-        kind: 'mist',
-        alpha: 0.9,
-        gravity: -u * 0.06,
-      });
-    }
-    if (Math.random() < 0.5) {
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * u * 0.4,
-        y,
-        vx: (Math.random() - 0.5) * 10,
-        vy: -(u * 0.32 + Math.random() * u * 0.22),
-        life: 0,
-        maxLife: 1.7 + Math.random() * 0.6,
-        size: 2.1 + Math.random() * 2.4,
-        hue: ember ? 24 : 32,
-        sat: ember ? 14 : 6,
-        lit: 22,
-        kind: 'ash',
-        alpha: 0.75,
-        gravity: -14,
-      });
-    }
-    if (ember && Math.random() < 0.32) {
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * u * 0.3,
-        y: y + u * 0.08,
-        vx: (Math.random() - 0.5) * 18,
-        vy: -(u * 0.55 + Math.random() * u * 0.35),
-        life: 0,
-        maxLife: 0.7 + Math.random() * 0.45,
-        size: 1.6 + Math.random() * 1.4,
-        hue: 22 + Math.random() * 12,
-        sat: 90,
-        lit: 58,
-        kind: 'mote',
-        alpha: 1,
-        gravity: -20,
-      });
+  /** Drop plume simulations for ruins that are no longer being drawn. */
+  private pruneRuinPlumes(): void {
+    for (const [key, pl] of this.plumes) {
+      if (this.time - pl.seen > 1.5) this.plumes.delete(key);
     }
   }
 
@@ -1678,8 +1812,7 @@ export class Renderer {
       const wp = this.worldToScreen(wing.x, wing.y);
       const sx = wp.x;
       const sy = baseY - h * 0.28;
-      this.drawRuinPlume(ctx, sx, sy, true, 1);
-      this.emitRuinColumn(`p1-${owner}-${wing.wing}`, sx, sy, true);
+      this.drawRuinPlume(ctx, `p1-${owner}-${wing.wing}`, sx, sy, true, 1);
     }
 
     // The battered gatehouse blooms hot for a beat (environmental light).
