@@ -9,7 +9,8 @@ import { BotBrain, advanceTick, createGame, oasisWinner, resetIds, shrineGuarded
 import type { CannonState, GameState, MarbleState, PlayerId, PlayerInput, UnitState } from '../src/types';
 import {
   CANNON, CANNON_HP, CANNON_R, FORT_LANES, FORT_PAD_Y, FORT_SPAWN_Y, FORT_WALL_FRONT,
-  HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, LAVA_RAIN_CARD, MARBLE_HP, MARBLE_POS, MARBLE_R,
+  HORN_BLAST, HORN_CHARGE_TICKS, HORN_POS, LAVA_RAIN_CARD, MARBLE_CANNON_SPLASH,
+  MARBLE_HP, MARBLE_POS, MARBLE_R,
   PHASE1_TICKS, PHASE2_TICKS, SHRINE, TRANSITION_TICKS,
 } from '../src/types';
 import { LAVA_RAIN } from '../src/data';
@@ -257,6 +258,36 @@ function enterOasis(st: GameState): void {
   assert(impact, 'cannon landing emits shrineImpact');
   assert(landed === 200 && !!victim && victim.hp === 200, 'cannon hits for 200 on landing');
   assert(!pooled, 'cannon landing does not leave an acid pool');
+}
+
+{
+  resetIds();
+  const st = createGame(7, ['magma', 'oasis']);
+  enterOasis(st);
+  st.cannons[0].atkTimer = 0;
+  const walker = dummyUnit({
+    id: 9002, owner: 1, species: 'eagle', x: 4.5, y: 8.0, hp: 400, maxHp: 400,
+    waypoint: { x: 8.2, y: 8.0 },
+  });
+  st.units.push(walker);
+  const fired = advanceTick(st, []);
+  const shot = fired.events.find((e) => e.type === 'shrineShot');
+  const bolt = st.projectiles.find((p) => p.kind === 'cannon');
+  assert(!!shot && !!bolt && bolt.targetId === 9002, 'living gun locks the walking flyer');
+  let landed = 0;
+  for (let i = 0; i < 10; i++) {
+    const { events } = advanceTick(st, []);
+    for (const e of events) {
+      if (e.type === 'hit' && e.unitId === 9002 && e.kind === 'cannon') landed += e.amount;
+    }
+    if (landed > 0) break;
+  }
+  const victim = st.units.find((u) => u.id === 9002);
+  const stale = shot
+    ? Math.hypot(walker.x - shot.tx, walker.y - shot.ty)
+    : 0;
+  assert(stale > MARBLE_CANNON_SPLASH, 'walker left the stale aim splash');
+  assert(landed === 200 && !!victim && victim.hp === 200, 'cannon follows a walking flyer for 200');
 }
 
 {

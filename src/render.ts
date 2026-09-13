@@ -2044,52 +2044,50 @@ export class Renderer {
       if (pr.kind === 'cannon') {
         const ember = pr.style !== 'water';
         // Flat shot, not a lobbed orb — just enough lift to read as airborne.
-        const arc = Math.sin(flight * Math.PI) * this.unit * 0.48;
+        const arc = Math.sin(flight * Math.PI) * this.unit * 0.28;
         const y = p.y - arc;
         const prev = this.worldToScreen(pr.px, pr.py);
         const ang = Math.atan2(p.y - prev.y, p.x - prev.x);
-        const rad = this.unit * 0.26;
+        // Round iron ball, small enough to leave the painted bore.
+        const rad = this.unit * 0.12;
         ctx.save();
         ctx.translate(p.x, y);
-        ctx.rotate(ang);
-        // Iron shell: dark mass with a hard highlight, fuse spark at the rear.
-        const body = ctx.createRadialGradient(-rad * 0.35, -rad * 0.4, 1, 0, 0, rad * 1.35);
-        body.addColorStop(0, ember ? 'hsl(28 18% 38%)' : 'hsl(200 12% 40%)');
-        body.addColorStop(0.45, ember ? 'hsl(20 14% 18%)' : 'hsl(205 10% 20%)');
+        const body = ctx.createRadialGradient(-rad * 0.32, -rad * 0.38, 0.6, 0, 0, rad);
+        body.addColorStop(0, ember ? 'hsl(28 18% 42%)' : 'hsl(200 12% 44%)');
+        body.addColorStop(0.5, ember ? 'hsl(20 14% 18%)' : 'hsl(205 10% 20%)');
         body.addColorStop(1, 'hsl(15 8% 8%)');
         ctx.fillStyle = body;
         ctx.beginPath();
-        ctx.ellipse(0, 0, rad * 1.35, rad * 0.95, 0, 0, Math.PI * 2);
+        ctx.arc(0, 0, rad, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
         ctx.beginPath();
-        ctx.ellipse(-rad * 0.35, -rad * 0.32, rad * 0.32, rad * 0.18, 0, 0, Math.PI * 2);
+        ctx.arc(-rad * 0.28, -rad * 0.3, rad * 0.28, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        // Tiny fuse — the only light on the shot.
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        const fuseX = p.x - Math.cos(ang) * rad * 1.2;
-        const fuseY = y - Math.sin(ang) * rad * 1.2;
-        ctx.fillStyle = ember ? 'hsla(38 100% 70% / 0.9)' : 'hsla(188 90% 78% / 0.85)';
+        const fuseX = p.x - Math.cos(ang) * rad * 0.85;
+        const fuseY = y - Math.sin(ang) * rad * 0.85;
+        ctx.fillStyle = ember ? 'hsla(38 100% 70% / 0.85)' : 'hsla(188 90% 78% / 0.8)';
         ctx.beginPath();
-        ctx.arc(fuseX, fuseY, 2.2, 0, Math.PI * 2);
+        ctx.arc(fuseX, fuseY, 1.4, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        if (Math.random() < 0.9) {
+        if (Math.random() < 0.75) {
           this.particles.push({
             x: fuseX, y: fuseY,
-            vx: -Math.cos(ang) * 22 + (Math.random() - 0.5) * 10,
-            vy: -Math.sin(ang) * 22 + 6,
-            life: 0, maxLife: 0.38 + Math.random() * 0.2,
-            size: 2.6 + Math.random() * 2.2,
+            vx: -Math.cos(ang) * 16 + (Math.random() - 0.5) * 8,
+            vy: -Math.sin(ang) * 16 + 4,
+            life: 0, maxLife: 0.28 + Math.random() * 0.16,
+            size: 1.6 + Math.random() * 1.4,
             hue: ember ? 22 : 30, sat: 8, lit: 22,
-            kind: 'ash', alpha: 0.7, gravity: -6,
+            kind: 'ash', alpha: 0.6, gravity: -6,
           });
         }
-        ctx.fillStyle = 'rgba(0,0,0,0.38)';
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
         ctx.beginPath();
-        ctx.ellipse(p.x, p.y + 5, 7, 2.6, 0, 0, Math.PI * 2);
+        ctx.ellipse(p.x, p.y + 3, 3.2, 1.2, 0, 0, Math.PI * 2);
         ctx.fill();
         continue;
       }

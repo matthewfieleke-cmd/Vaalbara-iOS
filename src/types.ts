@@ -198,7 +198,8 @@ export interface ProjectileState {
   vy: number;
   dmg: number;
   ticksLeft: number;
-  /** Homing lock — acid jets steer toward this unit each tick. Cannons fly true. */
+  /** Homing lock — acid jets steer toward this unit each tick. Cannon
+   *  shells lock the aimed warrior and steer for the remaining flight. */
   targetId?: number;
 }
 

@@ -1196,6 +1196,64 @@ function trexStomp(st: GameState, ev: GameEvent[], u: RuntimeUnit): void {
 /* Projectiles                                                                */
 /* ------------------------------------------------------------------------ */
 
+/** In-flight contact slop so a shell that clips a body detonates. */
+const CANNON_SHELL_R = 0.28;
+/** If the locked warrior just stepped off the burst, still credit the hit. */
+const CANNON_LOCK_GRACE = 0.55;
+
+function unitRadius(u: UnitState): number {
+  return speciesDef(u.species).stats!.radius;
+}
+
+function segDist2(
+  px: number, py: number,
+  x1: number, y1: number,
+  x2: number, y2: number,
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return dist2(px, py, x1, y1);
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  return dist2(px, py, x1 + t * dx, y1 + t * dy);
+}
+
+function cannonStruckBody(st: GameState, pr: { x: number; y: number; px: number; py: number; owner: PlayerId }): boolean {
+  for (const o of st.units) {
+    if (o.hp <= 0 || o.owner === pr.owner) continue;
+    const reach = unitRadius(o) + CANNON_SHELL_R;
+    if (segDist2(o.x, o.y, pr.px, pr.py, pr.x, pr.y) <= reach * reach) return true;
+  }
+  return false;
+}
+
+function explodeCannon(st: GameState, ev: GameEvent[], pr: { owner: PlayerId; x: number; y: number; dmg: number; style?: 'ember' | 'water'; targetId?: number }): void {
+  ev.push({
+    type: 'shrineImpact',
+    owner: pr.owner,
+    x: pr.x, y: pr.y,
+    kind: pr.style === 'water' ? 'water' : 'ember',
+  });
+  const hit = new Set<number>();
+  for (const o of st.units) {
+    if (o.hp <= 0 || o.owner === pr.owner) continue;
+    const reach = MARBLE_CANNON_SPLASH + unitRadius(o);
+    if (dist2(o.x, o.y, pr.x, pr.y) <= reach * reach) {
+      dealDamage(st, ev, null, o, pr.dmg, 'cannon');
+      st.players[pr.owner].damageDealt += pr.dmg;
+      hit.add(o.id);
+    }
+  }
+  if (pr.targetId == null || hit.has(pr.targetId)) return;
+  const lock = st.units.find((u) => u.id === pr.targetId && u.hp > 0 && u.owner !== pr.owner);
+  if (!lock) return;
+  const grace = MARBLE_CANNON_SPLASH + unitRadius(lock) + CANNON_LOCK_GRACE;
+  if (dist2(lock.x, lock.y, pr.x, pr.y) <= grace * grace) {
+    dealDamage(st, ev, null, lock, pr.dmg, 'cannon');
+    st.players[pr.owner].damageDealt += pr.dmg;
+  }
+}
+
 function tickProjectiles(st: GameState, ev: GameEvent[]): void {
   for (const pr of st.projectiles) {
     if (pr.kind === 'acid' && pr.targetId != null) {
@@ -1218,29 +1276,37 @@ function tickProjectiles(st: GameState, ev: GameEvent[]): void {
         }
       }
     }
+    if (pr.kind === 'cannon' && pr.targetId != null && pr.ticksLeft > 0) {
+      const lock = st.units.find((u) => u.id === pr.targetId && u.hp > 0);
+      if (lock) {
+        // Land on the lock after the remaining flight. Do not stretch
+        // lifetime — a kiting flyer must not tow the shell forever.
+        const rem = Math.max(1, pr.ticksLeft);
+        pr.vx = (lock.x - pr.x) / rem;
+        pr.vy = (lock.y - pr.y) / rem;
+      }
+    }
     pr.px = pr.x;
     pr.py = pr.y;
     pr.x += pr.vx;
     pr.y += pr.vy;
-    pr.ticksLeft--;
+    if (pr.kind === 'cannon' && cannonStruckBody(st, pr)) {
+      pr.ticksLeft = 0;
+    } else {
+      pr.ticksLeft--;
+    }
     if (pr.ticksLeft > 0) continue;
 
-    if (pr.kind === 'cannon' || pr.kind === 'gate') {
-      if (pr.kind === 'cannon') {
-        ev.push({
-          type: 'shrineImpact',
-          owner: pr.owner,
-          x: pr.x, y: pr.y,
-          kind: pr.style === 'water' ? 'water' : 'ember',
-        });
-      }
-      const splash = pr.kind === 'gate' ? GATE_SHOT_SPLASH : MARBLE_CANNON_SPLASH;
-      const r2 = splash * splash;
-      const hitKind = pr.kind === 'cannon' ? 'cannon' : 'ranged';
+    if (pr.kind === 'cannon') {
+      explodeCannon(st, ev, pr);
+      continue;
+    }
+    if (pr.kind === 'gate') {
+      const r2 = GATE_SHOT_SPLASH * GATE_SHOT_SPLASH;
       for (const o of st.units) {
         if (o.hp <= 0 || o.owner === pr.owner) continue;
         if (dist2(o.x, o.y, pr.x, pr.y) <= r2) {
-          dealDamage(st, ev, null, o, pr.dmg, hitKind);
+          dealDamage(st, ev, null, o, pr.dmg, 'ranged');
           st.players[pr.owner].damageDealt += pr.dmg;
         }
       }
@@ -2166,6 +2232,7 @@ function tickCannons(st: GameState, ev: GameEvent[]): void {
       vy: (best.y - shot.shotY) / ticks,
       dmg: MARBLE_SHOT_DMG,
       ticksLeft: ticks,
+      targetId: best.id,
     });
     ev.push({
       type: 'shrineShot',
